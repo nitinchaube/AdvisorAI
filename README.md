@@ -1,2 +1,2 @@
 # AdvisorAI
-# Author : Paras Jadhav
+# Author : Paras Jadhav, Nitin Chaube, Keval Sompura
