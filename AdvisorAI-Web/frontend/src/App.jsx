@@ -4,7 +4,7 @@ import { Route, Routes, NavLink } from "react-router-dom";
 import Signup from "./components/Signup.jsx";
 import Home from "./components/Home.jsx";
 import Login from "./components/Login.jsx";
-import "./App.css";
+import Dashboard from "./components/Dashboard.jsx";
 
 function App() {
   return (
@@ -13,6 +13,7 @@ function App() {
         <Route path="/" element={<Home />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/dashboard" element={<Dashboard />} />
       </Routes>
     </div>
   );
