@@ -1,0 +1,245 @@
+html,
+body {
+  overflow-x: hidden;
+}
+
+#root {
+  max-width: 100%;
+  margin: 0 auto;
+  text-align: center;
+}
+/* AdvisorAI Home Page Styles */
+
+.advisorai-home {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f8fafc 0%, #e0e7ff 100%);
+  display: flex;
+  .advisorai-hero-bg {
+    min-height: 100vh;
+    background: linear-gradient(120deg, #232526 0%, #414345 100%),
+      url("/vite.svg") center/cover no-repeat;
+    position: relative;
+    overflow-x: hidden;
+    display: flex;
+    align-items: stretch;
+    justify-content: stretch;
+  }
+  display: flex;
+  align-items: stretch;
+  .advisorai-overlay {
+    background: rgba(30, 41, 59, 0.82);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: stretch;
+  }
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+.advisorai-header {
+  padding: 2rem 0 1rem 0;
+  background: linear-gradient(90deg, #6366f1 0%, #60a5fa 100%);
+  color: #fff;
+  text-align: center;
+  box-shadow: 0 2px 16px 0 rgba(99, 102, 241, 0.08);
+}
+
+.advisorai-header.redesigned {
+  background: transparent;
+  color: #fff;
+  text-align: center;
+  padding: 3rem 0 1.5rem 0;
+  box-shadow: none;
+}
+
+.advisorai-logo {
+  height: 80px;
+  margin-bottom: 0.5rem;
+  filter: drop-shadow(0 0 2em #6366f1cc);
+  animation: logo-spin 12s linear infinite;
+}
+
+.advisorai-logo {
+  height: 90px;
+  margin-bottom: 0.5rem;
+  filter: drop-shadow(0 0 2em #6366f1cc);
+  animation: logo-spin 12s linear infinite;
+}
+
+.ai-highlight {
+  color: #fbbf24;
+  font-weight: bold;
+}
+
+.ai-highlight {
+  color: #fbbf24;
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+
+.advisorai-tagline {
+  font-size: 1.2rem;
+  margin-top: 0.5rem;
+  color: #e0e7ff;
+  letter-spacing: 0.5px;
+}
+
+.advisorai-tagline {
+  font-size: 1.3rem;
+  margin-top: 0.5rem;
+  color: #e0e7ff;
+  letter-spacing: 0.5px;
+  text-shadow: 0 2px 8px #232526cc;
+}
+
+.advisorai-main {
+  flex: 1;
+  padding: 2rem 1rem 0 1rem;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.advisorai-main.redesigned {
+  flex: 1;
+  padding: 0 1.5rem;
+  max-width: 950px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.advisorai-section {
+  margin-bottom: 2.5rem;
+}
+
+.advisorai-section h2 {
+  color: #6366f1;
+  margin-bottom: 0.5rem;
+}
+
+.hero-section {
+  margin-top: 2.5rem;
+  margin-bottom: 2.5rem;
+  text-align: center;
+}
+.hero-section h2 {
+  color: #fff;
+  font-size: 2.2rem;
+  margin-bottom: 0.7rem;
+  text-shadow: 0 2px 8px #232526cc;
+}
+.hero-section p {
+  color: #e0e7ff;
+  font-size: 1.15rem;
+  margin-bottom: 2rem;
+  text-shadow: 0 2px 8px #232526cc;
+}
+
+.advisorai-features {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2rem;
+  justify-content: center;
+  margin-bottom: 2.5rem;
+}
+
+.advisorai-features.redesigned {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2.2rem;
+  justify-content: center;
+  margin-bottom: 2.5rem;
+}
+
+.feature-card {
+  background: #fff;
+  border-radius: 1.2rem;
+  box-shadow: 0 4px 24px 0 rgba(99, 102, 241, 0.1);
+  padding: 2rem 1.5rem;
+  min-width: 220px;
+  max-width: 300px;
+  flex: 1 1 220px;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.feature-card.redesigned {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 1.3rem;
+  box-shadow: 0 4px 32px 0 rgba(99, 102, 241, 0.13);
+  padding: 2.2rem 1.7rem;
+  min-width: 220px;
+  max-width: 320px;
+  flex: 1 1 220px;
+  transition: transform 0.2s, box-shadow 0.2s;
+  color: #232526;
+}
+
+.feature-card:hover {
+  transform: translateY(-8px) scale(1.03);
+  box-shadow: 0 8px 32px 0 rgba(99, 102, 241, 0.18);
+}
+
+.feature-card.redesigned:hover {
+  transform: translateY(-10px) scale(1.04);
+  box-shadow: 0 8px 40px 0 rgba(99, 102, 241, 0.22);
+}
+
+.feature-card h3 {
+  color: #6366f1;
+  margin-bottom: 0.5rem;
+}
+
+.feature-card.redesigned h3 {
+  color: #6366f1;
+  margin-bottom: 0.5rem;
+}
+
+.feature-card.redesigned p {
+  color: #414345;
+}
+
+.advisorai-cta {
+  text-align: center;
+  margin: 2.5rem 0 1.5rem 0;
+}
+
+.advisorai-btn {
+  background: linear-gradient(90deg, #6366f1 0%, #60a5fa 100%);
+  color: #fff;
+  border: none;
+  border-radius: 2rem;
+  padding: 0.9rem 2.2rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 8px 0 rgba(99, 102, 241, 0.1);
+  transition: background 0.2s, transform 0.2s;
+}
+
+.advisorai-cta-btn {
+  background: linear-gradient(90deg, #6366f1 0%, #60a5fa 100%);
+  color: #fff;
+  border: none;
+  border-radius: 2rem;
+  padding: 1rem 2.5rem;
+  font-size: 1.2rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 2px 12px 0 rgba(99, 102, 241, 0.18);
+  transition: background 0.2s, transform 0.2s;
+}
+
+.advisorai-btn:hover {
+  background: linear-gradient(90deg, #60a5fa 0%, #6366f1 100%);
+  transform: scale(1.05);
+}
+
+.advisorai-auth-buttons {
+  margin-top: 1.2rem;
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+}
