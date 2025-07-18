@@ -26,7 +26,7 @@ body {
 
 .overflow-y-auto::-webkit-scrollbar-thumb:hover {
   background: rgba(156, 163, 175, 0.5);
-}
+  }
 
 /* Hide scrollbar for webkit browsers when not needed */
 .overflow-y-auto::-webkit-scrollbar-thumb:vertical {

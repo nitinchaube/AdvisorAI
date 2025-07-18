@@ -1,85 +1,210 @@
-import React from "react";
-import { NavLink } from "react-router-dom";
-import reactLogo from "../assets/react.svg";
+import React, { useEffect, useState } from "react";
+import { NavLink, useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
+import { 
+  Brain, 
+  Zap, 
+  ArrowRight, 
+  Star, 
+  CheckCircle, 
+  Sparkles,
+  BookOpen,
+  Lightbulb,
+  Globe,
+  Play,
+  ChevronDown,
+  User,
+  LogOut,
+  LayoutDashboard,
+  Edit
+} from "lucide-react";
+import "./Home.css";
 
 const Home = () => {
+  const [isVisible, setIsVisible] = useState(false);
+  const { currentUser, logout } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    setIsVisible(true);
+  }, []);
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50">
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 relative">
-        <header className="bg-gradient-to-r from-blue-600 to-purple-600 text-white text-center py-8 px-4">
-          <img
-            src={reactLogo}
-            className="h-20 mx-auto mb-4 animate-spin"
-            style={{ animationDuration: '20s' }}
-            alt="AdvisorAI Logo"
-          />
-          <h1 className="text-4xl font-bold mb-2">
-            Advisor<span className="text-yellow-400">AI</span>
-          </h1>
-          <p className="text-xl text-blue-100 mb-6">
-            Empowering Students for Smarter Academic Choices
-          </p>
-          <div className="flex justify-center space-x-4">
-            <NavLink 
-              to="/signup" 
-              className="bg-white text-blue-600 px-6 py-3 rounded-lg font-semibold hover:bg-gray-100 transition-colors"
-            >
-              Sign Up
-            </NavLink>
-            <NavLink 
-              to="/login" 
-              className="bg-transparent border-2 border-white text-white px-6 py-3 rounded-lg font-semibold hover:bg-white hover:text-blue-600 transition-colors"
-            >
-              Login
-            </NavLink>
+    <div className="home-container">
+      {/* Animated Background */}
+      <div className="animated-background">
+        <div className="floating-shapes">
+          {[...Array(20)].map((_, i) => (
+            <div
+              key={i}
+              className="floating-shape"
+              style={{
+                '--delay': `${Math.random() * 3}s`,
+                '--duration': `${2 + Math.random() * 3}s`,
+                '--x': `${Math.random() * 100}%`,
+                '--y': `${Math.random() * 100}%`,
+                '--size': `${20 + Math.random() * 60}px`
+              }}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Header Section */}
+      <header className="header-section">
+        <nav className="nav-bar">
+          <div className="nav-logo">
+            <div className="logo-container">
+              <Brain className="logo-icon" />
+              <span className="logo-text">Advisor<span className="logo-highlight">AI</span></span>
+            </div>
           </div>
-        </header>
-        
-        <main className="max-w-6xl mx-auto px-4 py-12">
-          <section className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-white mb-4">
-              Smarter Academic Planning Starts Here
-            </h2>
-            <p className="text-xl text-gray-300 mb-8 max-w-3xl mx-auto">
-              Get personalized guidance for your coursework, university
-              selection, and academic journey. Let AI help you make confident,
-              informed decisions for your future.
-            </p>
-            <NavLink 
-              to="/dashboard"
-              className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-8 py-4 rounded-xl font-semibold text-lg hover:from-blue-600 hover:to-purple-700 transition-all duration-200 shadow-lg hover:shadow-xl"
-            >
-              Ask AdvisorAI
-            </NavLink>
-          </section>
+          <div className="nav-actions">
+            {currentUser ? (
+              <>
+                <NavLink to="/dashboard" className="nav-link">
+                  <LayoutDashboard className="nav-icon" />
+                  Dashboard
+                </NavLink>
+                <NavLink to="/profile" className="nav-link">
+                  <User className="nav-icon" />
+                  Profile
+                </NavLink>
+                <button onClick={logout} className="nav-link">
+                  <LogOut className="nav-icon" />
+                  Log Out
+                </button>
+              </>
+            ) : (
+              <>
+                <NavLink to="/login" className="nav-link">
+                  Sign In
+                </NavLink>
+                <NavLink to="/signup" className="nav-button">
+                  Get Started
+                  <ArrowRight className="button-icon" />
+                </NavLink>
+              </>
+            )}
+          </div>
+        </nav>
+      </header>
+
+      {/* Hero Section */}
+      <section className="hero-section">
+        <div className="hero-content">
+          <div className="hero-badge">
+            <Sparkles className="badge-icon" />
+            <span>
+              {currentUser ? 'Welcome back!' : 'AI-Powered Academic Guidance'}
+            </span>
+          </div>
           
-          <section className="grid md:grid-cols-3 gap-8 mb-16">
-            <div className="bg-white/10 backdrop-blur-sm p-8 rounded-2xl border border-white/20 hover:bg-white/20 transition-all duration-300">
-              <h3 className="text-2xl font-bold text-white mb-4">Coursework Selection</h3>
-              <p className="text-gray-300">
-                Find the best courses tailored to your interests and career
-                goals.
-              </p>
+          <h1 className="hero-title">
+            {currentUser ? (
+              <>
+                Welcome back, <span className="title-highlight">{currentUser.displayName || currentUser.email?.split('@')[0] || 'Student'}!</span>
+                <br />
+                Ready to continue your academic journey?
+              </>
+            ) : (
+              <>
+                Your Personal
+                <span className="title-highlight"> Academic Advisor</span>
+                <br />
+                Powered by AI
+              </>
+            )}
+          </h1>
+          
+          <p className="hero-description">
+            {currentUser ? (
+              'Access your personalized dashboard, update your profile, or explore new academic opportunities with AI-powered guidance.'
+            ) : (
+              'Make smarter academic choices with personalized AI guidance. From course selection to university applications, get expert advice tailored to your unique goals and aspirations.'
+            )}
+          </p>
+          
+          <div className="hero-actions">
+            {currentUser ? (
+              <>
+                <NavLink to="/dashboard" className="primary-button">
+                  <LayoutDashboard className="button-icon" />
+                  Go to Dashboard
+                </NavLink>
+                <NavLink to="/profile-completion" className="secondary-button">
+                  <Edit className="button-icon" />
+                  Update Profile
+            </NavLink>
+              </>
+            ) : (
+              <>
+                <NavLink to="/signup" className="primary-button">
+                  <Play className="button-icon" />
+                  Start Your Journey
+            </NavLink>
+                <button className="secondary-button">
+                  <BookOpen className="button-icon" />
+                  Learn More
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* CTA Section */}
+      <section className="cta-section">
+        <div className="cta-container">
+          <div className="cta-content">
+            <h2 className="cta-title">
+              {currentUser ? 'Ready to Explore More Academic Opportunities?' : 'Ready to Transform Your Academic Journey?'}
+            </h2>
+            <p className="cta-description">
+              {currentUser ? 
+                'Discover new courses, get personalized recommendations, and take your academic journey to the next level.' :
+                'Join thousands of students who are already making smarter academic decisions with AI'
+              }
+            </p>
+            {currentUser ? (
+              <NavLink to="/dashboard" className="cta-button">
+                <LayoutDashboard className="button-icon" />
+                Explore Dashboard
+              </NavLink>
+            ) : (
+              <NavLink to="/signup" className="cta-button">
+                <Star className="button-icon" />
+                Start Free Today
+              </NavLink>
+            )}
             </div>
-            <div className="bg-white/10 backdrop-blur-sm p-8 rounded-2xl border border-white/20 hover:bg-white/20 transition-all duration-300">
-              <h3 className="text-2xl font-bold text-white mb-4">University Doubts</h3>
-              <p className="text-gray-300">
-                Get answers to your questions about universities, programs, and
-                admissions.
-              </p>
-            </div>
-            <div className="bg-white/10 backdrop-blur-sm p-8 rounded-2xl border border-white/20 hover:bg-white/20 transition-all duration-300">
-              <h3 className="text-2xl font-bold text-white mb-4">Personalized Guidance</h3>
-              <p className="text-gray-300">
-                Receive AI-powered advice for your unique academic path.
-              </p>
             </div>
           </section>
-        </main>
-        
-        <footer className="text-center py-8 text-gray-400">
+
+      {/* Footer */}
+      <footer className="footer">
+        <div className="footer-content">
+          <div className="footer-logo">
+            <Brain className="footer-logo-icon" />
+            <span>AdvisorAI</span>
+          </div>
+          <p className="footer-text">
+            Empowering students with AI-driven academic guidance
+          </p>
+          <div className="footer-links">
+            <a href="#" className="footer-link">Privacy Policy</a>
+            <a href="#" className="footer-link">Terms of Service</a>
+            <a href="#" className="footer-link">Contact Us</a>
+          </div>
+        </div>
+        <div className="footer-bottom">
           <p>&copy; {new Date().getFullYear()} AdvisorAI. All rights reserved.</p>
+        </div>
         </footer>
+
+      {/* Scroll Indicator */}
+      <div className="scroll-indicator">
+        <ChevronDown className="scroll-icon" />
       </div>
     </div>
   );
