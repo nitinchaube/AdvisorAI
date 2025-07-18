@@ -1,16 +1,22 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Header from "./Header";
 import Footer from "./Footer";
 import Sidebar from "./Sidebar";
 import ChatInterface from "./ChatInterface";
-import ChatHistory from "./ChatHistory";
+import ChatSessionManager from "./ChatSessionManager";
+import ChatHistoryView from "./ChatHistoryView";
 import RatingPage from "./RatingPage";
 import CourseExplorer from "./CourseExplorer";
+import { Link } from "react-router-dom";
+import { apiService } from "../services/api";
 
 const Dashboard = () => {
-  const [activeTab, setActiveTab] = useState('chat');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [currentSessionId, setCurrentSessionId] = useState(null);
+  const [currentSessionTitle, setCurrentSessionTitle] = useState('New Chat');
   const [chatHistoryOpen, setChatHistoryOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('chat');
+  const [sessionInitialized, setSessionInitialized] = useState(false);
 
   const handleMenuToggle = () => {
     setSidebarOpen(!sidebarOpen);
@@ -20,6 +26,89 @@ const Dashboard = () => {
     setChatHistoryOpen(!chatHistoryOpen);
   };
 
+  const handleNewChat = async (sessionId) => {
+    if (sessionId) {
+      setCurrentSessionId(sessionId);
+      await loadSessionTitle(sessionId);
+    } else {
+      // Create a new chat session only when user explicitly requests it
+      try {
+        const response = await apiService.createChatSession('New Chat');
+        if (response.success) {
+          setCurrentSessionId(response.session_id);
+          setCurrentSessionTitle('New Chat');
+          localStorage.setItem('currentChatSessionId', response.session_id);
+          console.log('📱 Created new chat session:', response.session_id);
+        }
+      } catch (error) {
+        console.error('Error creating new chat session:', error);
+      }
+    }
+    setChatHistoryOpen(false);
+  };
+
+  const handleSessionSelect = (sessionId) => {
+    setCurrentSessionId(sessionId);
+    loadSessionTitle(sessionId);
+    setChatHistoryOpen(false);
+  };
+
+  const handleSessionUpdate = (sessionId, newTitle) => {
+    if (sessionId === currentSessionId) {
+      setCurrentSessionTitle(newTitle);
+    }
+  };
+
+  const loadSessionTitle = async (sessionId) => {
+    try {
+      const response = await apiService.getChatSessionMessages(sessionId);
+      if (response.success) {
+        setCurrentSessionTitle(response.session.title);
+      }
+    } catch (error) {
+      console.error('Error loading session title:', error);
+    }
+  };
+
+  // Initialize session only once on component mount
+  useEffect(() => {
+    const initializeSession = async () => {
+      if (sessionInitialized) return;
+      
+      try {
+        // Check if we have a stored session ID
+        const storedSessionId = localStorage.getItem('currentChatSessionId');
+        
+        if (storedSessionId) {
+          // Try to load the stored session
+          try {
+            const response = await apiService.getChatSessionMessages(storedSessionId);
+            if (response.success) {
+              setCurrentSessionId(storedSessionId);
+              setCurrentSessionTitle(response.session.title);
+              console.log('📱 Restored previous chat session:', storedSessionId);
+              setSessionInitialized(true);
+              return;
+            }
+          } catch (error) {
+            console.log('Could not restore previous session');
+          }
+        }
+        
+        // Don't create a new session automatically - let user choose when to start chatting
+        setSessionInitialized(true);
+        console.log('📱 No session restored, waiting for user to start chatting');
+      } catch (error) {
+        console.error('Error initializing session:', error);
+        setSessionInitialized(true);
+      }
+    };
+
+    if (activeTab === 'chat') {
+      initializeSession();
+    }
+  }, [activeTab, sessionInitialized]);
+
   const renderContent = () => {
     switch (activeTab) {
       case 'chat':
@@ -27,10 +116,16 @@ const Dashboard = () => {
           <div className="h-full flex flex-col md:flex-row relative">
             {/* Chat Interface - Takes full width on mobile, left side on desktop */}
             <div className="flex-1 min-w-0 h-full">
-              <ChatInterface onToggleHistory={handleChatHistoryToggle} />
+              <ChatInterface 
+                onToggleHistory={handleChatHistoryToggle}
+                currentSessionId={currentSessionId}
+                onSessionUpdate={handleSessionUpdate}
+                sessionTitle={currentSessionTitle}
+                onNewChat={() => handleNewChat(null)}
+              />
             </div>
             
-            {/* Chat History - Right sidebar on mobile, always visible on desktop */}
+            {/* Chat Session Manager - Right sidebar on mobile, always visible on desktop */}
             <div className={`
               ${chatHistoryOpen ? 'block' : 'hidden'} 
               md:block 
@@ -45,14 +140,25 @@ const Dashboard = () => {
               flex-shrink-0
               md:bg-gradient-to-br md:from-slate-900/95 md:via-purple-900/90 md:to-indigo-900/95
             `}>
-              <ChatHistory onClose={() => setChatHistoryOpen(false)} />
+              <ChatSessionManager 
+                onSessionSelect={handleSessionSelect}
+                onNewChat={handleNewChat}
+                onClose={() => setChatHistoryOpen(false)}
+                currentSessionId={currentSessionId}
+                onSessionUpdate={handleSessionUpdate}
+              />
             </div>
           </div>
         );
       case 'history':
         return (
           <div className="h-full w-full">
-            <ChatHistory />
+            <ChatHistoryView 
+              currentSessionId={currentSessionId}
+              onSessionSelect={handleSessionSelect}
+              onNewChat={handleNewChat}
+              onSessionUpdate={handleSessionUpdate}
+            />
           </div>
         );
       case 'ratings':
@@ -75,6 +181,40 @@ const Dashboard = () => {
                 <h1 className="text-4xl font-bold bg-gradient-to-r from-violet-600 to-purple-600 bg-clip-text text-transparent mb-4">Analytics Dashboard</h1>
                 <p className="text-lg text-gray-700">Track your academic progress and insights</p>
               </div>
+              
+              {/* Profile Management Links */}
+              <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl border border-white/20 p-6 mb-8">
+                <div className="grid md:grid-cols-2 gap-6">
+                  {/* Profile Data Link */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xl font-semibold text-gray-900 mb-2">Profile Data</h3>
+                      <p className="text-gray-600">View and edit all your profile information from the database</p>
+                    </div>
+                    <Link 
+                      to="/profile-data"
+                      className="bg-gradient-to-r from-violet-500 to-purple-600 text-white px-6 py-3 rounded-lg font-medium hover:from-violet-600 hover:to-purple-700 transition-all duration-200 transform hover:scale-105 shadow-lg"
+                    >
+                      View Profile Data
+                    </Link>
+                  </div>
+                  
+                  {/* Edit Profile Link */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xl font-semibold text-gray-900 mb-2">Edit Profile</h3>
+                      <p className="text-gray-600">Update your resume and profile information</p>
+                    </div>
+                    <Link 
+                      to="/profile-completion"
+                      className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-6 py-3 rounded-lg font-medium hover:from-emerald-600 hover:to-teal-700 transition-all duration-200 transform hover:scale-105 shadow-lg"
+                    >
+                      Edit Profile
+                    </Link>
+                  </div>
+                </div>
+              </div>
+              
               <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl border border-white/20 p-8">
                 <div className="text-center py-12">
                   <div className="w-24 h-24 bg-gradient-to-r from-violet-500 via-purple-500 to-indigo-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg">

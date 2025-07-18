@@ -1,0 +1,264 @@
+const API_BASE_URL = 'http://localhost:5002/api';
+
+class ApiService {
+  constructor() {
+    this.baseURL = API_BASE_URL;
+  }
+
+  // Helper method to get auth headers
+  getAuthHeaders() {
+    const token = localStorage.getItem('backendToken');
+    return token ? { 'Authorization': `Bearer ${token}` } : {};
+  }
+
+  // Helper method to make API calls
+  async makeRequest(endpoint, options = {}) {
+    const url = `${this.baseURL}${endpoint}`;
+    
+    const defaultOptions = {
+      headers: {
+        'Content-Type': 'application/json',
+        ...this.getAuthHeaders(),
+        ...options.headers,
+      },
+    };
+
+    const config = { ...defaultOptions, ...options };
+
+    try {
+      console.log(` Making request to: ${url}`);
+      console.log('📤 Request config:', {
+        method: config.method || 'GET',
+        headers: config.headers,
+        body: config.body ? JSON.parse(config.body) : undefined
+      });
+      
+      const response = await fetch(url, config);
+      console.log(' Response status:', response.status);
+      
+      const data = await response.json();
+      console.log('📥 Response data:', data);
+
+      if (!response.ok) {
+        const errorMessage = data.error || data.message || `HTTP ${response.status}: ${response.statusText}`;
+        console.error('❌ API Error Response:', errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      return data;
+    } catch (error) {
+      console.error('❌ API Error:', error);
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack
+      });
+      throw error;
+    }
+  }
+
+  // File upload method with auth
+  async uploadFile(endpoint, formData) {
+    const url = `${this.baseURL}${endpoint}`;
+    const token = localStorage.getItem('backendToken');
+    
+    try {
+      console.log(` Uploading file to: ${url}`);
+      console.log('🔑 Token present:', !!token);
+      
+      const headers = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: headers,
+        body: formData, // Don't set Content-Type for FormData
+      });
+      
+      console.log(' Response status:', response.status);
+      
+      const data = await response.json();
+      console.log('📥 Response data:', data);
+
+      if (!response.ok) {
+        const errorMessage = data.error || data.message || `HTTP ${response.status}: ${response.statusText}`;
+        console.error('❌ Upload Error Response:', errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      return data;
+    } catch (error) {
+      console.error('❌ Upload Error:', error);
+      throw error;
+    }
+  }
+
+  // Authentication methods
+  async signinWithBackend(idToken) {
+    console.log('🔑 Signing in with backend, idToken length:', idToken.length);
+    return this.makeRequest('/auth/signin-with-token', {
+      method: 'POST',
+      body: JSON.stringify({ idToken }),
+    });
+  }
+
+  // Resume upload and parsing
+  async uploadAndParseResume(formData) {
+    const response = await this.uploadFile('/resume/upload-and-parse', formData);
+    console.log("📥 Raw API response:", response);
+    
+    // Ensure we return the correct data structure
+    if (response.success && response.data) {
+      console.log("✅ Parsed data received:", response.data);
+      return {
+        success: true,
+        data: response.data,
+        originalText: response.originalText,
+        llmProvider: response.llmProvider,
+        message: response.message
+      };
+    } else {
+      console.error("❌ Unexpected response structure:", response);
+      throw new Error(response.error || "Failed to parse resume");
+    }
+  }
+
+  // Save user profile
+  async saveUserProfile(profileData) {
+    return this.makeRequest('/user/profile', {
+      method: 'PUT',
+      body: JSON.stringify(profileData),
+    });
+  }
+
+  // Get user profile
+  async getUserProfile() {
+    return this.makeRequest('/user/profile');
+  }
+
+  // Health check
+  async healthCheck() {
+    return this.makeRequest('/health');
+  }
+
+  // LLM status
+  async getLLMStatus() {
+    return this.makeRequest('/llm/status');
+  }
+
+  async debugTextExtraction(formData) {
+    return this.uploadFile('/resume/debug-extraction', formData);
+  }
+
+  // Chat methods
+  async sendChatMessage(query, chatHistory = [], sessionId = null) {
+    return this.makeRequest('/chat/query', {
+      method: 'POST',
+      body: JSON.stringify({
+        query,
+        chat_history: chatHistory,
+        session_id: sessionId
+      }),
+    });
+  }
+
+  async getChatHistory(limit = 50) {
+    return this.makeRequest(`/chat/history?limit=${limit}`);
+  }
+
+  // Chat session methods
+  async getChatSessions() {
+    return this.makeRequest('/chat/sessions');
+  }
+
+  async createChatSession(title = 'New Chat') {
+    return this.makeRequest('/chat/sessions', {
+      method: 'POST',
+      body: JSON.stringify({ title }),
+    });
+  }
+
+  async getChatSessionMessages(sessionId) {
+    return this.makeRequest(`/chat/sessions/${sessionId}`);
+  }
+
+  async updateChatSession(sessionId, title) {
+    return this.makeRequest(`/chat/sessions/${sessionId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ title }),
+    });
+  }
+
+  async deleteChatSession(sessionId) {
+    return this.makeRequest(`/chat/sessions/${sessionId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getUserChatHistory() {
+    return this.makeRequest('/chat/user-history');
+  }
+
+  async getRAGStats() {
+    return this.makeRequest('/rag/stats');
+  }
+
+  // Streaming chat method
+  async streamChatMessage(query, chatHistory = [], onToken) {
+    const url = `${this.baseURL}/chat/stream`;
+    const token = localStorage.getItem('backendToken');
+    
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          query,
+          chat_history: chatHistory
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) break;
+        
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.token) {
+                onToken(data.token);
+              } else if (data.done) {
+                return;
+              } else if (data.error) {
+                throw new Error(data.error);
+              }
+            } catch (e) {
+              console.error('Error parsing stream data:', e);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('❌ Stream chat error:', error);
+      throw error;
+    }
+  }
+}
+
+export const apiService = new ApiService(); 

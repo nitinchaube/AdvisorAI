@@ -1,131 +1,29 @@
-# Core Python packages
+Flask==2.3.3
+Flask-CORS==4.0.0
+Flask-Session==0.5.0
+Flask-JWT-Extended==4.5.3
+firebase-admin==6.2.0
 python-dotenv==1.0.0
+PyJWT==2.8.0
 requests==2.31.0
-beautifulsoup4==4.12.2
-lxml==4.9.3
-
-# Data processing and analysis
-pandas==2.1.4
-numpy==1.24.3
-matplotlib==3.7.2
-
-# LangChain and AI/ML
+Werkzeug==2.3.7
+PyPDF2==3.0.1
+PyMuPDF==1.23.8
+python-docx==0.8.11
+openai>=1.10.0,<2.0.0
+google-generativeai>=0.3.1,<0.4.0
 langchain==0.1.0
-langchain-community==0.0.10
-langchain-core==0.1.10
 langchain-openai==0.0.5
 langchain-google-genai==0.0.6
-langchain-chroma==0.0.1
-
-# Vector database
+langchain-community==0.0.10
 chromadb==0.4.18
-chroma-hnswlib==0.7.3
-
-# Embeddings and ML models
 sentence-transformers==2.2.2
-transformers==4.36.2
+transformers==4.30.2
+huggingface-hub==0.16.4
+beautifulsoup4==4.12.2
+nltk==3.9.1
+scikit-learn==1.7.0
+scipy==1.15.3
 torch==2.1.2
-accelerate==0.25.0
-
-# Hugging Face
-huggingface-hub==0.19.4
-tokenizers==0.15.0
-
-# Web scraping and HTTP
-aiohttp==3.9.1
-httpx==0.25.2
-selenium==4.15.2
-webdriver-manager==4.0.1
-
-# API and web framework
-fastapi==0.104.1
-uvicorn==0.24.0
-pydantic==2.5.0
-python-multipart==0.0.6
-
-# Database
-pymongo==4.6.0
-motor==3.3.2
-
-# Caching and session management
+torchvision==0.16.2
 redis==5.0.1
-aioredis==2.0.1
-
-# Authentication and security
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
-
-# Utilities
-tqdm==4.66.1
-click==8.1.7
-rich==13.7.0
-typer==0.9.0
-
-# Development and testing
-pytest==7.4.3
-pytest-asyncio==0.21.1
-black==23.11.0
-flake8==6.1.0
-isort==5.12.0
-
-# Jupyter notebook support
-jupyter==1.0.0
-ipykernel==6.27.1
-notebook==7.0.6
-
-# Environment and configuration
-python-decouple==3.8
-configparser==6.0.0
-
-# Async support
-asyncio-mqtt==0.16.1
-aiofiles==23.2.1
-
-# CORS and middleware
-fastapi-cors==0.0.6
-
-# Logging and monitoring
-structlog==23.2.0
-prometheus-client==0.19.0
-
-# File handling
-python-magic==0.4.27
-Pillow==10.1.0
-
-# Date and time
-python-dateutil==2.8.2
-pytz==2023.3
-
-# JSON and serialization
-orjson==3.9.10
-ujson==5.8.0
-
-# HTTP client
-httpx==0.25.2
-aiohttp==3.9.1
-
-# WebSocket support
-websockets==12.0
-
-# Background tasks
-celery==5.3.4
-redis==5.0.1
-
-# Rate limiting
-slowapi==0.1.9
-
-# Validation
-marshmallow==3.20.1
-cerberus==1.3.5
-
-# Error handling
-sentry-sdk[fastapi]==1.38.0
-
-# Documentation
-mkdocs==1.5.3
-mkdocs-material==9.4.8
-
-# Development tools
-pre-commit==3.6.0
-mypy==1.7.1
-bandit==1.7.5
