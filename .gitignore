@@ -3,6 +3,7 @@ Backend/VectorDB
 
 # Node.js / React
 node_modules/
+
 build/
 dist/
 .env
@@ -52,3 +53,7 @@ ENV/
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+
+# Ignore all data files
+**/Data/
+**/VectorDB/

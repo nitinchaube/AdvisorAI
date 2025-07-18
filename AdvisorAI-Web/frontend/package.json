@@ -12,9 +12,12 @@
   "dependencies": {
     "buffer": "^6.0.3",
     "crypto-browserify": "^3.12.1",
+    "firebase": "^11.10.0",
     "lucide-react": "^0.525.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "stream-browserify": "^3.0.0"
   },
   "devDependencies": {

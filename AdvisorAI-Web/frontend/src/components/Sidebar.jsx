@@ -91,6 +91,8 @@ const Sidebar = ({ activeTab, setActiveTab }) => {
               </button>
             </div>
 
+
+
             {/* Other Menu Items */}
             <div className="space-y-3">
               {menuItems.filter(item => item.id !== 'chat').map((item) => (

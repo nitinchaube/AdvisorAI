@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
 import { 
   Bell, 
   User, 
@@ -14,7 +16,12 @@ import {
   GraduationCap,
   Mail,
   Phone,
-  MapPin
+  MapPin,
+  Edit,
+  Database,
+  ChevronRight,
+  Check,
+  Home
 } from "lucide-react";
 
 const Header = ({ onMenuToggle, sidebarOpen }) => {
@@ -23,8 +30,42 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
     { id: 1, message: "New course recommendations available", unread: true },
     { id: 2, message: "Your chat session has been saved", unread: false }
   ]);
+  
+  const { currentUser, logout } = useAuth();
+  const navigate = useNavigate();
+
+  // Close menu when clicking outside
+  React.useEffect(() => {
+    const handleClickOutside = (event) => {
+      // Don't close if clicking on logout button or its children
+      if (event.target.closest('button[onClick*="handleLogout"]')) {
+        return;
+      }
+      
+      if (showUserMenu && !event.target.closest('.user-menu-container')) {
+        setShowUserMenu(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showUserMenu]);
 
   const unreadCount = notifications.filter(n => n.unread).length;
+
+  const handleLogout = async () => {
+    try {
+      console.log('Header: Logout button clicked');
+      await logout();
+      console.log('Header: Logout successful, navigating to login');
+      setShowUserMenu(false);
+      navigate('/login');
+    } catch (error) {
+      console.error('Header: Logout error:', error);
+    }
+  };
 
   return (
     <header className="bg-white/10 backdrop-blur-xl border-b border-white/20 px-6 py-4 shadow-2xl sticky top-0 z-50">
@@ -39,8 +80,8 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
             {sidebarOpen ? <X className="w-5 h-5 text-white" /> : <Menu className="w-5 h-5 text-white" />}
           </button>
           
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-purple-500 via-pink-500 to-rose-500 rounded-xl flex items-center justify-center shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105">
+          <Link to="/" className="flex items-center space-x-3 hover:scale-105 transition-all duration-300">
+            <div className="w-10 h-10 bg-gradient-to-br from-purple-500 via-pink-500 to-rose-500 rounded-xl flex items-center justify-center shadow-lg hover:shadow-xl transition-all duration-300">
               <Sparkles className="w-6 h-6 text-white" />
             </div>
             <div>
@@ -49,7 +90,7 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
               </h1>
               <p className="text-xs text-purple-200 font-medium">Your Academic Assistant</p>
             </div>
-          </div>
+          </Link>
         </div>
 
         {/* Center - Search bar */}
@@ -82,7 +123,7 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
           </div>
 
           {/* Enhanced User Menu */}
-          <div className="relative">
+          <div className="relative user-menu-container">
             <button
               onClick={() => setShowUserMenu(!showUserMenu)}
               className="flex items-center space-x-3 p-3 rounded-xl hover:bg-white/20 transition-all duration-300 hover:shadow-lg hover:scale-105 group"
@@ -99,7 +140,9 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
               {/* User Info */}
               <div className="hidden sm:block text-left">
                 <div className="flex items-center space-x-2">
-                  <p className="text-sm font-semibold text-white">John Doe</p>
+                  <p className="text-sm font-semibold text-white">
+                    {currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User'}
+                  </p>
                   <div className="flex items-center space-x-1">
                     <Crown className="w-3 h-3 text-yellow-400" />
                     <span className="text-xs text-yellow-300 font-medium">Premium</span>
@@ -107,18 +150,20 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
                 </div>
                 <div className="flex items-center space-x-2">
                   <GraduationCap className="w-3 h-3 text-purple-300" />
-                  <p className="text-xs text-purple-200 font-medium">Computer Science • Senior</p>
+                  <p className="text-xs text-purple-200 font-medium">
+                    {currentUser?.email || 'Student'}
+                  </p>
                 </div>
               </div>
             </button>
 
             {/* Enhanced Dropdown Menu */}
             {showUserMenu && (
-              <div className="absolute right-0 mt-3 w-80 bg-gradient-to-br from-slate-900/95 via-purple-900/90 to-indigo-900/95 backdrop-blur-2xl rounded-3xl shadow-2xl border border-white/20 py-6 z-50 overflow-hidden">
+              <div className="absolute right-0 mt-3 w-80 bg-gradient-to-br from-slate-900/95 via-purple-900/90 to-indigo-900/95 backdrop-blur-2xl rounded-3xl shadow-2xl border border-white/20 py-6 z-50 overflow-hidden" style={{ pointerEvents: 'auto' }}>
                 {/* Background decoration */}
-                <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 via-pink-500/5 to-rose-500/5"></div>
-                <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-purple-500/10 to-pink-500/10 rounded-full blur-2xl"></div>
-                <div className="absolute bottom-0 left-0 w-24 h-24 bg-gradient-to-br from-blue-500/10 to-cyan-500/10 rounded-full blur-2xl"></div>
+                <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 via-pink-500/5 to-rose-500/5" style={{ zIndex: 1 }}></div>
+                <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-purple-500/10 to-pink-500/10 rounded-full blur-2xl" style={{ zIndex: 1 }}></div>
+                <div className="absolute bottom-0 left-0 w-24 h-24 bg-gradient-to-br from-blue-500/10 to-cyan-500/10 rounded-full blur-2xl" style={{ zIndex: 1 }}></div>
                 
                 {/* User Profile Section */}
                 <div className="relative px-6 py-4 border-b border-white/10">
@@ -131,16 +176,22 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center space-x-2 mb-2">
-                        <h3 className="text-lg font-bold text-white truncate">John Doe</h3>
+                        <h3 className="text-lg font-bold text-white truncate">
+                          {currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User'}
+                        </h3>
                         <div className="flex items-center space-x-1 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 px-3 py-1 rounded-full border border-yellow-500/30">
                           <Crown className="w-3 h-3 text-yellow-400" />
                           <span className="text-xs text-yellow-300 font-semibold">Premium</span>
                         </div>
                       </div>
-                      <p className="text-sm text-purple-200 mb-2 truncate">john.doe@university.edu</p>
+                      <p className="text-sm text-purple-200 mb-2 truncate">
+                        {currentUser?.email || 'user@example.com'}
+                      </p>
                       <div className="flex items-center space-x-2">
                         <GraduationCap className="w-3 h-3 text-purple-300 flex-shrink-0" />
-                        <span className="text-xs text-purple-300 truncate">Computer Science • Senior Year</span>
+                        <span className="text-xs text-purple-300 truncate">
+                          {currentUser?.email ? 'Student' : 'Guest User'}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -165,13 +216,48 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
                 </div>
                 
                 {/* Menu Items */}
-                <div className="relative py-2">
-                  <button className="w-full flex items-center space-x-3 px-6 py-3 text-sm text-purple-200 hover:bg-white/10 transition-all duration-300 hover:text-white group mx-2 rounded-xl">
-                    <div className="p-2 bg-white/10 rounded-lg group-hover:bg-white/20 transition-all duration-300 group-hover:scale-110">
-                      <User className="w-4 h-4" />
+                <div className="relative py-2" style={{ zIndex: 10 }}>
+                  <Link 
+                    to="/profile-data"
+                    className="w-full flex items-center justify-between px-6 py-3 text-sm text-purple-200 hover:bg-white/10 transition-all duration-300 hover:text-white group mx-2 rounded-xl"
+                    onClick={() => setShowUserMenu(false)}
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className="p-2 bg-white/10 rounded-lg group-hover:bg-white/20 transition-all duration-300 group-hover:scale-110">
+                        <User className="w-4 h-4" />
+                      </div>
+                      <span className="font-medium">View Profile</span>
                     </div>
-                    <span className="font-medium">View Profile</span>
-                  </button>
+                    <ChevronRight className="w-4 h-4 opacity-50 group-hover:opacity-100 transition-opacity" />
+                  </Link>
+                  
+                  <Link 
+                    to="/profile-completion"
+                    className="w-full flex items-center justify-between px-6 py-3 text-sm text-purple-200 hover:bg-white/10 transition-all duration-300 hover:text-white group mx-2 rounded-xl"
+                    onClick={() => setShowUserMenu(false)}
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className="p-2 bg-white/10 rounded-lg group-hover:bg-white/20 transition-all duration-300 group-hover:scale-110">
+                        <Edit className="w-4 h-4" />
+                      </div>
+                      <span className="font-medium">Edit Profile</span>
+                    </div>
+                    <ChevronRight className="w-4 h-4 opacity-50 group-hover:opacity-100 transition-opacity" />
+                  </Link>
+                  
+                  <Link 
+                    to="/"
+                    className="w-full flex items-center justify-between px-6 py-3 text-sm text-purple-200 hover:bg-white/10 transition-all duration-300 hover:text-white group mx-2 rounded-xl"
+                    onClick={() => setShowUserMenu(false)}
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className="p-2 bg-white/10 rounded-lg group-hover:bg-white/20 transition-all duration-300 group-hover:scale-110">
+                        <Home className="w-4 h-4" />
+                      </div>
+                      <span className="font-medium">Home</span>
+                    </div>
+                    <ChevronRight className="w-4 h-4 opacity-50 group-hover:opacity-100 transition-opacity" />
+                  </Link>
                   
                   <button className="w-full flex items-center space-x-3 px-6 py-3 text-sm text-purple-200 hover:bg-white/10 transition-all duration-300 hover:text-white group mx-2 rounded-xl">
                     <div className="p-2 bg-white/10 rounded-lg group-hover:bg-white/20 transition-all duration-300 group-hover:scale-110">
@@ -188,9 +274,31 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
                   </button>
                 </div>
                 
-                <div className="border-t border-white/10 mx-6 my-3"></div>
+                <div className="border-t border-white/10 mx-6 my-3" style={{ zIndex: 10 }}></div>
                 
-                <button className="w-full flex items-center space-x-3 px-6 py-3 text-sm text-rose-300 hover:bg-rose-500/20 transition-all duration-300 hover:text-rose-200 group mx-2 rounded-xl">
+                {/* Test button */}
+                <button 
+                  onClick={() => alert('Test button works!')}
+                  className="w-full flex items-center space-x-3 px-6 py-3 text-sm text-green-300 hover:bg-green-500/20 transition-all duration-300 hover:text-green-200 group mx-2 rounded-xl cursor-pointer relative mb-2"
+                  style={{ pointerEvents: 'auto', zIndex: 10, position: 'relative' }}
+                >
+                  <div className="p-2 bg-green-500/20 rounded-lg group-hover:bg-green-500/30 transition-all duration-300 group-hover:scale-110">
+                    <Check className="w-4 h-4" />
+                  </div>
+                  <span className="font-medium">Test Button</span>
+                </button>
+                
+                <button 
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    alert('Logout button clicked!');
+                    console.log('Logout button clicked!');
+                    handleLogout();
+                  }}
+                  className="w-full flex items-center space-x-3 px-6 py-3 text-sm text-rose-300 hover:bg-rose-500/20 transition-all duration-300 hover:text-rose-200 group mx-2 rounded-xl cursor-pointer relative"
+                  style={{ pointerEvents: 'auto', zIndex: 10, position: 'relative' }}
+                >
                   <div className="p-2 bg-rose-500/20 rounded-lg group-hover:bg-rose-500/30 transition-all duration-300 group-hover:scale-110">
                     <LogOut className="w-4 h-4" />
                   </div>

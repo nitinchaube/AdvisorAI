@@ -88,7 +88,7 @@ const RatingPage = () => {
     { id: 'course', label: 'Courses', count: ratings.filter(r => r.category === 'course').length }
   ];
 
-  return (
+    return (
     <div className="h-full w-full bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50 flex flex-col overflow-hidden">
       <div className="flex-1 overflow-y-auto p-8">
         <div className="max-w-6xl mx-auto">
@@ -97,7 +97,7 @@ const RatingPage = () => {
               <div className="w-12 h-12 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-2xl flex items-center justify-center shadow-lg">
                 <Star className="w-7 h-7 text-white" />
               </div>
-              <div>
+        <div>
                 <h2 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
                   Ratings & Reviews
                 </h2>

@@ -177,11 +177,6 @@ body {
   color: #232526;
 }
 
-.feature-card:hover {
-  transform: translateY(-8px) scale(1.03);
-  box-shadow: 0 8px 32px 0 rgba(99, 102, 241, 0.18);
-}
-
 .feature-card.redesigned:hover {
   transform: translateY(-10px) scale(1.04);
   box-shadow: 0 8px 40px 0 rgba(99, 102, 241, 0.22);
