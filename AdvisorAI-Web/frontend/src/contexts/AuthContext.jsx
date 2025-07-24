@@ -20,6 +20,7 @@ export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [userProfile, setUserProfile] = useState(null);
 
   // Sign up function
   async function signup(email, password, displayName) {
@@ -125,80 +126,27 @@ export function AuthProvider({ children }) {
     return null;
   }
 
+  function isAdmin() {
+    return userProfile?.role === 'admin';
+  }
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       console.log('AuthContext: Auth state changed:', user ? user.uid : 'No user');
       
       if (user) {
+        setCurrentUser(user);
         try {
-          // First, try to authenticate with backend
-          const idToken = await user.getIdToken();
-          console.log('AuthContext: Got ID token, authenticating with backend...');
-          const backendResponse = await apiService.signinWithBackend(idToken);
-          console.log('AuthContext: Backend authentication successful');
-          
-          // Store the backend JWT token
-          if (backendResponse.access_token) {
-            localStorage.setItem('backendToken', backendResponse.access_token);
-            console.log('AuthContext: Backend token stored');
-            // Small delay to ensure token is saved
-            await new Promise(resolve => setTimeout(resolve, 100));
-          }
-          
-          // Check if user has profile data in backend
-          let profileCompleted = false;
-          try {
-            console.log('AuthContext: Checking for profile data in backend...');
-            const profileResponse = await apiService.getUserProfile();
-            console.log('AuthContext: Profile response:', profileResponse);
-            
-            if (profileResponse.success && profileResponse.profile && Object.keys(profileResponse.profile).length > 0) {
-              profileCompleted = true;
-              console.log('AuthContext: Profile data found, marking as completed');
-              // Update localStorage to reflect the actual status
-              localStorage.setItem('profileCompleted', 'true');
-            } else {
-              console.log('AuthContext: No profile data found in backend');
-              // Check localStorage as fallback
-              const localStorageStatus = localStorage.getItem('profileCompleted');
-              if (localStorageStatus === 'true') {
-                profileCompleted = true;
-                console.log('AuthContext: Using localStorage status (true)');
-              } else {
-                profileCompleted = false;
-                localStorage.setItem('profileCompleted', 'false');
-              }
-            }
-          } catch (profileError) {
-            console.log('AuthContext: Error checking profile data:', profileError);
-            // Check localStorage as fallback
-            const localStorageStatus = localStorage.getItem('profileCompleted');
-            if (localStorageStatus === 'true') {
-              profileCompleted = true;
-              console.log('AuthContext: Using localStorage fallback (true)');
-            } else {
-              profileCompleted = false;
-              localStorage.setItem('profileCompleted', 'false');
-            }
-          }
-          
-          console.log('AuthContext: Final profile completion status:', profileCompleted);
-          setCurrentUser({
-            ...user,
-            profileCompleted
-          });
+          const profile = await apiService.getUserProfile();
+          setUserProfile(profile.profile);
+          localStorage.setItem('profileCompleted', profile.profile.profileCompleted ? 'true' : 'false');
         } catch (error) {
-          console.error('AuthContext: Backend authentication failed:', error);
-          // Fallback to localStorage check
-          const profileCompleted = localStorage.getItem('profileCompleted') === 'true';
-          console.log('AuthContext: Using localStorage fallback, profile completed:', profileCompleted);
-          setCurrentUser({
-            ...user,
-            profileCompleted
-          });
+          console.error('Error fetching user profile:', error);
         }
       } else {
         setCurrentUser(null);
+        setUserProfile(null);
+        localStorage.removeItem('profileCompleted');
       }
       
       setLoading(false);
@@ -209,6 +157,7 @@ export function AuthProvider({ children }) {
 
   const value = {
     currentUser,
+    userProfile,
     signup,
     login,
     logout,
@@ -217,7 +166,8 @@ export function AuthProvider({ children }) {
     isProfileCompleted,
     error,
     setError,
-    loading
+    loading,
+    isAdmin
   };
 
   return (
