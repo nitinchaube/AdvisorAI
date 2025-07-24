@@ -9,12 +9,13 @@ import RatingPage from "./RatingPage";
 import CourseExplorer from "./CourseExplorer";
 import { Link } from "react-router-dom";
 import { apiService } from "../services/api";
+import { chatCache } from '../utils/chatCache';
 
 const Dashboard = () => {
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [currentSessionTitle, setCurrentSessionTitle] = useState('New Chat');
   const [chatHistoryOpen, setChatHistoryOpen] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true); // Sidebar is open by default
   const [activeTab, setActiveTab] = useState('chat');
   const [sessionInitialized, setSessionInitialized] = useState(false);
 
@@ -38,6 +39,8 @@ const Dashboard = () => {
           setCurrentSessionId(response.session_id);
           setCurrentSessionTitle('New Chat');
           localStorage.setItem('currentChatSessionId', response.session_id);
+          // Clear any cached messages for this new session
+          chatCache.clearSessionMessages(response.session_id);
           console.log('📱 Created new chat session:', response.session_id);
         }
       } catch (error) {
@@ -49,6 +52,7 @@ const Dashboard = () => {
 
   const handleSessionSelect = (sessionId) => {
     setCurrentSessionId(sessionId);
+    localStorage.setItem('currentChatSessionId', sessionId); // <-- Add this line
     loadSessionTitle(sessionId);
     setChatHistoryOpen(false);
   };
@@ -89,9 +93,14 @@ const Dashboard = () => {
               console.log('📱 Restored previous chat session:', storedSessionId);
               setSessionInitialized(true);
               return;
+            } else {
+              // Session not found, remove from localStorage
+              localStorage.removeItem('currentChatSessionId');
             }
           } catch (error) {
-            console.log('Could not restore previous session');
+            // Session not found or error, remove from localStorage
+            localStorage.removeItem('currentChatSessionId');
+            console.log('Could not restore previous session, removed from localStorage');
           }
         }
         

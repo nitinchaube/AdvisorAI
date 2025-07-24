@@ -8,6 +8,7 @@ import {
 } from 'firebase/auth';
 import { auth } from '../config/firebase';
 import { apiService } from '../services/api';
+import { chatCache } from '../utils/chatCache';
 
 const AuthContext = createContext();
 
@@ -63,6 +64,8 @@ export function AuthProvider({ children }) {
       localStorage.removeItem('profileCompleted');
       // Clear backend token
       localStorage.removeItem('backendToken');
+      // Clear chat cache
+      chatCache.clearAll();
       // Sign out from Firebase
       await signOut(auth);
       console.log('AuthContext: Logout successful');
