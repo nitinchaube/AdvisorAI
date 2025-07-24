@@ -1,5 +1,4 @@
 from flask import Flask, request, session, jsonify, Response
-from flask_session import Session
 from flask_cors import CORS
 import firebase_admin
 from firebase_admin import auth, credentials, firestore
@@ -27,12 +26,10 @@ app = Flask(__name__)
 
 # Configure Flask
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-here')
-app.config['SESSION_TYPE'] = 'filesystem'
 app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'your-jwt-secret-key')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
 
 # Initialize extensions
-Session(app)
 JWTManager(app)
 
 # Enable CORS for all routes and allow credentials (cookies)
@@ -55,26 +52,26 @@ try:
     if not firebase_admin._apps:
         cred = credentials.Certificate('firebase_key.json')
         firebase_admin.initialize_app(cred)
-        print("✅ Firebase Admin SDK initialized successfully")
+        print("  Firebase Admin SDK initialized successfully")
     else:
-        print("✅ Firebase Admin SDK already initialized")
+        print("  Firebase Admin SDK already initialized")
 except Exception as e:
-    print(f"❌ Firebase Admin SDK initialization failed: {e}")
+    print(f"  Firebase Admin SDK initialization failed: {e}")
 
 # Initialize Firestore
 try:
     db = firestore.client()
-    print("✅ Firestore client initialized")
+    print("  Firestore client initialized")
 except Exception as e:
-    print(f"❌ Firestore client initialization failed: {e}")
+    print(f"  Firestore client initialization failed: {e}")
     db = None
 
 # Initialize Resume Processor
 try:
     resume_processor = ResumeProcessor()
-    print("✅ Resume processor initialized")
+    print("  Resume processor initialized")
 except Exception as e:
-    print(f"❌ Resume processor initialization failed: {e}")
+    print(f"  Resume processor initialization failed: {e}")
     resume_processor = None
 
 # Initialize Redis for caching
@@ -87,9 +84,9 @@ try:
     )
     # Test Redis connection
     redis_client.ping()
-    print("✅ Redis client initialized")
+    print("  Redis client initialized")
 except Exception as e:
-    print(f"❌ Redis client initialization failed: {e}")
+    print(f"  Redis client initialization failed: {e}")
     redis_client = None
 
 # Cache decorator for chat sessions
@@ -212,7 +209,7 @@ def debug_text_extraction():
             return jsonify({"error": "Resume processor not available"}), 500
             
     except Exception as e:
-        print(f"❌ Debug extraction error: {str(e)}")
+        print(f"  Debug extraction error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 # Authentication endpoints
@@ -261,7 +258,7 @@ def signup():
         }), 201
 
     except Exception as e:
-        print(f"❌ Signup error: {str(e)}")
+        print(f"  Signup error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/auth/signin', methods=['POST'])
@@ -292,7 +289,7 @@ def signin():
         }), 200
 
     except Exception as e:
-        print(f"❌ Signin error: {str(e)}")
+        print(f"  Signin error: {str(e)}")
         return jsonify({"error": "Invalid credentials"}), 401
 
 @app.route('/api/auth/signin-with-token', methods=['POST'])
@@ -326,7 +323,7 @@ def signin_with_token():
         }), 200
 
     except Exception as e:
-        print(f"❌ Token signin error: {str(e)}")
+        print(f"  Token signin error: {str(e)}")
         return jsonify({"error": "Invalid token"}), 401
 
 # Resume upload and parsing endpoint
@@ -413,7 +410,7 @@ def upload_and_parse_resume():
             return jsonify({"error": "Resume processor not available"}), 500
             
     except Exception as e:
-        print(f"❌ Resume upload error: {str(e)}")
+        print(f"  Resume upload error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 # Debug endpoint to check token
@@ -449,7 +446,7 @@ def get_user_profile():
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"❌ Get profile error: {str(e)}")
+        print(f"  Get profile error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 # Update user profile
@@ -489,7 +486,7 @@ def update_user_profile():
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"❌ Update profile error: {str(e)}")
+        print(f"  Update profile error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 # Chat endpoints
@@ -559,10 +556,10 @@ def chat_query():
                     
                     print(f"💾 Chat messages saved to session {session_id} for user {user_id}")
                 else:
-                    print(f"❌ Session {session_id} not found")
+                    print(f"  Session {session_id} not found")
                     
             except Exception as e:
-                print(f"❌ Error saving chat messages to session: {e}")
+                print(f"  Error saving chat messages to session: {e}")
         
         # Also save to legacy chat_history for backward compatibility
         if db and result.get('response'):
@@ -578,7 +575,7 @@ def chat_query():
                 }
                 db.collection('chat_history').add(chat_doc)
             except Exception as e:
-                print(f"❌ Error saving to legacy chat_history: {e}")
+                print(f"  Error saving to legacy chat_history: {e}")
         
         return jsonify({
             "success": True,
@@ -589,7 +586,7 @@ def chat_query():
         }), 200
         
     except Exception as e:
-        print(f"❌ Chat query error: {str(e)}")
+        print(f"  Chat query error: {str(e)}")
         return jsonify({
             "success": False,
             "error": str(e),
@@ -638,7 +635,7 @@ def chat_stream():
         )
         
     except Exception as e:
-        print(f"❌ Chat stream error: {str(e)}")
+        print(f"  Chat stream error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/chat/sessions', methods=['GET'])
@@ -691,7 +688,7 @@ def get_chat_sessions():
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"❌ Get chat sessions error: {str(e)}")
+        print(f"  Get chat sessions error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/chat/sessions', methods=['POST'])
@@ -728,7 +725,7 @@ def create_chat_session():
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"❌ Create chat session error: {str(e)}")
+        print(f"  Create chat session error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/chat/sessions/<session_id>', methods=['GET'])
@@ -759,7 +756,7 @@ def get_chat_session_messages(session_id):
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"❌ Get chat session messages error: {str(e)}")
+        print(f"  Get chat session messages error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/chat/sessions/<session_id>', methods=['PUT'])
@@ -803,7 +800,7 @@ def update_chat_session(session_id):
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"❌ Update chat session error: {str(e)}")
+        print(f"  Update chat session error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/chat/sessions/<session_id>', methods=['DELETE'])
@@ -839,7 +836,7 @@ def delete_chat_session(session_id):
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"❌ Delete chat session error: {str(e)}")
+        print(f"  Delete chat session error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/chat/history', methods=['GET'])
@@ -869,7 +866,7 @@ def get_chat_history():
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"❌ Get chat history error: {str(e)}")
+        print(f"  Get chat history error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/rag/stats', methods=['GET'])
@@ -883,7 +880,7 @@ def get_rag_stats():
             "stats": stats
         }), 200
     except Exception as e:
-        print(f"❌ Get RAG stats error: {str(e)}")
+        print(f"  Get RAG stats error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/chat/user-history', methods=['GET'])
@@ -924,7 +921,7 @@ def get_user_chat_history():
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"❌ Get user chat history error: {str(e)}")
+        print(f"  Get user chat history error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':

@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { Send, Bot, User, Sparkles, Paperclip, Mic, History, Info, Plus } from "lucide-react";
 import { apiService } from "../services/api";
 import { useAuth } from "../contexts/AuthContext";
+import { chatCache } from '../utils/chatCache';
 
 // Simple markdown renderer component
 const MarkdownRenderer = ({ content }) => {
@@ -52,8 +53,7 @@ const MarkdownRenderer = ({ content }) => {
 
 const ChatInterface = ({ 
   onToggleHistory, 
-  currentSessionId, 
-  onSessionUpdate,
+  currentSessionId,   onSessionUpdate,
   sessionTitle = "AI Academic Advisor",
   onNewChat
 }) => {
@@ -83,6 +83,25 @@ const ChatInterface = ({
       return;
     }
 
+    // Try to load from cache first
+    const cached = chatCache.getSessionMessages(sessionId);
+    if (cached && Array.isArray(cached)) {
+      if (cached.length === 0) {
+        setMessages([
+          {
+            id: 1,
+            type: 'ai',
+            content: "Hello! I'm your AI academic advisor. I can help you with course selection, professor recommendations, academic planning, and much more. What would you like to know?",
+            timestamp: new Date().toLocaleTimeString(),
+            sources: null
+          }
+        ]);
+      } else {
+        setMessages(cached);
+      }
+      return;
+    }
+
     try {
       setLoading(true);
       const response = await apiService.getChatSessionMessages(sessionId);
@@ -94,15 +113,29 @@ const ChatInterface = ({
           timestamp: new Date(msg.timestamp).toLocaleTimeString(),
           sources: msg.sources || null
         }));
-        setMessages(formattedMessages);
+        if (formattedMessages.length === 0) {
+          setMessages([
+            {
+              id: 1,
+              type: 'ai',
+              content: "Hello! I'm your AI academic advisor. I can help you with course selection, professor recommendations, academic planning, and much more. What would you like to know?",
+              timestamp: new Date().toLocaleTimeString(),
+              sources: null
+            }
+          ]);
+        } else {
+          setMessages(formattedMessages);
+        }
+        // Cache the messages
+        chatCache.setSessionMessages(sessionId, formattedMessages);
       }
     } catch (error) {
       console.error('Error loading session messages:', error);
       setMessages([
         {
           id: 1,
-          type: 'ai',
-          content: "Hello! I'm your AI academic advisor. I can help you with course selection, professor recommendations, academic planning, and much more. What would you like to know?",
+          type: 'system',
+          content: "Could not restore your previous chat session. Please start a new chat.",
           timestamp: new Date().toLocaleTimeString(),
           sources: null
         }
@@ -135,7 +168,12 @@ const ChatInterface = ({
       timestamp: new Date().toLocaleTimeString()
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    setMessages(prev => {
+      const updated = [...prev, userMessage];
+      // Update cache
+      if (currentSessionId) chatCache.setSessionMessages(currentSessionId, updated);
+      return updated;
+    });
     setInputMessage('');
     setIsTyping(true);
     setShowSources(false);
@@ -181,7 +219,12 @@ const ChatInterface = ({
           sources: response.sources
         };
 
-        setMessages(prev => [...prev, aiMessage]);
+        setMessages(prev => {
+          const updated = [...prev, aiMessage];
+          // Update cache
+          if (sessionId) chatCache.setSessionMessages(sessionId, updated);
+          return updated;
+        });
         setCurrentSources(response.sources);
       } else {
         throw new Error(response.error || 'Failed to get response');
@@ -222,7 +265,7 @@ const ChatInterface = ({
           </div>
           <div className="flex-1">
             <h2 className="text-xl font-bold text-gray-900">{sessionTitle}</h2>
-            <p className="text-sm text-gray-500 font-medium">Ask me anything about courses, professors, or academic planning</p>
+            <p className="text-sm text-gray-500 font-medium">Ask me anything about courses, professors, academic planning</p>
           </div>
           <div className="flex items-center space-x-3">
             <div className="flex items-center space-x-2">
@@ -257,60 +300,61 @@ const ChatInterface = ({
       <div className="flex-1 overflow-y-auto p-6">
         <div className="max-w-4xl mx-auto space-y-6">
           {messages.map((message) => (
-            <div
-              key={message.id}
-              className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
-              <div className={`flex items-start space-x-3 max-w-3xl ${
-                message.type === 'user' ? 'flex-row-reverse space-x-reverse' : ''
-              }`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                  message.type === 'user' 
-                    ? 'bg-gradient-to-br from-blue-600 to-purple-600' 
-                    : 'bg-gradient-to-br from-gray-600 to-gray-700'
+              <div
+                key={message.id}
+                className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                <div className={`flex items-start space-x-3 max-w-3xl ${
+                  message.type === 'user' ? 'flex-row-reverse space-x-reverse' : ''
                 }`}>
-                  {message.type === 'user' ? (
-                    <User className="w-4 h-4 text-white" />
-                  ) : (
-                    <Bot className="w-4 h-4 text-white" />
-                  )}
-                </div>
-                
-                <div className={`flex flex-col ${
-                  message.type === 'user' ? 'items-end' : 'items-start'
-                }`}>
-                  <div className={`px-4 py-3 rounded-2xl max-w-2xl ${
-                    message.type === 'user'
-                      ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white'
-                      : message.error
-                      ? 'bg-red-50 text-red-800 border border-red-200'
-                      : 'bg-gray-100 text-gray-900'
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    message.type === 'user' 
+                      ? 'bg-gradient-to-br from-blue-600 to-purple-600' 
+                      : 'bg-gradient-to-br from-gray-600 to-gray-700'
                   }`}>
                     {message.type === 'user' ? (
-                      <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+                      <User className="w-4 h-4 text-white" />
                     ) : (
-                      <MarkdownRenderer content={message.content} />
-                    )}
-                    
-                    {/* Sources button for AI messages */}
-                    {message.type === 'ai' && message.sources && (
-                      <button
-                        onClick={() => {
-                          setCurrentSources(message.sources);
-                          setShowSources(!showSources);
-                        }}
-                        className="mt-2 flex items-center space-x-1 text-xs text-blue-600 hover:text-blue-800 transition-colors"
-                      >
-                        <Info className="w-3 h-3" />
-                        <span>View Sources</span>
-                      </button>
+                      <Bot className="w-4 h-4 text-white" />
                     )}
                   </div>
-                  <span className="text-xs text-gray-500 mt-2">{message.timestamp}</span>
+                  
+                  <div className={`flex flex-col ${
+                    message.type === 'user' ? 'items-end' : 'items-start'
+                  }`}>
+                    <div className={`px-4 py-3 rounded-2xl max-w-2xl ${
+                      message.type === 'user'
+                        ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white'
+                        : message.error
+                        ? 'bg-red-50 text-red-800 border border-red-200'
+                        : 'bg-gray-100 text-gray-900'
+                    }`}>
+                      {message.type === 'user' ? (
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+                      ) : (
+                        <MarkdownRenderer content={message.content} />
+                      )}
+                      
+                      {/* Sources button for AI messages */}
+                      {message.type === 'ai' && message.sources && (
+                        <button
+                          onClick={() => {
+                            setCurrentSources(message.sources);
+                            setShowSources(!showSources);
+                          }}
+                          className="mt-2 flex items-center space-x-1 text-xs text-blue-600 hover:text-blue-800 transition-colors"
+                        >
+                          <Info className="w-3 h-3" />
+                          <span>View Sources</span>
+                        </button>
+                      )}
+                    </div>
+                    <span className="text-xs text-gray-500 mt-2">{message.timestamp}</span>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))
+          }
           
           {(isTyping || isStreaming) && (
             <div className="flex justify-start">
