@@ -3,8 +3,8 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import './LoadingSpinner.css';
 
-const ProtectedRoute = ({ children, requireProfileCompletion = true }) => {
-  const { currentUser, loading } = useAuth();
+const ProtectedRoute = ({ children, requireProfileCompletion = true, requireAdmin = false }) => {
+  const { currentUser, loading, userProfile } = useAuth();
   const location = useLocation();
 
   console.log('ProtectedRoute: Current location:', location.pathname);
@@ -44,6 +44,11 @@ const ProtectedRoute = ({ children, requireProfileCompletion = true }) => {
       console.log('ProtectedRoute: Profile not completed, redirecting to profile-completion');
       return <Navigate to="/profile-completion" replace />;
     }
+  }
+
+  // After profile check
+  if (requireAdmin && userProfile?.role !== 'admin') {
+    return <Navigate to="/dashboard" replace />;
   }
 
   console.log('ProtectedRoute: All checks passed, showing protected content');
