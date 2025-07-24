@@ -1,7 +1,7 @@
 from flask import Flask, request, session, jsonify, Response
 from flask_cors import CORS
 import firebase_admin
-from firebase_admin import auth, credentials, firestore
+from firebase_admin import auth, credentials
 import os
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from datetime import timedelta, datetime
@@ -13,6 +13,13 @@ import logging
 import time
 import redis
 from functools import wraps
+
+# --- MongoDB Setup ---
+from pymongo import MongoClient
+from bson import ObjectId
+MONGO_URI = os.environ.get('MONGO_URI')
+mongo_client = MongoClient(MONGO_URI)
+mongo_db = mongo_client['AdvisorAI']
 
 # Load environment variables
 load_dotenv()
@@ -46,26 +53,6 @@ CORS(app, supports_credentials=True, origins=[
     "http://127.0.0.1:5003",  # Backend server (new port alternative)
 ])  # Make sure all frontend dev ports are included for CORS
 
-# Initialize Firebase Admin SDK
-try:
-    # Check if Firebase app is already initialized
-    if not firebase_admin._apps:
-        cred = credentials.Certificate('firebase_key.json')
-        firebase_admin.initialize_app(cred)
-        print("  Firebase Admin SDK initialized successfully")
-    else:
-        print("  Firebase Admin SDK already initialized")
-except Exception as e:
-    print(f"  Firebase Admin SDK initialization failed: {e}")
-
-# Initialize Firestore
-try:
-    db = firestore.client()
-    print("  Firestore client initialized")
-except Exception as e:
-    print(f"  Firestore client initialization failed: {e}")
-    db = None
-
 # Initialize Resume Processor
 try:
     resume_processor = ResumeProcessor()
@@ -88,6 +75,11 @@ try:
 except Exception as e:
     print(f"  Redis client initialization failed: {e}")
     redis_client = None
+
+# Restore only Firebase Admin SDK initialization for authentication
+if not firebase_admin._apps:
+    cred = credentials.Certificate('firebae_key1.json')
+    firebase_admin.initialize_app(cred)
 
 # Cache decorator for chat sessions
 def cache_chat_sessions(expiry=3600):  # 1 hour cache
@@ -130,6 +122,21 @@ def invalidate_chat_cache(user_id):
         except:
             pass
 
+# Utility function to convert MongoDB documents for JSON serialization
+
+def mongo_doc_to_json(doc):
+    if not doc:
+        return doc
+    doc = dict(doc)
+    if '_id' in doc:
+        doc['id'] = str(doc['_id'])
+        del doc['_id']
+    # Recursively convert lists of docs (for messages, etc.)
+    for k, v in doc.items():
+        if isinstance(v, list):
+            doc[k] = [mongo_doc_to_json(item) if isinstance(item, dict) else item for item in v]
+    return doc
+
 # Health check endpoint
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -138,7 +145,7 @@ def health_check():
         "status": "healthy",
         "timestamp": str(datetime.now()),
         "firebase_initialized": bool(firebase_admin._apps),
-        "firestore_available": db is not None,
+        "firestore_available": mongo_db is not None,
         "resume_processor_available": resume_processor is not None
     })
 
@@ -233,7 +240,7 @@ def signup():
         )
 
         # Create user document in Firestore
-        if db:
+        if mongo_db is not None:
             user_doc = {
                 'uid': user_record.uid,
                 'email': email,
@@ -242,7 +249,7 @@ def signup():
                 'profileCompleted': False,
                 'resumeData': {}
             }
-            db.collection('users').document(user_record.uid).set(user_doc)
+            mongo_db.users.insert_one(user_doc)
 
         # Create JWT token
         access_token = create_access_token(identity=user_record.uid)
@@ -370,29 +377,15 @@ def upload_and_parse_resume():
             
             if result['success']:
                 # Update user document in Firestore
-                if db:
-                    user_ref = db.collection('users').document(user_id)
-                    
-                    # Check if document exists, if not create it
-                    user_doc = user_ref.get()
-                    if user_doc.exists:
+                if mongo_db is not None:
+                    user_ref = mongo_db.users.find_one({'uid': user_id})
+                    if user_ref:
                         # Update existing document
-                        user_ref.update({
-                            'resumeData': result['parsedData'],
-                            'profileCompleted': True,
-                            'lastResumeUpdate': datetime.now(),
-                            'resumeText': result['originalText']
-                        })
-                    else:
-                        # Create new document
-                        user_ref.set({
-                            'uid': user_id,
-                            'resumeData': result['parsedData'],
-                            'profileCompleted': True,
-                            'lastResumeUpdate': datetime.now(),
-                            'resumeText': result['originalText'],
-                            'createdAt': datetime.now()
-                        })
+                        user_ref['resumeData'] = result['parsedData']
+                        user_ref['profileCompleted'] = True
+                        user_ref['lastResumeUpdate'] = datetime.now()
+                        user_ref['resumeText'] = result['originalText']
+                        mongo_db.users.replace_one({'uid': user_id}, user_ref)
                 
                 return jsonify({
                     "success": True,
@@ -433,12 +426,12 @@ def get_user_profile():
     try:
         user_id = get_jwt_identity()
         
-        if db:
-            user_doc = db.collection('users').document(user_id).get()
-            if user_doc.exists:
+        if mongo_db is not None:
+            user_doc = mongo_db.users.find_one({'uid': user_id})
+            if user_doc:
                 return jsonify({
                     "success": True,
-                    "profile": user_doc.to_dict()
+                    "profile": mongo_doc_to_json(user_doc)
                 }), 200
             else:
                 return jsonify({"error": "User profile not found"}), 404
@@ -458,25 +451,22 @@ def update_user_profile():
         user_id = get_jwt_identity()
         data = request.get_json()
         
-        if db:
-            user_ref = db.collection('users').document(user_id)
-            
-            # Check if document exists, if not create it
-            user_doc = user_ref.get()
-            if user_doc.exists:
+        if mongo_db is not None:
+            user_ref = mongo_db.users.find_one({'uid': user_id})
+            if user_ref:
                 # Update existing document
-                user_ref.update({
-                    **data,
-                    'updatedAt': datetime.now()
-                })
+                user_ref.update(data)
+                user_ref['updatedAt'] = datetime.now()
+                mongo_db.users.replace_one({'uid': user_id}, user_ref)
             else:
                 # Create new document
-                user_ref.set({
+                user_ref = {
                     'uid': user_id,
                     **data,
                     'createdAt': datetime.now(),
                     'updatedAt': datetime.now()
-                })
+                }
+                mongo_db.users.insert_one(user_ref)
             
             return jsonify({
                 "success": True,
@@ -514,14 +504,13 @@ def chat_query():
         )
         
         # Save messages to session document if available and session_id provided
-        if db and result.get('response') and session_id:
+        if mongo_db is not None and result.get('response') and session_id:
             try:
                 # Get the session document
-                session_ref = db.collection('chat_sessions').document(session_id)
-                session_doc = session_ref.get()
+                session_ref = mongo_db.chat_sessions.find_one({'_id': ObjectId(session_id)})
                 
-                if session_doc.exists:
-                    session_data = session_doc.to_dict()
+                if session_ref:
+                    session_data = session_ref
                     messages = session_data.get('messages', [])
                     
                     # Add user message
@@ -545,7 +534,8 @@ def chat_query():
                     messages.append(ai_message)
                     
                     # Update session with new messages
-                    session_ref.update({
+                    mongo_db.chat_sessions.replace_one({'_id': ObjectId(session_id)}, {
+                        **session_data,
                         'messages': messages,
                         'last_updated': datetime.now(),
                         'message_count': len(messages)
@@ -562,7 +552,7 @@ def chat_query():
                 print(f"  Error saving chat messages to session: {e}")
         
         # Also save to legacy chat_history for backward compatibility
-        if db and result.get('response'):
+        if mongo_db is not None and result.get('response'):
             try:
                 chat_doc = {
                     'user_id': user_id,
@@ -573,7 +563,7 @@ def chat_query():
                     'processing_time': result.get('processing_time', 0),
                     'session_id': session_id
                 }
-                db.collection('chat_history').add(chat_doc)
+                mongo_db.chat_history.insert_one(chat_doc)
             except Exception as e:
                 print(f"  Error saving to legacy chat_history: {e}")
         
@@ -655,14 +645,13 @@ def get_chat_sessions():
                 except:
                     pass
         
-        if db:
+        if mongo_db is not None:
             # Query chat sessions from Firestore (without ordering to avoid index requirement)
-            session_refs = db.collection('chat_sessions').where('user_id', '==', user_id).stream()
+            session_refs = mongo_db.chat_sessions.find({'user_id': user_id})
             
             sessions = []
             for session_ref in session_refs:
-                session_data = session_ref.to_dict()
-                session_data['id'] = session_ref.id
+                session_data = mongo_doc_to_json(session_ref)
                 session_data['created_at'] = session_data['created_at'].isoformat() if hasattr(session_data['created_at'], 'isoformat') else str(session_data['created_at'])
                 session_data['last_updated'] = session_data['last_updated'].isoformat() if hasattr(session_data['last_updated'], 'isoformat') else str(session_data['last_updated'])
                 sessions.append(session_data)
@@ -700,7 +689,7 @@ def create_chat_session():
         data = request.get_json()
         title = data.get('title', 'New Chat')
         
-        if db:
+        if mongo_db is not None:
             session_doc = {
                 'user_id': user_id,
                 'title': title,
@@ -710,8 +699,8 @@ def create_chat_session():
                 'messages': []  # Store all messages as JSON array
             }
             
-            session_ref = db.collection('chat_sessions').add(session_doc)
-            session_id = session_ref[1].id
+            session_ref = mongo_db.chat_sessions.insert_one(session_doc)
+            session_id = str(session_ref.inserted_id)
             
             # Invalidate cache
             invalidate_chat_cache(user_id)
@@ -735,15 +724,14 @@ def get_chat_session_messages(session_id):
     try:
         user_id = get_jwt_identity()
         
-        if db:
+        if mongo_db is not None:
             # Verify session belongs to user
-            session_ref = db.collection('chat_sessions').document(session_id)
-            session_doc = session_ref.get()
+            session_ref = mongo_db.chat_sessions.find_one({'_id': ObjectId(session_id)})
             
-            if not session_doc.exists:
+            if not session_ref:
                 return jsonify({"error": "Chat session not found"}), 404
                 
-            session_data = session_doc.to_dict()
+            session_data = mongo_doc_to_json(session_ref)
             if session_data['user_id'] != user_id:
                 return jsonify({"error": "Unauthorized access to chat session"}), 403
             
@@ -771,20 +759,20 @@ def update_chat_session(session_id):
         if not title.strip():
             return jsonify({"error": "Title is required"}), 400
         
-        if db:
+        if mongo_db is not None:
             # Verify session belongs to user
-            session_ref = db.collection('chat_sessions').document(session_id)
-            session_doc = session_ref.get()
+            session_ref = mongo_db.chat_sessions.find_one({'_id': ObjectId(session_id)})
             
-            if not session_doc.exists:
+            if not session_ref:
                 return jsonify({"error": "Chat session not found"}), 404
                 
-            session_data = session_doc.to_dict()
+            session_data = mongo_doc_to_json(session_ref)
             if session_data['user_id'] != user_id:
                 return jsonify({"error": "Unauthorized access to chat session"}), 403
             
             # Update session title
-            session_ref.update({
+            mongo_db.chat_sessions.replace_one({'_id': ObjectId(session_id)}, {
+                **session_data,
                 'title': title,
                 'last_updated': datetime.now()
             })
@@ -810,20 +798,19 @@ def delete_chat_session(session_id):
     try:
         user_id = get_jwt_identity()
         
-        if db:
+        if mongo_db is not None:
             # Verify session belongs to user
-            session_ref = db.collection('chat_sessions').document(session_id)
-            session_doc = session_ref.get()
+            session_ref = mongo_db.chat_sessions.find_one({'_id': ObjectId(session_id)})
             
-            if not session_doc.exists:
+            if not session_ref:
                 return jsonify({"error": "Chat session not found"}), 404
                 
-            session_data = session_doc.to_dict()
+            session_data = mongo_doc_to_json(session_ref)
             if session_data['user_id'] != user_id:
                 return jsonify({"error": "Unauthorized access to chat session"}), 403
             
             # Delete the session (messages are stored within the session document)
-            session_ref.delete()
+            mongo_db.chat_sessions.delete_one({'_id': ObjectId(session_id)})
             
             # Invalidate cache
             invalidate_chat_cache(user_id)
@@ -847,14 +834,13 @@ def get_chat_history():
         user_id = get_jwt_identity()
         limit = request.args.get('limit', 50, type=int)
         
-        if db:
+        if mongo_db is not None:
             # Query chat history from Firestore
-            chat_refs = db.collection('chat_history').where('user_id', '==', user_id).order_by('timestamp', direction='DESCENDING').limit(limit).stream()
+            chat_refs = mongo_db.chat_history.find({'user_id': user_id}).sort('timestamp', -1).limit(limit)
             
             chat_history = []
             for chat_ref in chat_refs:
-                chat_data = chat_ref.to_dict()
-                chat_data['id'] = chat_ref.id
+                chat_data = mongo_doc_to_json(chat_ref)
                 chat_data['timestamp'] = chat_data['timestamp'].isoformat() if hasattr(chat_data['timestamp'], 'isoformat') else str(chat_data['timestamp'])
                 chat_history.append(chat_data)
             
@@ -890,15 +876,15 @@ def get_user_chat_history():
     try:
         user_id = get_jwt_identity()
         
-        if db:
+        if mongo_db is not None:
             # Get all chat sessions for the user (without ordering to avoid index requirement)
-            session_refs = db.collection('chat_sessions').where('user_id', '==', user_id).stream()
+            session_refs = mongo_db.chat_sessions.find({'user_id': user_id})
             
             chat_history = []
             for session_ref in session_refs:
-                session_data = session_ref.to_dict()
+                session_data = mongo_doc_to_json(session_ref)
                 session_info = {
-                    'session_id': session_ref.id,
+                    'session_id': str(session_ref['_id']),
                     'title': session_data.get('title', 'Untitled'),
                     'created_at': session_data['created_at'].isoformat() if hasattr(session_data['created_at'], 'isoformat') else str(session_data['created_at']),
                     'last_updated': session_data['last_updated'].isoformat() if hasattr(session_data['last_updated'], 'isoformat') else str(session_data['last_updated']),

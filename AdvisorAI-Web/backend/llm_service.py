@@ -45,7 +45,7 @@ class LLMService:
         """Parse resume using OpenAI GPT"""
         prompt = self._get_resume_parsing_prompt(text)
         
-        response = openai.ChatCompletion.create(
+        response = openai.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "You are a resume parser. Extract structured information from resume text and return valid JSON only."},
