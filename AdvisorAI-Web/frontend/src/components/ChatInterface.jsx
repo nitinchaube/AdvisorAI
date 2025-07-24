@@ -381,7 +381,15 @@ const ChatInterface = ({
       {showSources && currentSources && (
         <div className="flex-shrink-0 p-4 border-t border-gray-200/50 bg-gray-50/50">
           <div className="max-w-4xl mx-auto">
-            <h3 className="text-sm font-semibold text-gray-700 mb-2">Sources & Information</h3>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold text-gray-700">Sources & Information</h3>
+              <button
+                onClick={() => setShowSources(false)}
+                className="px-3 py-1 text-xs bg-gradient-to-r from-purple-500 to-blue-500 text-white rounded-lg hover:from-purple-600 hover:to-blue-600 transition"
+              >
+                X
+              </button>
+            </div>
             <div className="text-xs text-gray-600 space-y-1">
               <p><strong>Collections used:</strong> {currentSources.collections_used?.join(', ') || 'None'}</p>
               <p><strong>Documents retrieved:</strong> {currentSources.documents_retrieved || 0}</p>
