@@ -1,5 +1,4 @@
 from flask import Flask, request, session, jsonify, Response
-from flask_session import Session
 from flask_cors import CORS
 import firebase_admin
 from firebase_admin import auth, credentials, firestore
@@ -14,6 +13,9 @@ import logging
 import time
 import redis
 from functools import wraps
+from rag_service import load_vector_store
+import uuid
+from langchain_core.documents import Document
 
 # Load environment variables
 load_dotenv()
@@ -27,12 +29,10 @@ app = Flask(__name__)
 
 # Configure Flask
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-here')
-app.config['SESSION_TYPE'] = 'filesystem'
 app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'your-jwt-secret-key')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
 
 # Initialize extensions
-Session(app)
 JWTManager(app)
 
 # Enable CORS for all routes and allow credentials (cookies)
@@ -55,26 +55,26 @@ try:
     if not firebase_admin._apps:
         cred = credentials.Certificate('firebase_key.json')
         firebase_admin.initialize_app(cred)
-        print("✅ Firebase Admin SDK initialized successfully")
+        print("  Firebase Admin SDK initialized successfully")
     else:
-        print("✅ Firebase Admin SDK already initialized")
+        print("  Firebase Admin SDK already initialized")
 except Exception as e:
-    print(f"❌ Firebase Admin SDK initialization failed: {e}")
+    print(f"  Firebase Admin SDK initialization failed: {e}")
 
 # Initialize Firestore
 try:
     db = firestore.client()
-    print("✅ Firestore client initialized")
+    print("  Firestore client initialized")
 except Exception as e:
-    print(f"❌ Firestore client initialization failed: {e}")
+    print(f"  Firestore client initialization failed: {e}")
     db = None
 
 # Initialize Resume Processor
 try:
     resume_processor = ResumeProcessor()
-    print("✅ Resume processor initialized")
+    print("  Resume processor initialized")
 except Exception as e:
-    print(f"❌ Resume processor initialization failed: {e}")
+    print(f"  Resume processor initialization failed: {e}")
     resume_processor = None
 
 # Initialize Redis for caching
@@ -87,9 +87,9 @@ try:
     )
     # Test Redis connection
     redis_client.ping()
-    print("✅ Redis client initialized")
+    print("  Redis client initialized")
 except Exception as e:
-    print(f"❌ Redis client initialization failed: {e}")
+    print(f"  Redis client initialization failed: {e}")
     redis_client = None
 
 # Cache decorator for chat sessions
@@ -212,7 +212,7 @@ def debug_text_extraction():
             return jsonify({"error": "Resume processor not available"}), 500
             
     except Exception as e:
-        print(f"❌ Debug extraction error: {str(e)}")
+        print(f"  Debug extraction error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 # Authentication endpoints
@@ -243,7 +243,8 @@ def signup():
                 'fullName': full_name,
                 'createdAt': datetime.now(),
                 'profileCompleted': False,
-                'resumeData': {}
+                'resumeData': {},
+                'role': 'user' # Add role field
             }
             db.collection('users').document(user_record.uid).set(user_doc)
 
@@ -261,7 +262,7 @@ def signup():
         }), 201
 
     except Exception as e:
-        print(f"❌ Signup error: {str(e)}")
+        print(f"  Signup error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/auth/signin', methods=['POST'])
@@ -292,7 +293,7 @@ def signin():
         }), 200
 
     except Exception as e:
-        print(f"❌ Signin error: {str(e)}")
+        print(f"  Signin error: {str(e)}")
         return jsonify({"error": "Invalid credentials"}), 401
 
 @app.route('/api/auth/signin-with-token', methods=['POST'])
@@ -326,7 +327,7 @@ def signin_with_token():
         }), 200
 
     except Exception as e:
-        print(f"❌ Token signin error: {str(e)}")
+        print(f"  Token signin error: {str(e)}")
         return jsonify({"error": "Invalid token"}), 401
 
 # Resume upload and parsing endpoint
@@ -413,7 +414,7 @@ def upload_and_parse_resume():
             return jsonify({"error": "Resume processor not available"}), 500
             
     except Exception as e:
-        print(f"❌ Resume upload error: {str(e)}")
+        print(f"  Resume upload error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 # Debug endpoint to check token
@@ -449,7 +450,7 @@ def get_user_profile():
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"❌ Get profile error: {str(e)}")
+        print(f"  Get profile error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 # Update user profile
@@ -489,7 +490,7 @@ def update_user_profile():
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"❌ Update profile error: {str(e)}")
+        print(f"  Update profile error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 # Chat endpoints
@@ -559,10 +560,10 @@ def chat_query():
                     
                     print(f"💾 Chat messages saved to session {session_id} for user {user_id}")
                 else:
-                    print(f"❌ Session {session_id} not found")
+                    print(f"  Session {session_id} not found")
                     
             except Exception as e:
-                print(f"❌ Error saving chat messages to session: {e}")
+                print(f"  Error saving chat messages to session: {e}")
         
         # Also save to legacy chat_history for backward compatibility
         if db and result.get('response'):
@@ -578,7 +579,7 @@ def chat_query():
                 }
                 db.collection('chat_history').add(chat_doc)
             except Exception as e:
-                print(f"❌ Error saving to legacy chat_history: {e}")
+                print(f"  Error saving to legacy chat_history: {e}")
         
         return jsonify({
             "success": True,
@@ -589,7 +590,7 @@ def chat_query():
         }), 200
         
     except Exception as e:
-        print(f"❌ Chat query error: {str(e)}")
+        print(f"  Chat query error: {str(e)}")
         return jsonify({
             "success": False,
             "error": str(e),
@@ -638,7 +639,7 @@ def chat_stream():
         )
         
     except Exception as e:
-        print(f"❌ Chat stream error: {str(e)}")
+        print(f"  Chat stream error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/chat/sessions', methods=['GET'])
@@ -691,7 +692,7 @@ def get_chat_sessions():
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"❌ Get chat sessions error: {str(e)}")
+        print(f"  Get chat sessions error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/chat/sessions', methods=['POST'])
@@ -728,7 +729,7 @@ def create_chat_session():
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"❌ Create chat session error: {str(e)}")
+        print(f"  Create chat session error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/chat/sessions/<session_id>', methods=['GET'])
@@ -759,7 +760,7 @@ def get_chat_session_messages(session_id):
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"❌ Get chat session messages error: {str(e)}")
+        print(f"  Get chat session messages error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/chat/sessions/<session_id>', methods=['PUT'])
@@ -803,7 +804,7 @@ def update_chat_session(session_id):
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"❌ Update chat session error: {str(e)}")
+        print(f"  Update chat session error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/chat/sessions/<session_id>', methods=['DELETE'])
@@ -839,7 +840,7 @@ def delete_chat_session(session_id):
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"❌ Delete chat session error: {str(e)}")
+        print(f"  Delete chat session error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/chat/history', methods=['GET'])
@@ -869,7 +870,7 @@ def get_chat_history():
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"❌ Get chat history error: {str(e)}")
+        print(f"  Get chat history error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/rag/stats', methods=['GET'])
@@ -883,7 +884,7 @@ def get_rag_stats():
             "stats": stats
         }), 200
     except Exception as e:
-        print(f"❌ Get RAG stats error: {str(e)}")
+        print(f"  Get RAG stats error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/chat/user-history', methods=['GET'])
@@ -924,8 +925,141 @@ def get_user_chat_history():
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"❌ Get user chat history error: {str(e)}")
+        print(f"  Get user chat history error: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/courses', methods=['GET'])
+@jwt_required()
+def get_courses():
+    collection_name = request.args.get('collection_name', 'AllCourseRelatedData')
+    try:
+        collection = load_vector_store(collection_name)
+        results = collection.get(include=['metadatas', 'documents'])
+        courses = []
+        for i in range(len(results['ids'])):
+            courses.append({
+                'id': results['ids'][i],
+                'metadata': results['metadatas'][i],
+                'content': results['documents'][i]
+            })
+        return jsonify({'success': True, 'courses': courses})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/courses/<id>', methods=['GET'])
+@jwt_required()
+def get_course(id):
+    collection_name = request.args.get('collection_name', 'AllCourseRelatedData')
+    try:
+        collection = load_vector_store(collection_name)
+        result = collection.get(ids=[id], include=['metadatas', 'documents'])
+        if result['ids']:
+            course = {
+                'id': result['ids'][0],
+                'metadata': result['metadatas'][0],
+                'content': result['documents'][0]
+            }
+            return jsonify({'success': True, 'course': course})
+        else:
+            return jsonify({'success': False, 'error': 'Course not found'}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+def admin_required(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        user_id = get_jwt_identity()
+        if db is None:
+            return jsonify({"error": "Database not available"}), 500
+        user_doc = db.collection('users').document(user_id).get()
+        if not user_doc.exists or user_doc.to_dict().get('role') != 'admin':
+            return jsonify({"error": "Admin access required"}), 403
+        return fn(*args, **kwargs)
+    return wrapper
+
+@app.route('/api/admin/collections', methods=['GET'])
+@jwt_required()
+@admin_required
+def get_collections():
+    try:
+        stats = rag_service.get_system_stats()
+        return jsonify({'success': True, 'collections': stats['collection_names']})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+def sync_course_to_chroma(course_id, course_data):
+    collection = load_vector_store('AllCourseRelatedData')
+    content = json.dumps(course_data)
+    metadata = {'title': course_data.get('Course Title', ''), 'code': course_data.get('Course Code', '')}
+    collection.upsert(ids=[course_id], documents=[content], metadatas=[metadata])
+
+def delete_from_chroma(course_id):
+    collection = load_vector_store('AllCourseRelatedData')
+    collection.delete(ids=[course_id])
+
+@app.route('/api/admin/courses', methods=['GET'])
+@jwt_required()
+@admin_required
+def get_all_courses():
+    try:
+        courses = []
+        docs = db.collection('courses').stream()
+        for doc in docs:
+            course = doc.to_dict()
+            course['id'] = doc.id
+            courses.append(course)
+        return jsonify({'success': True, 'courses': courses})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/admin/courses', methods=['POST'])
+@jwt_required()
+@admin_required
+def add_course():
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Data is required'}), 400
+    course_ref = db.collection('courses').document()
+    course_ref.set(data)
+    sync_course_to_chroma(course_ref.id, data)
+    return jsonify({'success': True, 'id': course_ref.id}), 201
+
+@app.route('/api/admin/courses/<id>', methods=['PUT'])
+@jwt_required()
+@admin_required
+def update_course(id):
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Data is required'}), 400
+    course_ref = db.collection('courses').document(id)
+    if not course_ref.get().exists:
+        return jsonify({'error': 'Course not found'}), 404
+    course_ref.update(data)
+    sync_course_to_chroma(id, data)
+    return jsonify({'success': True})
+
+@app.route('/api/admin/courses/<id>', methods=['DELETE'])
+@jwt_required()
+@admin_required
+def delete_course(id):
+    course_ref = db.collection('courses').document(id)
+    if not course_ref.get().exists:
+        return jsonify({'error': 'Course not found'}), 404
+    course_ref.delete()
+    delete_from_chroma(id)
+    return jsonify({'success': True})
+
+@app.route('/api/admin/courses/<id>', methods=['GET'])
+@jwt_required()
+@admin_required
+def get_admin_course(id):
+    course_ref = db.collection('courses').document(id)
+    doc = course_ref.get()
+    if doc.exists:
+        course = doc.to_dict()
+        course['id'] = id
+        return jsonify({'success': True, 'course': course})
+    return jsonify({'success': False, 'error': 'Course not found'}), 404
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5003))
