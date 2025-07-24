@@ -10,71 +10,69 @@ import Login from "./components/Login.jsx";
 import Dashboard from "./components/Dashboard.jsx";
 import ProfileCompletion from "./components/ProfileCompletion.jsx";
 import ProfileData from "./components/ProfileData.jsx";
+import CourseDetails from "./components/CourseDetails";
 
 function App() {
   return (
     <AuthProvider>
-    <div>
-      <Routes>
+      <div>
+        <Routes>
           {/* Public Routes - Redirect authenticated users */}
-          <Route 
-            path="/" 
-            element={<Home />}
-          />
-          <Route 
-            path="/signup" 
+          <Route path="/" element={<Home />} />
+          <Route
+            path="/signup"
             element={
               <PublicRoute redirectTo="/dashboard">
                 <Signup />
               </PublicRoute>
-            } 
+            }
           />
-          <Route 
-            path="/login" 
+          <Route
+            path="/login"
             element={
               <PublicRoute redirectTo="/dashboard">
                 <Login />
               </PublicRoute>
-            } 
+            }
           />
-          
+
           {/* Protected Routes - Require authentication */}
-          <Route 
-            path="/profile-completion" 
+          <Route
+            path="/profile-completion"
             element={
               <ProtectedRoute requireProfileCompletion={false}>
                 <ProfileCompletion />
               </ProtectedRoute>
-            } 
+            }
           />
-          <Route 
-            path="/profile-data" 
+          <Route
+            path="/profile-data"
             element={
               <ProtectedRoute requireProfileCompletion={true}>
                 <ProfileData />
               </ProtectedRoute>
-            } 
+            }
           />
-          <Route 
-            path="/dashboard" 
+          <Route
+            path="/dashboard"
             element={
               <ProtectedRoute requireProfileCompletion={true}>
                 <Dashboard />
               </ProtectedRoute>
-            } 
+            }
           />
-          
+
           {/* Catch all route - redirect to home */}
-          <Route 
-            path="*" 
+          <Route
+            path="*"
             element={
               <PublicRoute redirectTo="/dashboard">
                 <Home />
               </PublicRoute>
-            } 
+            }
           />
-      </Routes>
-    </div>
+        </Routes>
+      </div>
     </AuthProvider>
   );
 }
