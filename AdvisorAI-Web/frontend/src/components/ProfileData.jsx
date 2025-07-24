@@ -202,7 +202,10 @@ const ProfileData = () => {
       minHeight: '100vh', 
       background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
       padding: '2rem',
-      color: 'white'
+      color: 'white',
+      overflow: 'auto', // Make the profile section scrollable
+      maxHeight: 'calc(100vh - 5rem)', // Leave space for header
+      boxSizing: 'border-box'
     }}>
       <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
         {/* Header */}
