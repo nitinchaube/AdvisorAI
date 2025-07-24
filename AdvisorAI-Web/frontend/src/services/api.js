@@ -213,12 +213,96 @@ class ApiService {
     return this.makeRequest("/rag/stats");
   }
 
+  async getCollections() {
+    return this.makeRequest("/admin/collections");
+  }
+
+  async addEntry(collection_name, content, metadata) {
+    return this.makeRequest("/admin/courses", {
+      method: "POST",
+      body: JSON.stringify({ collection_name, content, metadata }),
+    });
+  }
+
+  async updateEntry(collection_name, id, content, metadata) {
+    return this.makeRequest(`/admin/courses/${collection_name}/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ content, metadata }),
+    });
+  }
+
+  async deleteEntry(collection_name, id) {
+    return this.makeRequest(`/admin/courses/${collection_name}/${id}`, {
+      method: "DELETE",
+    });
+  }
+
+  // Update getCourses to accept collection_name
+  async getEntries(collection_name = "AllCourseRelatedData") {
+    return this.makeRequest(`/courses?collection_name=${collection_name}`);
+  }
+
+  async getEntry(collection_name, id) {
+    return this.makeRequest(
+      `/courses/${id}?collection_name=${collection_name}`
+    );
+  }
+
   async getCourses() {
     return this.makeRequest("/courses");
   }
 
   async getCourse(id) {
     return this.makeRequest(`/courses/${id}`);
+  }
+
+  async getAllCourses() {
+    return this.makeRequest("/admin/courses");
+  }
+
+  async addCourse(data) {
+    return this.makeRequest("/admin/courses", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateCourse(id, data) {
+    return this.makeRequest(`/admin/courses/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteCourse(id) {
+    return this.makeRequest(`/admin/courses/${id}`, {
+      method: "DELETE",
+    });
+  }
+
+  async getCourse(id) {
+    return this.makeRequest(`/admin/courses/${id}`);
+  }
+
+  // Admin methods
+  async addCourse(content, metadata) {
+    return this.makeRequest("/admin/courses", {
+      method: "POST",
+      body: JSON.stringify({ content, metadata }),
+    });
+  }
+
+  async updateCourse(id, content, metadata) {
+    return this.makeRequest(`/admin/courses/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ content, metadata }),
+    });
+  }
+
+  async deleteCourse(id) {
+    return this.makeRequest(`/admin/courses/${id}`, {
+      method: "DELETE",
+    });
   }
 
   // Streaming chat method
