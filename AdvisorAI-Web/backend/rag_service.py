@@ -24,6 +24,17 @@ from web_scrapper import scrape_web_content
 
 load_dotenv()
 
+embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+vectordb_dir = os.getenv("VECTORDB_DIR", "./chroma")
+
+def load_vector_store(collection_name):
+    collection_path = os.path.join(vectordb_dir, collection_name)
+    return Chroma(
+        collection_name=collection_name,
+        persist_directory=collection_path,
+        embedding_function=embedding_model
+    )
+
 class RAGService:
     def __init__(self):
         # Embeddings
@@ -168,7 +179,10 @@ class RAGService:
         try:
             llm = self._get_llm()
             response = llm.invoke(prompt)
-            selected_collections = json.loads(response.content.strip())
+            if response.content is None:
+                print("LLM returned None content, falling back")
+                return collections  # or []
+            selected_collections = json.loads(response.content.strip() or '[]')
             
             # Validate that selected collections exist
             valid_collections = [col for col in selected_collections if col in collections]
@@ -788,8 +802,10 @@ Response:
             collection_stats = {}
             for name, collection in self.collections.items():
                 try:
-                    # This might need adjustment based on your Chroma version
-                    count = collection._collection.count()
+                    if collection._collection is not None:
+                        count = collection._collection.count()
+                    else:
+                        count = 0
                     collection_stats[name] = count
                 except Exception as e:
                     collection_stats[name] = f"Error: {e}"

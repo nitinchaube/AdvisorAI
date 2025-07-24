@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://localhost:5002/api';
+const API_BASE_URL = "http://localhost:5003/api";
 
 class ApiService {
   constructor() {
@@ -7,17 +7,17 @@ class ApiService {
 
   // Helper method to get auth headers
   getAuthHeaders() {
-    const token = localStorage.getItem('backendToken');
-    return token ? { 'Authorization': `Bearer ${token}` } : {};
+    const token = localStorage.getItem("backendToken");
+    return token ? { Authorization: `Bearer ${token}` } : {};
   }
 
   // Helper method to make API calls
   async makeRequest(endpoint, options = {}) {
     const url = `${this.baseURL}${endpoint}`;
-    
+
     const defaultOptions = {
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
         ...this.getAuthHeaders(),
         ...options.headers,
       },
@@ -27,30 +27,33 @@ class ApiService {
 
     try {
       console.log(` Making request to: ${url}`);
-      console.log('📤 Request config:', {
-        method: config.method || 'GET',
+      console.log("📤 Request config:", {
+        method: config.method || "GET",
         headers: config.headers,
-        body: config.body ? JSON.parse(config.body) : undefined
+        body: config.body ? JSON.parse(config.body) : undefined,
       });
-      
+
       const response = await fetch(url, config);
-      console.log(' Response status:', response.status);
-      
+      console.log(" Response status:", response.status);
+
       const data = await response.json();
-      console.log('📥 Response data:', data);
+      console.log("📥 Response data:", data);
 
       if (!response.ok) {
-        const errorMessage = data.error || data.message || `HTTP ${response.status}: ${response.statusText}`;
-        console.error('❌ API Error Response:', errorMessage);
+        const errorMessage =
+          data.error ||
+          data.message ||
+          `HTTP ${response.status}: ${response.statusText}`;
+        console.error("❌ API Error Response:", errorMessage);
         throw new Error(errorMessage);
       }
 
       return data;
     } catch (error) {
-      console.error('❌ API Error:', error);
-      console.error('Error details:', {
+      console.error("❌ API Error:", error);
+      console.error("Error details:", {
         message: error.message,
-        stack: error.stack
+        stack: error.stack,
       });
       throw error;
     }
@@ -59,55 +62,61 @@ class ApiService {
   // File upload method with auth
   async uploadFile(endpoint, formData) {
     const url = `${this.baseURL}${endpoint}`;
-    const token = localStorage.getItem('backendToken');
-    
+    const token = localStorage.getItem("backendToken");
+
     try {
       console.log(` Uploading file to: ${url}`);
-      console.log('🔑 Token present:', !!token);
-      
+      console.log("🔑 Token present:", !!token);
+
       const headers = {};
       if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
+        headers["Authorization"] = `Bearer ${token}`;
       }
-      
+
       const response = await fetch(url, {
-        method: 'POST',
+        method: "POST",
         headers: headers,
         body: formData, // Don't set Content-Type for FormData
       });
-      
-      console.log(' Response status:', response.status);
-      
+
+      console.log(" Response status:", response.status);
+
       const data = await response.json();
-      console.log('📥 Response data:', data);
+      console.log("📥 Response data:", data);
 
       if (!response.ok) {
-        const errorMessage = data.error || data.message || `HTTP ${response.status}: ${response.statusText}`;
-        console.error('❌ Upload Error Response:', errorMessage);
+        const errorMessage =
+          data.error ||
+          data.message ||
+          `HTTP ${response.status}: ${response.statusText}`;
+        console.error("❌ Upload Error Response:", errorMessage);
         throw new Error(errorMessage);
       }
 
       return data;
     } catch (error) {
-      console.error('❌ Upload Error:', error);
+      console.error("❌ Upload Error:", error);
       throw error;
     }
   }
 
   // Authentication methods
   async signinWithBackend(idToken) {
-    console.log('🔑 Signing in with backend, idToken length:', idToken.length);
-    return this.makeRequest('/auth/signin-with-token', {
-      method: 'POST',
+    console.log("🔑 Signing in with backend, idToken length:", idToken.length);
+    return this.makeRequest("/auth/signin-with-token", {
+      method: "POST",
       body: JSON.stringify({ idToken }),
     });
   }
 
   // Resume upload and parsing
   async uploadAndParseResume(formData) {
-    const response = await this.uploadFile('/resume/upload-and-parse', formData);
+    const response = await this.uploadFile(
+      "/resume/upload-and-parse",
+      formData
+    );
     console.log("📥 Raw API response:", response);
-    
+
     // Ensure we return the correct data structure
     if (response.success && response.data) {
       console.log("✅ Parsed data received:", response.data);
@@ -116,7 +125,7 @@ class ApiService {
         data: response.data,
         originalText: response.originalText,
         llmProvider: response.llmProvider,
-        message: response.message
+        message: response.message,
       };
     } else {
       console.error("❌ Unexpected response structure:", response);
@@ -126,39 +135,39 @@ class ApiService {
 
   // Save user profile
   async saveUserProfile(profileData) {
-    return this.makeRequest('/user/profile', {
-      method: 'PUT',
+    return this.makeRequest("/user/profile", {
+      method: "PUT",
       body: JSON.stringify(profileData),
     });
   }
 
   // Get user profile
   async getUserProfile() {
-    return this.makeRequest('/user/profile');
+    return this.makeRequest("/user/profile");
   }
 
   // Health check
   async healthCheck() {
-    return this.makeRequest('/health');
+    return this.makeRequest("/health");
   }
 
   // LLM status
   async getLLMStatus() {
-    return this.makeRequest('/llm/status');
+    return this.makeRequest("/llm/status");
   }
 
   async debugTextExtraction(formData) {
-    return this.uploadFile('/resume/debug-extraction', formData);
+    return this.uploadFile("/resume/debug-extraction", formData);
   }
 
   // Chat methods
   async sendChatMessage(query, chatHistory = [], sessionId = null) {
-    return this.makeRequest('/chat/query', {
-      method: 'POST',
+    return this.makeRequest("/chat/query", {
+      method: "POST",
       body: JSON.stringify({
         query,
         chat_history: chatHistory,
-        session_id: sessionId
+        session_id: sessionId,
       }),
     });
   }
@@ -169,12 +178,12 @@ class ApiService {
 
   // Chat session methods
   async getChatSessions() {
-    return this.makeRequest('/chat/sessions');
+    return this.makeRequest("/chat/sessions");
   }
 
-  async createChatSession(title = 'New Chat') {
-    return this.makeRequest('/chat/sessions', {
-      method: 'POST',
+  async createChatSession(title = "New Chat") {
+    return this.makeRequest("/chat/sessions", {
+      method: "POST",
       body: JSON.stringify({ title }),
     });
   }
@@ -185,40 +194,132 @@ class ApiService {
 
   async updateChatSession(sessionId, title) {
     return this.makeRequest(`/chat/sessions/${sessionId}`, {
-      method: 'PUT',
+      method: "PUT",
       body: JSON.stringify({ title }),
     });
   }
 
   async deleteChatSession(sessionId) {
     return this.makeRequest(`/chat/sessions/${sessionId}`, {
-      method: 'DELETE',
+      method: "DELETE",
     });
   }
 
   async getUserChatHistory() {
-    return this.makeRequest('/chat/user-history');
+    return this.makeRequest("/chat/user-history");
   }
 
   async getRAGStats() {
-    return this.makeRequest('/rag/stats');
+    return this.makeRequest("/rag/stats");
+  }
+
+  async getCollections() {
+    return this.makeRequest("/admin/collections");
+  }
+
+  async addEntry(collection_name, content, metadata) {
+    return this.makeRequest("/admin/courses", {
+      method: "POST",
+      body: JSON.stringify({ collection_name, content, metadata }),
+    });
+  }
+
+  async updateEntry(collection_name, id, content, metadata) {
+    return this.makeRequest(`/admin/courses/${collection_name}/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ content, metadata }),
+    });
+  }
+
+  async deleteEntry(collection_name, id) {
+    return this.makeRequest(`/admin/courses/${collection_name}/${id}`, {
+      method: "DELETE",
+    });
+  }
+
+  // Update getCourses to accept collection_name
+  async getEntries(collection_name = "AllCourseRelatedData") {
+    return this.makeRequest(`/courses?collection_name=${collection_name}`);
+  }
+
+  async getEntry(collection_name, id) {
+    return this.makeRequest(
+      `/courses/${id}?collection_name=${collection_name}`
+    );
+  }
+
+  async getCourses() {
+    return this.makeRequest("/courses");
+  }
+
+  async getCourse(id) {
+    return this.makeRequest(`/courses/${id}`);
+  }
+
+  async getAllCourses() {
+    return this.makeRequest("/admin/courses");
+  }
+
+  async addCourse(data) {
+    return this.makeRequest("/admin/courses", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateCourse(id, data) {
+    return this.makeRequest(`/admin/courses/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteCourse(id) {
+    return this.makeRequest(`/admin/courses/${id}`, {
+      method: "DELETE",
+    });
+  }
+
+  async getCourse(id) {
+    return this.makeRequest(`/admin/courses/${id}`);
+  }
+
+  // Admin methods
+  async addCourse(content, metadata) {
+    return this.makeRequest("/admin/courses", {
+      method: "POST",
+      body: JSON.stringify({ content, metadata }),
+    });
+  }
+
+  async updateCourse(id, content, metadata) {
+    return this.makeRequest(`/admin/courses/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ content, metadata }),
+    });
+  }
+
+  async deleteCourse(id) {
+    return this.makeRequest(`/admin/courses/${id}`, {
+      method: "DELETE",
+    });
   }
 
   // Streaming chat method
   async streamChatMessage(query, chatHistory = [], onToken) {
     const url = `${this.baseURL}/chat/stream`;
-    const token = localStorage.getItem('backendToken');
-    
+    const token = localStorage.getItem("backendToken");
+
     try {
       const response = await fetch(url, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           query,
-          chat_history: chatHistory
+          chat_history: chatHistory,
         }),
       });
 
@@ -231,14 +332,14 @@ class ApiService {
 
       while (true) {
         const { done, value } = await reader.read();
-        
+
         if (done) break;
-        
+
         const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
-        
+        const lines = chunk.split("\n");
+
         for (const line of lines) {
-          if (line.startsWith('data: ')) {
+          if (line.startsWith("data: ")) {
             try {
               const data = JSON.parse(line.slice(6));
               if (data.token) {
@@ -249,16 +350,16 @@ class ApiService {
                 throw new Error(data.error);
               }
             } catch (e) {
-              console.error('Error parsing stream data:', e);
+              console.error("Error parsing stream data:", e);
             }
           }
         }
       }
     } catch (error) {
-      console.error('❌ Stream chat error:', error);
+      console.error("❌ Stream chat error:", error);
       throw error;
     }
   }
 }
 
-export const apiService = new ApiService(); 
+export const apiService = new ApiService();
