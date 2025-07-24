@@ -13,6 +13,7 @@ import logging
 import time
 import redis
 from functools import wraps
+from rag_service import load_vector_store
 
 # Load environment variables
 load_dotenv()
@@ -923,6 +924,41 @@ def get_user_chat_history():
     except Exception as e:
         print(f"  Get user chat history error: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/courses', methods=['GET'])
+@jwt_required()
+def get_courses():
+    try:
+        collection = load_vector_store('AllCourseRelatedData')
+        results = collection.get(include=['metadatas', 'documents'])
+        courses = []
+        for i in range(len(results['ids'])):
+            courses.append({
+                'id': results['ids'][i],
+                'metadata': results['metadatas'][i],
+                'content': results['documents'][i]
+            })
+        return jsonify({'success': True, 'courses': courses})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/courses/<id>', methods=['GET'])
+@jwt_required()
+def get_course(id):
+    try:
+        collection = load_vector_store('AllCourseRelatedData')
+        result = collection.get(ids=[id], include=['metadatas', 'documents'])
+        if result['ids']:
+            course = {
+                'id': result['ids'][0],
+                'metadata': result['metadatas'][0],
+                'content': result['documents'][0]
+            }
+            return jsonify({'success': True, 'course': course})
+        else:
+            return jsonify({'success': False, 'error': 'Course not found'}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5003))
