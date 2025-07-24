@@ -73,11 +73,11 @@ class LLMService:
                 
                 if response.text:
                     content = response.text
-                    print(f"✅ Successfully used Gemini model: {model_name}")
+                    print(f" Successfully used Gemini model: {model_name}")
                     return self._parse_json_response(content)
                     
             except Exception as e:
-                print(f"⚠️ Model {model_name} failed: {str(e)}")
+                print(f" Model {model_name} failed: {str(e)}")
                 continue
         
         # If all models fail, raise an exception
@@ -146,7 +146,7 @@ class LLMService:
             # Parse JSON
             return json.loads(content)
         except json.JSONDecodeError as e:
-            print(f"❌ JSON parsing error: {e}")
+            print(f"JSON parsing error: {e}")
             print(f"Raw content: {content}")
             # Return basic structure if JSON parsing fails
             return self._basic_parse("")
