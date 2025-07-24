@@ -14,6 +14,8 @@ import time
 import redis
 from functools import wraps
 from rag_service import load_vector_store
+import uuid
+from langchain_core.documents import Document
 
 # Load environment variables
 load_dotenv()
@@ -241,7 +243,8 @@ def signup():
                 'fullName': full_name,
                 'createdAt': datetime.now(),
                 'profileCompleted': False,
-                'resumeData': {}
+                'resumeData': {},
+                'role': 'user' # Add role field
             }
             db.collection('users').document(user_record.uid).set(user_doc)
 
@@ -928,8 +931,9 @@ def get_user_chat_history():
 @app.route('/api/courses', methods=['GET'])
 @jwt_required()
 def get_courses():
+    collection_name = request.args.get('collection_name', 'AllCourseRelatedData')
     try:
-        collection = load_vector_store('AllCourseRelatedData')
+        collection = load_vector_store(collection_name)
         results = collection.get(include=['metadatas', 'documents'])
         courses = []
         for i in range(len(results['ids'])):
@@ -945,8 +949,9 @@ def get_courses():
 @app.route('/api/courses/<id>', methods=['GET'])
 @jwt_required()
 def get_course(id):
+    collection_name = request.args.get('collection_name', 'AllCourseRelatedData')
     try:
-        collection = load_vector_store('AllCourseRelatedData')
+        collection = load_vector_store(collection_name)
         result = collection.get(ids=[id], include=['metadatas', 'documents'])
         if result['ids']:
             course = {
@@ -959,6 +964,102 @@ def get_course(id):
             return jsonify({'success': False, 'error': 'Course not found'}), 404
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+def admin_required(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        user_id = get_jwt_identity()
+        if db is None:
+            return jsonify({"error": "Database not available"}), 500
+        user_doc = db.collection('users').document(user_id).get()
+        if not user_doc.exists or user_doc.to_dict().get('role') != 'admin':
+            return jsonify({"error": "Admin access required"}), 403
+        return fn(*args, **kwargs)
+    return wrapper
+
+@app.route('/api/admin/collections', methods=['GET'])
+@jwt_required()
+@admin_required
+def get_collections():
+    try:
+        stats = rag_service.get_system_stats()
+        return jsonify({'success': True, 'collections': stats['collection_names']})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+def sync_course_to_chroma(course_id, course_data):
+    collection = load_vector_store('AllCourseRelatedData')
+    content = json.dumps(course_data)
+    metadata = {'title': course_data.get('Course Title', ''), 'code': course_data.get('Course Code', '')}
+    collection.upsert(ids=[course_id], documents=[content], metadatas=[metadata])
+
+def delete_from_chroma(course_id):
+    collection = load_vector_store('AllCourseRelatedData')
+    collection.delete(ids=[course_id])
+
+@app.route('/api/admin/courses', methods=['GET'])
+@jwt_required()
+@admin_required
+def get_all_courses():
+    try:
+        courses = []
+        docs = db.collection('courses').stream()
+        for doc in docs:
+            course = doc.to_dict()
+            course['id'] = doc.id
+            courses.append(course)
+        return jsonify({'success': True, 'courses': courses})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/admin/courses', methods=['POST'])
+@jwt_required()
+@admin_required
+def add_course():
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Data is required'}), 400
+    course_ref = db.collection('courses').document()
+    course_ref.set(data)
+    sync_course_to_chroma(course_ref.id, data)
+    return jsonify({'success': True, 'id': course_ref.id}), 201
+
+@app.route('/api/admin/courses/<id>', methods=['PUT'])
+@jwt_required()
+@admin_required
+def update_course(id):
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Data is required'}), 400
+    course_ref = db.collection('courses').document(id)
+    if not course_ref.get().exists:
+        return jsonify({'error': 'Course not found'}), 404
+    course_ref.update(data)
+    sync_course_to_chroma(id, data)
+    return jsonify({'success': True})
+
+@app.route('/api/admin/courses/<id>', methods=['DELETE'])
+@jwt_required()
+@admin_required
+def delete_course(id):
+    course_ref = db.collection('courses').document(id)
+    if not course_ref.get().exists:
+        return jsonify({'error': 'Course not found'}), 404
+    course_ref.delete()
+    delete_from_chroma(id)
+    return jsonify({'success': True})
+
+@app.route('/api/admin/courses/<id>', methods=['GET'])
+@jwt_required()
+@admin_required
+def get_admin_course(id):
+    course_ref = db.collection('courses').document(id)
+    doc = course_ref.get()
+    if doc.exists:
+        course = doc.to_dict()
+        course['id'] = id
+        return jsonify({'success': True, 'course': course})
+    return jsonify({'success': False, 'error': 'Course not found'}), 404
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5003))

@@ -11,6 +11,7 @@ import Dashboard from "./components/Dashboard.jsx";
 import ProfileCompletion from "./components/ProfileCompletion.jsx";
 import ProfileData from "./components/ProfileData.jsx";
 import CourseDetails from "./components/CourseDetails";
+import AdminDashboard from "./components/AdminDashboard";
 
 function App() {
   return (
@@ -58,6 +59,14 @@ function App() {
             element={
               <ProtectedRoute requireProfileCompletion={true}>
                 <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute requireAdmin={true}>
+                <AdminDashboard />
               </ProtectedRoute>
             }
           />
