@@ -329,28 +329,6 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
                     </Link>
                   )}
                 </div>
-
-                <div
-                  className="border-t border-white/10 mx-6 my-3"
-                  style={{ zIndex: 10 }}
-                ></div>
-
-                {/* Test button */}
-                <button
-                  onClick={() => alert("Test button works!")}
-                  className="w-full flex items-center space-x-3 px-6 py-3 text-sm text-green-300 hover:bg-green-500/20 transition-all duration-300 hover:text-green-200 group mx-2 rounded-xl cursor-pointer relative mb-2"
-                  style={{
-                    pointerEvents: "auto",
-                    zIndex: 10,
-                    position: "relative",
-                  }}
-                >
-                  <div className="p-2 bg-green-500/20 rounded-lg group-hover:bg-green-500/30 transition-all duration-300 group-hover:scale-110">
-                    <Check className="w-4 h-4" />
-                  </div>
-                  <span className="font-medium">Test Button</span>
-                </button>
-
                 <button
                   onClick={(e) => {
                     e.preventDefault();

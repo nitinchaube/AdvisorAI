@@ -11,8 +11,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import CourseDetails from "./CourseDetails";
-import { collection, getDocs } from "firebase/firestore";
-import { db } from "../config/firebase";
+import { apiService } from "../services/api";
 
 const CourseExplorer = ({ onSelectCourse }) => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -27,47 +26,40 @@ const CourseExplorer = ({ onSelectCourse }) => {
     const fetchCourses = async () => {
       try {
         setLoading(true);
-        const querySnapshot = await getDocs(collection(db, "courses"));
-        if (querySnapshot.empty) {
+        const response = await apiService.getCourses();
+        console.log("Fetched courses:", response); // <-- Inspect the response
+        // Extract courses array from API response
+        const courseArray = Array.isArray(response.courses)
+          ? response.courses
+          : [];
+        if (!courseArray || courseArray.length === 0) {
           setError("No courses found in database");
           return;
         }
-        const mappedCourses = await Promise.all(
-          querySnapshot.docs.map(async (doc) => {
-            // Fetch reviews for this course
-            const reviewsRef = collection(db, "courses", doc.id, "reviews");
-            const reviewsSnap = await getDocs(reviewsRef);
-            const ratings = reviewsSnap.docs.map((d) => d.data().rating || 0);
-            const average =
-              ratings.length > 0
-                ? ratings.reduce((a, b) => a + b, 0) / ratings.length
-                : 0;
-            const reviewCount = ratings.length;
-
-            return {
-              id: doc.id,
-              code: doc.data()["Course Code"] || "",
-              title:
-                doc.data()["Course Title"] || doc.data()["Course Name"] || "",
-              description: doc.data()["Course Description"] || "",
-              department: doc.data()["Course Code"]?.split(" ")[0] || "Unknown",
-              credits: parseInt(doc.data().Credits) || 3,
-              duration: doc.data()["Offered Semester"] || "Not specified",
-              instructor: doc.data()["Course Professor"] || "Not available",
-              rating: average,
-              reviews: reviewCount,
-              difficulty: "Intermediate",
-              prerequisites: doc.data()["Course Prerequisite"]
-                ? [doc.data()["Course Prerequisite"]]
-                : [],
-              schedule: "Not specified",
-              location: "Not specified",
-              capacity: 0,
-              enrolled: 0,
-              url: doc.data()["Course URL"] || "",
-            };
-          })
-        );
+        // Map/normalize courses using correct API keys
+        const mappedCourses = courseArray.map((course, idx) => ({
+          id: course.id || course["Course Code"] || idx,
+          code: course["Course Code"] || "",
+          title: course["Course Title"] || course["Course Name"] || "",
+          description: course["Course Description"] || "",
+          department: course["Course Code"]
+            ? course["Course Code"].split(" ")[0]
+            : "Unknown",
+          credits: parseInt(course["Credits"]) || 3,
+          duration: course["Offered Semester"] || "Not specified",
+          instructor: course["Course Professor"] || "Not available",
+          rating: typeof course.rating === "number" ? course.rating : 0,
+          reviews: typeof course.reviews === "number" ? course.reviews : 0,
+          difficulty: course.difficulty || "Intermediate",
+          prerequisites: course["Course Prerequisite"]
+            ? [course["Course Prerequisite"]]
+            : [],
+          schedule: course.schedule || "Not specified",
+          location: course.location || "Not specified",
+          capacity: course.capacity || 0,
+          enrolled: course.enrolled || 0,
+          url: course["Course URL"] || "",
+        }));
         setAllCourses(mappedCourses);
       } catch (error) {
         setError(error.message);

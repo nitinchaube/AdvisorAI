@@ -1,4 +1,4 @@
-const API_BASE_URL = "http://localhost:5003/api";
+const API_BASE_URL = "http://localhost:5002/api";
 
 class ApiService {
   constructor() {
@@ -362,4 +362,35 @@ class ApiService {
   }
 }
 
-export const apiService = new ApiService();
+const apiService = new ApiService();
+
+apiService.getCourseReviews = async function (courseId) {
+  const res = await fetch(`${this.baseURL}/courses/${courseId}/reviews`, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${localStorage.getItem("backendToken") || ""}`,
+    },
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error("Failed to fetch reviews");
+  return await res.json();
+};
+
+apiService.postCourseReview = async function (courseId, data, token) {
+  const res = await fetch(`${this.baseURL}/courses/${courseId}/reviews`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${
+        token || localStorage.getItem("backendToken") || ""
+      }`,
+    },
+    credentials: "include",
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("Failed to post review");
+  return await res.json();
+};
+
+export { apiService };

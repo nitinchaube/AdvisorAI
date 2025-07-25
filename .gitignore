@@ -16,7 +16,10 @@ yarn-debug.log*
 yarn-error.log*
 coverage/
 *.log
-
+*firebase_key.json
+*firebae_key1.json
+*firebase.js
+uploads/
 # Python
 __pycache__/
 *.py[cod]
@@ -57,3 +60,4 @@ Desktop.ini
 # Ignore all data files
 **/Data/
 **/VectorDB/
+*firebase.js
