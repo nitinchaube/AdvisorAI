@@ -1,14 +1,5 @@
 import React, { useState, useEffect } from "react";
 import {
-  doc,
-  getDoc,
-  collection,
-  getDocs,
-  addDoc,
-  serverTimestamp,
-} from "firebase/firestore";
-import { db } from "../config/firebase";
-import {
   Star,
   Users,
   Clock,
@@ -23,6 +14,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
+import { apiService } from "../services/api";
 
 const CourseDetails = ({ courseId, onBack }) => {
   const [course, setCourse] = useState(null);
@@ -32,7 +24,8 @@ const CourseDetails = ({ courseId, onBack }) => {
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const { currentUser } = useAuth();
+  const [submitting, setSubmitting] = useState(false);
+  const { currentUser, token } = useAuth();
 
   const renderStars = (rating, size = 5) => (
     <div className="flex">
@@ -58,27 +51,28 @@ const CourseDetails = ({ courseId, onBack }) => {
     const fetchCourseAndReviews = async () => {
       try {
         setLoading(true);
-        // Fetch course
-        const courseRef = doc(db, "courses", courseId);
-        const courseSnap = await getDoc(courseRef);
-        if (courseSnap.exists()) {
-          setCourse({ id: courseSnap.id, ...courseSnap.data() });
+        // Fetch all courses and filter by courseId
+        const response = await apiService.getCourses();
+        const courseArray = Array.isArray(response.courses)
+          ? response.courses
+          : [];
+        const found = courseArray.find(
+          (c) => c.id === courseId || c["Course Code"] === courseId
+        );
+        if (found) {
+          setCourse(found);
         } else {
           setError("Course not found");
           return;
         }
-
-        // Fetch reviews
-        const reviewsRef = collection(db, "courses", courseId, "reviews");
-        const reviewsSnap = await getDocs(reviewsRef);
-        const reviewsData = reviewsSnap.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
+        // Fetch reviews from backend
+        const reviewRes = await apiService.getCourseReviews(courseId);
         setReviews(
-          reviewsData.sort(
-            (a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)
-          )
+          Array.isArray(reviewRes.reviews)
+            ? reviewRes.reviews.sort(
+                (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+              )
+            : []
         );
       } catch (err) {
         setError(err.message);
@@ -91,6 +85,7 @@ const CourseDetails = ({ courseId, onBack }) => {
   }, [courseId]);
 
   const handleSubmitComment = async () => {
+    setError(null);
     if (!currentUser) {
       setError("Please login to add a review.");
       return;
@@ -99,36 +94,34 @@ const CourseDetails = ({ courseId, onBack }) => {
       setError("Please provide a rating and review text.");
       return;
     }
+    setSubmitting(true);
     try {
-      await addDoc(collection(db, "courses", courseId, "reviews"), {
-        text: newComment,
-        rating: newRating,
-        createdAt: serverTimestamp(),
-        userId: currentUser.uid,
-        userName: isAnonymous
-          ? "Anonymous"
-          : currentUser.displayName || currentUser.email.split("@")[0],
-      });
+      await apiService.postCourseReview(
+        courseId,
+        {
+          rating: newRating,
+          text: newComment,
+          isAnonymous,
+        },
+        token
+      );
       setNewComment("");
       setNewRating(0);
       setIsAnonymous(false);
-      setError(null);
       // Refresh reviews
-      const reviewsSnap = await getDocs(
-        collection(db, "courses", courseId, "reviews")
-      );
-      const reviewsData = reviewsSnap.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
+      const reviewRes = await apiService.getCourseReviews(courseId);
       setReviews(
-        reviewsData.sort(
-          (a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)
-        )
+        Array.isArray(reviewRes.reviews)
+          ? reviewRes.reviews.sort(
+              (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+            )
+          : []
       );
     } catch (err) {
       setError("Failed to submit review. Please try again.");
       console.error("Error adding comment:", err);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -169,7 +162,8 @@ const CourseDetails = ({ courseId, onBack }) => {
                     <BookOpen className="w-6 h-6 text-white" />
                   </div>
                   <h1 className="text-3xl font-bold text-gray-900">
-                    {course["Course Code"]} - {course["Course Title"]}
+                    {course["Course Code"]} -{" "}
+                    {course["Course Title"] || course["Course Name"]}
                   </h1>
                 </div>
                 <p className="text-gray-600 leading-relaxed">
@@ -178,7 +172,7 @@ const CourseDetails = ({ courseId, onBack }) => {
               </div>
               <div className="bg-gradient-to-br from-blue-50 to-purple-50 p-4 rounded-xl shadow-inner w-full lg:w-auto">
                 <p className="font-semibold text-gray-800 mb-2">
-                  Credits: {course.Credits}
+                  Credits: {course["Credits"]}
                 </p>
                 <p className="text-gray-700">
                   Professor: {course["Course Professor"]}
@@ -259,7 +253,9 @@ const CourseDetails = ({ courseId, onBack }) => {
                     </p>
                     <p className="text-gray-700 mb-2">{review.text}</p>
                     <p className="text-sm text-gray-500">
-                      {review.createdAt?.toDate().toLocaleString()}
+                      {review.createdAt
+                        ? new Date(review.createdAt).toLocaleString()
+                        : ""}
                     </p>
                   </div>
                 ))
@@ -318,9 +314,10 @@ const CourseDetails = ({ courseId, onBack }) => {
               <button
                 onClick={handleSubmitComment}
                 className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 rounded-lg font-medium hover:from-blue-700 hover:to-purple-700 transition-all shadow-md hover:shadow-lg flex items-center justify-center space-x-2"
+                disabled={submitting}
               >
                 <Send className="w-5 h-5" />
-                <span>Submit Review</span>
+                <span>{submitting ? "Submitting..." : "Submit Review"}</span>
               </button>
             </div>
           </div>

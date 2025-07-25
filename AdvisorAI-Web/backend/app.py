@@ -130,14 +130,18 @@ def invalidate_chat_cache(user_id):
 def mongo_doc_to_json(doc):
     if not doc:
         return doc
-    doc = dict(doc)
-    if '_id' in doc:
-        doc['id'] = str(doc['_id'])
-        del doc['_id']
-    # Recursively convert lists of docs (for messages, etc.)
-    for k, v in doc.items():
-        if isinstance(v, list):
-            doc[k] = [mongo_doc_to_json(item) if isinstance(item, dict) else item for item in v]
+    if isinstance(doc, ObjectId):
+        return str(doc)
+    if isinstance(doc, list):
+        return [mongo_doc_to_json(item) for item in doc]
+    if isinstance(doc, dict):
+        doc = dict(doc)
+        if '_id' in doc:
+            doc['id'] = str(doc['_id'])
+            del doc['_id']
+        for k, v in doc.items():
+            doc[k] = mongo_doc_to_json(v)
+        return doc
     return doc
 
 # Health check endpoint
@@ -917,17 +921,12 @@ def get_user_chat_history():
 @app.route('/api/courses', methods=['GET'])
 @jwt_required()
 def get_courses():
-    collection_name = request.args.get('collection_name', 'AllCourseRelatedData')
     try:
-        collection = load_vector_store(collection_name)
-        results = collection.get(include=['metadatas', 'documents'])
         courses = []
-        for i in range(len(results['ids'])):
-            courses.append({
-                'id': results['ids'][i],
-                'metadata': results['metadatas'][i],
-                'content': results['documents'][i]
-            })
+        docs = mongo_db.courses.find()
+        for doc in docs:
+            course = mongo_doc_to_json(doc)
+            courses.append(course)
         return jsonify({'success': True, 'courses': courses})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -935,7 +934,7 @@ def get_courses():
 @app.route('/api/courses/<id>', methods=['GET'])
 @jwt_required()
 def get_course(id):
-    collection_name = request.args.get('collection_name', 'AllCourseRelatedData')
+    collection_name = request.args.get('collection_name', 'courses')
     try:
         collection = load_vector_store(collection_name)
         result = collection.get(ids=[id], include=['metadatas', 'documents'])
@@ -951,14 +950,57 @@ def get_course(id):
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+# --- Course Reviews Endpoints ---
+@app.route('/api/courses/<course_id>/reviews', methods=['GET'])
+@jwt_required()
+def get_course_reviews(course_id):
+    try:
+        reviews = []
+        docs = mongo_db.course_reviews.find({'course_id': course_id})
+        for doc in docs:
+            review = mongo_doc_to_json(doc)
+            reviews.append(review)
+        return jsonify({'success': True, 'reviews': reviews}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/courses/<course_id>/reviews', methods=['POST'])
+@jwt_required()
+def add_course_review(course_id):
+    try:
+        user_id = get_jwt_identity()
+        data = request.get_json()
+        rating = data.get('rating')
+        text = data.get('text', '')
+        isAnonymous = data.get('isAnonymous', False)
+        user_doc = mongo_db.users.find_one({'uid': user_id})
+        if isAnonymous or not user_doc:
+            userName = "Anonymous"
+        else:
+            userName = user_doc.get('fullName') or user_doc.get('email', '').split('@')[0]
+        review_doc = {
+            'course_id': course_id,
+            'user_id': user_id,
+            'userName': userName,
+            'rating': rating,
+            'text': text,
+            'isAnonymous': isAnonymous,
+            'createdAt': datetime.now()
+        }
+        result = mongo_db.course_reviews.insert_one(review_doc)
+        review_doc['id'] = str(result.inserted_id)
+        return jsonify({'success': True, 'review': review_doc}), 201
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 def admin_required(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
         user_id = get_jwt_identity()
-        if db is None:
+        if mongo_db is None:
             return jsonify({"error": "Database not available"}), 500
-        user_doc = db.collection('users').document(user_id).get()
-        if not user_doc.exists or user_doc.to_dict().get('role') != 'admin':
+        user_doc = mongo_db.users.find_one({'uid': user_id})
+        if not user_doc or user_doc.get('role') != 'admin':
             return jsonify({"error": "Admin access required"}), 403
         return fn(*args, **kwargs)
     return wrapper
@@ -989,10 +1031,9 @@ def delete_from_chroma(course_id):
 def get_all_courses():
     try:
         courses = []
-        docs = db.collection('courses').stream()
+        docs = mongo_db.courses.find()
         for doc in docs:
-            course = doc.to_dict()
-            course['id'] = doc.id
+            course = mongo_doc_to_json(doc)
             courses.append(course)
         return jsonify({'success': True, 'courses': courses})
     except Exception as e:
@@ -1005,10 +1046,13 @@ def add_course():
     data = request.get_json()
     if not data:
         return jsonify({'error': 'Data is required'}), 400
-    course_ref = db.collection('courses').document()
-    course_ref.set(data)
-    sync_course_to_chroma(course_ref.id, data)
-    return jsonify({'success': True, 'id': course_ref.id}), 201
+    try:
+        result = mongo_db.courses.insert_one(data)
+        course_id = str(result.inserted_id)
+        sync_course_to_chroma(course_id, data)
+        return jsonify({'success': True, 'id': course_id}), 201
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/admin/courses/<id>', methods=['PUT'])
 @jwt_required()
@@ -1017,35 +1061,43 @@ def update_course(id):
     data = request.get_json()
     if not data:
         return jsonify({'error': 'Data is required'}), 400
-    course_ref = db.collection('courses').document(id)
-    if not course_ref.get().exists:
-        return jsonify({'error': 'Course not found'}), 404
-    course_ref.update(data)
-    sync_course_to_chroma(id, data)
-    return jsonify({'success': True})
+    try:
+        course_ref = mongo_db.courses.find_one({'_id': ObjectId(id)})
+        if not course_ref:
+            return jsonify({'error': 'Course not found'}), 404
+        mongo_db.courses.update_one({'_id': ObjectId(id)}, {'$set': data})
+        sync_course_to_chroma(id, data)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/admin/courses/<id>', methods=['DELETE'])
 @jwt_required()
 @admin_required
 def delete_course(id):
-    course_ref = db.collection('courses').document(id)
-    if not course_ref.get().exists:
-        return jsonify({'error': 'Course not found'}), 404
-    course_ref.delete()
-    delete_from_chroma(id)
-    return jsonify({'success': True})
+    try:
+        course_ref = mongo_db.courses.find_one({'_id': ObjectId(id)})
+        if not course_ref:
+            return jsonify({'error': 'Course not found'}), 404
+        mongo_db.courses.delete_one({'_id': ObjectId(id)})
+        delete_from_chroma(id)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/admin/courses/<id>', methods=['GET'])
 @jwt_required()
 @admin_required
 def get_admin_course(id):
-    course_ref = db.collection('courses').document(id)
-    doc = course_ref.get()
-    if doc.exists:
-        course = doc.to_dict()
-        course['id'] = id
-        return jsonify({'success': True, 'course': course})
-    return jsonify({'success': False, 'error': 'Course not found'}), 404
+    try:
+        doc = mongo_db.courses.find_one({'_id': ObjectId(id)})
+        if doc:
+            course = mongo_doc_to_json(doc)
+            course['id'] = id
+            return jsonify({'success': True, 'course': course})
+        return jsonify({'success': False, 'error': 'Course not found'}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5003))
