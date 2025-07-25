@@ -433,9 +433,13 @@ def get_user_profile():
         if mongo_db is not None:
             user_doc = mongo_db.users.find_one({'uid': user_id})
             if user_doc:
+                # Ensure profileCompleted field is always present
+                profile = mongo_doc_to_json(user_doc)
+                if 'profileCompleted' not in profile:
+                    profile['profileCompleted'] = False
                 return jsonify({
                     "success": True,
-                    "profile": mongo_doc_to_json(user_doc)
+                    "profile": profile
                 }), 200
             else:
                 return jsonify({"error": "User profile not found"}), 404
@@ -461,6 +465,8 @@ def update_user_profile():
                 # Update existing document
                 user_ref.update(data)
                 user_ref['updatedAt'] = datetime.now()
+                # Set profileCompleted to True when profile is saved
+                user_ref['profileCompleted'] = True
                 mongo_db.users.replace_one({'uid': user_id}, user_ref)
             else:
                 # Create new document
@@ -468,7 +474,8 @@ def update_user_profile():
                     'uid': user_id,
                     **data,
                     'createdAt': datetime.now(),
-                    'updatedAt': datetime.now()
+                    'updatedAt': datetime.now(),
+                    'profileCompleted': True  # Set profileCompleted to True for new profiles
                 }
                 mongo_db.users.insert_one(user_ref)
             
@@ -1046,6 +1053,51 @@ def get_admin_course(id):
         course['id'] = id
         return jsonify({'success': True, 'course': course})
     return jsonify({'success': False, 'error': 'Course not found'}), 404
+
+# Utility endpoint to check and fix profile completion status
+@app.route('/api/admin/fix-profile-completion', methods=['POST'])
+@jwt_required()
+def fix_profile_completion():
+    """Fix profile completion status for users who have profile data but missing the flag"""
+    try:
+        user_id = get_jwt_identity()
+        
+        if mongo_db is not None:
+            # Get user document
+            user_doc = mongo_db.users.find_one({'uid': user_id})
+            if user_doc:
+                # Check if user has profile data but missing profileCompleted flag
+                has_profile_data = (
+                    user_doc.get('fullName') or 
+                    user_doc.get('resumeData') or 
+                    any(key in user_doc for key in ['experience', 'education', 'skills', 'summary'])
+                )
+                
+                if has_profile_data and not user_doc.get('profileCompleted'):
+                    # Update the document to set profileCompleted to True
+                    user_doc['profileCompleted'] = True
+                    user_doc['updatedAt'] = datetime.now()
+                    mongo_db.users.replace_one({'uid': user_id}, user_doc)
+                    
+                    return jsonify({
+                        "success": True,
+                        "message": "Profile completion status fixed",
+                        "profileCompleted": True
+                    }), 200
+                else:
+                    return jsonify({
+                        "success": True,
+                        "message": "Profile completion status is correct",
+                        "profileCompleted": user_doc.get('profileCompleted', False)
+                    }), 200
+            else:
+                return jsonify({"success": False, "error": "User not found"}), 404
+        else:
+            return jsonify({"success": False, "error": "Database not available"}), 500
+            
+    except Exception as e:
+        print(f"  Fix profile completion error: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5003))

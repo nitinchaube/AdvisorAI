@@ -73,16 +73,20 @@ const Login = () => {
       localStorage.setItem('backendToken', backendResponse.access_token);
       console.log("💾 Token stored in localStorage");
       
-      // Step 5: Check if user has completed profile
-      console.log("🔍 Checking user profile status...");
-      const profileCompleted = isProfileCompleted();
-      console.log("📊 Profile completed:", profileCompleted);
-      
-      if (profileCompleted) {
-        console.log("🎯 Redirecting to dashboard...");
-        navigate('/dashboard');
+      // Step 5: Fetch user profile and set profileCompleted
+      console.log("🔍 Fetching user profile after backend token set...");
+      const profile = await apiService.getUserProfile();
+      if (profile.success && profile.profile) {
+        localStorage.setItem('profileCompleted', profile.profile.profileCompleted ? 'true' : 'false');
+        console.log("📊 Profile completed:", profile.profile.profileCompleted);
+        if (profile.profile.profileCompleted) {
+          navigate('/dashboard');
+        } else {
+          navigate('/profile-completion');
+        }
       } else {
-        console.log("🎯 Redirecting to profile completion...");
+        // fallback if profile fetch fails
+        localStorage.setItem('profileCompleted', 'false');
         navigate('/profile-completion');
       }
       
