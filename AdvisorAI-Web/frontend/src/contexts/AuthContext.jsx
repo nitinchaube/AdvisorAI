@@ -86,6 +86,13 @@ export function AuthProvider({ children }) {
         profileCompleted: true
       }));
     }
+    // Update userProfile state if available
+    if (userProfile) {
+      setUserProfile(prev => ({
+        ...prev,
+        profileCompleted: true
+      }));
+    }
     console.log('AuthContext: Profile marked as completed');
   }
 
@@ -93,10 +100,13 @@ export function AuthProvider({ children }) {
   function isProfileCompleted() {
     const localStorageStatus = localStorage.getItem('profileCompleted') === 'true';
     const userStatus = currentUser?.profileCompleted;
+    const userProfileStatus = userProfile?.profileCompleted === true;
     
-    // If either localStorage or user state indicates completion, return true
-    const isCompleted = localStorageStatus || userStatus;
-    console.log('AuthContext: Profile completion check - localStorage:', localStorageStatus, 'userState:', userStatus, 'final:', isCompleted);
+    // If any source indicates completion, return true
+    const isCompleted = localStorageStatus || userStatus || userProfileStatus;
+    
+    console.log('AuthContext: Profile completion check - localStorage:', localStorageStatus, 
+                'userState:', userStatus, 'userProfile:', userProfileStatus, 'final:', isCompleted);
     
     return isCompleted;
   }
@@ -131,27 +141,17 @@ export function AuthProvider({ children }) {
   }
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
       console.log('AuthContext: Auth state changed:', user ? user.uid : 'No user');
-      
       if (user) {
         setCurrentUser(user);
-        try {
-          const profile = await apiService.getUserProfile();
-          setUserProfile(profile.profile);
-          localStorage.setItem('profileCompleted', profile.profile.profileCompleted ? 'true' : 'false');
-        } catch (error) {
-          console.error('Error fetching user profile:', error);
-        }
       } else {
         setCurrentUser(null);
         setUserProfile(null);
         localStorage.removeItem('profileCompleted');
       }
-      
       setLoading(false);
     });
-
     return unsubscribe;
   }, []);
 
