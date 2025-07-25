@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import './LoadingSpinner.css';
 
 const ProtectedRoute = ({ children, requireProfileCompletion = true, requireAdmin = false }) => {
-  const { currentUser, loading, userProfile } = useAuth();
+  const { currentUser, loading, userProfile, isProfileCompleted } = useAuth();
   const location = useLocation();
 
   console.log('ProtectedRoute: Current location:', location.pathname);
@@ -31,15 +31,8 @@ const ProtectedRoute = ({ children, requireProfileCompletion = true, requireAdmi
 
   // If profile completion is required and user hasn't completed profile
   if (requireProfileCompletion) {
-    const hasCompletedProfile = currentUser.profileCompleted || 
-                               localStorage.getItem('profileCompleted') === 'true';
-    
-    console.log('ProtectedRoute: Profile completion check:');
-    console.log('  - currentUser.profileCompleted:', currentUser.profileCompleted);
-    console.log('  - localStorage profileCompleted:', localStorage.getItem('profileCompleted'));
-    console.log('  - hasCompletedProfile:', hasCompletedProfile);
-    console.log('  - current pathname:', location.pathname);
-    
+    const hasCompletedProfile = isProfileCompleted();
+    console.log('ProtectedRoute: Profile completion check (using isProfileCompleted):', hasCompletedProfile);
     if (!hasCompletedProfile && location.pathname !== '/profile-completion') {
       console.log('ProtectedRoute: Profile not completed, redirecting to profile-completion');
       return <Navigate to="/profile-completion" replace />;
