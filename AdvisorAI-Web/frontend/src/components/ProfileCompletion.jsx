@@ -285,6 +285,35 @@ const ProfileCompletion = () => {
     }
   };
 
+  // Debug function to fix profile completion status
+  const handleFixProfileCompletion = async () => {
+    try {
+      setError("");
+      const response = await fetch('/api/admin/fix-profile-completion', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('backendToken')}`
+        }
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setSuccess(`Profile completion status: ${data.message}`);
+        // Update localStorage
+        localStorage.setItem('profileCompleted', data.profileCompleted ? 'true' : 'false');
+        setTimeout(() => {
+          setSuccess("");
+        }, 3000);
+      } else {
+        setError(`Fix failed: ${data.error}`);
+      }
+    } catch (error) {
+      setError(`Fix failed: ${error.message}`);
+    }
+  };
+
   const debugExtraction = async () => {
     if (!file) {
       setError("Please select a file first");
@@ -681,6 +710,16 @@ const ProfileCompletion = () => {
                     {isProfileCompleted() ? 'Update Profile' : 'Save Profile'}
                   </>
                 )}
+              </button>
+              
+              {/* Debug button for profile completion status */}
+              <button 
+                className="debug-btn secondary-btn"
+                onClick={handleFixProfileCompletion}
+                title="Fix profile completion status"
+              >
+                <Settings className="btn-icon" />
+                Fix Profile Status
               </button>
             </div>
           </div>
