@@ -329,7 +329,7 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
                     </Link>
                   )}
                 </div>
-
+                <button
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
