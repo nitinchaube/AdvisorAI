@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import './LoadingSpinner.css';
 
 const PublicRoute = ({ children, redirectTo = "/dashboard" }) => {
-  const { currentUser, loading } = useAuth();
+  const { currentUser, loading, isProfileCompleted } = useAuth();
   const location = useLocation();
 
   // Show loading spinner while checking auth state
@@ -20,13 +20,10 @@ const PublicRoute = ({ children, redirectTo = "/dashboard" }) => {
   // If user is authenticated, redirect to specified route
   if (currentUser) {
     // Check if user has completed profile
-    const hasCompletedProfile = currentUser.profileCompleted || 
-                               localStorage.getItem('profileCompleted') === 'true';
-    
+    const hasCompletedProfile = isProfileCompleted();
     if (!hasCompletedProfile && redirectTo === "/dashboard") {
       return <Navigate to="/profile-completion" replace />;
     }
-    
     return <Navigate to={redirectTo} replace />;
   }
 
