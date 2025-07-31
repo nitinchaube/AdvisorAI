@@ -144,6 +144,15 @@ def mongo_doc_to_json(doc):
         return doc
     return doc
 
+def bson_safe(obj):
+    if isinstance(obj, ObjectId):
+        return str(obj)
+    if isinstance(obj, list):
+        return [bson_safe(item) for item in obj]
+    if isinstance(obj, dict):
+        return {k: bson_safe(v) for k, v in obj.items()}
+    return obj
+
 # Health check endpoint
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -493,6 +502,33 @@ def update_user_profile():
     except Exception as e:
         print(f"  Update profile error: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+# Public portfolio endpoint
+@app.route('/api/public-profile/<user_id>', methods=['GET'])
+def get_public_profile(user_id):
+    """Get public/portfolio profile data for a user (view-only, no auth required)"""
+    try:
+        if mongo_db is not None:
+            user_doc = mongo_db.users.find_one({'uid': user_id})
+            if user_doc:
+                profile = mongo_doc_to_json(user_doc)
+                # Only include public/important fields
+                public_fields = [
+                    'fullName', 'email', 'location', 'summary',
+                    'experience', 'education', 'skills', 'certifications', 'projects'
+                ]
+                public_profile = {k: profile.get(k) for k in public_fields if k in profile}
+                return jsonify({
+                    "success": True,
+                    "profile": public_profile
+                }), 200
+            else:
+                return jsonify({"success": False, "error": "Profile not found"}), 404
+        else:
+            return jsonify({"success": False, "error": "Database not available"}), 500
+    except Exception as e:
+        print(f"  Get public profile error: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
 # Chat endpoints
 @app.route('/api/chat/query', methods=['POST'])
@@ -967,7 +1003,7 @@ def get_course_reviews(course_id):
         for doc in docs:
             review = mongo_doc_to_json(doc)
             reviews.append(review)
-        return jsonify({'success': True, 'reviews': reviews}), 200
+        return jsonify({'success': True, 'reviews': bson_safe(reviews)}), 200
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -995,8 +1031,7 @@ def add_course_review(course_id):
             'createdAt': datetime.now()
         }
         result = mongo_db.course_reviews.insert_one(review_doc)
-        review_doc['id'] = str(result.inserted_id)
-        return jsonify({'success': True, 'review': review_doc}), 201
+        return jsonify({'success': True, 'review': bson_safe(review_doc)}), 201
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
