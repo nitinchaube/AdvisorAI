@@ -694,6 +694,28 @@ const ProjectsGallery = ({ projects }) => (
               {proj.description}
             </div>
           )}
+          {proj.github && (
+            <div style={{ marginTop: 8 }}>
+              <a
+                href={proj.github}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  color: "#06b6d4",
+                  textDecoration: "underline",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  fontWeight: 600,
+                  fontSize: "1.01rem",
+                  marginTop: 2,
+                }}
+                title="View on GitHub"
+              >
+                <Github style={{ width: 18, height: 18 }} /> GitHub
+              </a>
+            </div>
+          )}
         </div>
       ))}
     </div>

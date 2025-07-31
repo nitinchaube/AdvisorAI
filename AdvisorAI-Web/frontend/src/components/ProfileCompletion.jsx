@@ -39,7 +39,8 @@ import {
   ArrowUpRight,
   Check,
   AlertCircle,
-  Loader2
+  Loader2,
+  Linkedin
 } from "lucide-react";
 import "./ProfileCompletion.css";
 
@@ -725,89 +726,181 @@ const ProfileCompletion = () => {
           </div>
 
           <div className="form-content">
-            {Object.entries(formData)
-              .filter(([fieldName]) => !['resume-data', 'resume-text'].includes(fieldName))
-              .map(([fieldName, fieldValue]) => (
-              <div key={fieldName} className="form-field">
-                <div className="field-header">
-                  <div className="field-icon">
-                    {getFieldIcon(fieldName)}
+            {/* --- GitHub and LinkedIn fields --- */}
+            <div className="form-field">
+              <div className="field-header">
+                <div className="field-icon"><Star /></div>
+                <h3 className="field-title">GitHub</h3>
+                <button className="edit-btn" onClick={() => setEditingField(editingField === 'github' ? null : 'github')} title="Edit field">{editingField === 'github' ? <EyeOff /> : <Edit />}</button>
+              </div>
+              <div className="field-content">
+                {editingField === 'github' ? (
+                  <div className="edit-mode">
+                    <input
+                      type="url"
+                      value={formData.github || ''}
+                      onChange={e => handleFormChange('github', e.target.value)}
+                      placeholder="Enter your GitHub profile URL"
+                      style={{ width: '100%' }}
+                    />
                   </div>
-                  <h3 className="field-title">{formatFieldName(fieldName)}</h3>
-                  <button 
-                    className="edit-btn"
-                    onClick={() => setEditingField(editingField === fieldName ? null : fieldName)}
-                    title="Edit field"
-                  >
-                    {editingField === fieldName ? <EyeOff /> : <Edit />}
-                  </button>
-                </div>
-                
-                <div className="field-content">
-                  {editingField === fieldName ? (
-                    <div className="edit-mode">
-                      {Array.isArray(fieldValue) ? (
-                        <div className="array-edit">
-                          {fieldValue.map((item, index) => (
-                            <div key={index} className="array-item-edit">
-                              <textarea
-                                value={typeof item === 'object' ? JSON.stringify(item, null, 2) : item}
-                                onChange={(e) => {
-                                  const newValue = [...fieldValue];
-                                  try {
-                                    newValue[index] = JSON.parse(e.target.value);
-                                  } catch {
-                                    newValue[index] = e.target.value;
-                                  }
-                                  handleFormChange(fieldName, newValue);
-                                }}
-                                placeholder={`Enter ${formatFieldName(fieldName).toLowerCase()}`}
-                              />
-                              <button 
-                                className="remove-item-btn"
-                                onClick={() => {
+                ) : (
+                  <div className="view-mode">
+                    {formData.github ? <a href={formData.github} target="_blank" rel="noopener noreferrer" style={{ color: '#06b6d4', textDecoration: 'underline' }}>{formData.github}</a> : <span className="field-value">Not specified</span>}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="form-field">
+              <div className="field-header">
+                <div className="field-icon"><Linkedin /></div>
+                <h3 className="field-title">LinkedIn</h3>
+                <button className="edit-btn" onClick={() => setEditingField(editingField === 'linkedin' ? null : 'linkedin')} title="Edit field">{editingField === 'linkedin' ? <EyeOff /> : <Edit />}</button>
+              </div>
+              <div className="field-content">
+                {editingField === 'linkedin' ? (
+                  <div className="edit-mode">
+                    <input
+                      type="url"
+                      value={formData.linkedin || ''}
+                      onChange={e => handleFormChange('linkedin', e.target.value)}
+                      placeholder="Enter your LinkedIn profile URL"
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                ) : (
+                  <div className="view-mode">
+                    {formData.linkedin ? <a href={formData.linkedin} target="_blank" rel="noopener noreferrer" style={{ color: '#0a66c2', textDecoration: 'underline' }}>{formData.linkedin}</a> : <span className="field-value">Not specified</span>}
+                  </div>
+                )}
+              </div>
+            </div>
+            {/* --- End GitHub/LinkedIn fields --- */}
+
+            {/* --- Other fields (auto-generated) --- */}
+            {Object.entries(formData)
+              .filter(([fieldName]) => !['resume-data', 'resume-text', 'github', 'linkedin'].includes(fieldName))
+              .map(([fieldName, fieldValue]) => (
+                <div key={fieldName} className="form-field">
+                  <div className="field-header">
+                    <div className="field-icon">{getFieldIcon(fieldName)}</div>
+                    <h3 className="field-title">{formatFieldName(fieldName)}</h3>
+                    <button className="edit-btn" onClick={() => setEditingField(editingField === fieldName ? null : fieldName)} title="Edit field">{editingField === fieldName ? <EyeOff /> : <Edit />}</button>
+                  </div>
+                  <div className="field-content">
+                    {editingField === fieldName ? (
+                      <div className="edit-mode">
+                        {/* Special handling for projects array */}
+                        {fieldName === 'projects' && Array.isArray(fieldValue) ? (
+                          <div className="array-edit">
+                            {fieldValue.map((item, index) => (
+                              <div key={index} className="array-item-edit">
+                                {/* Project fields: name, description, github */}
+                                <input
+                                  type="text"
+                                  value={item.name || ''}
+                                  onChange={e => {
+                                    const newValue = [...fieldValue];
+                                    newValue[index] = { ...item, name: e.target.value };
+                                    handleFormChange(fieldName, newValue);
+                                  }}
+                                  placeholder="Project Name"
+                                  style={{ marginBottom: 6, width: '100%' }}
+                                />
+                                <textarea
+                                  value={item.description || ''}
+                                  onChange={e => {
+                                    const newValue = [...fieldValue];
+                                    newValue[index] = { ...item, description: e.target.value };
+                                    handleFormChange(fieldName, newValue);
+                                  }}
+                                  placeholder="Project Description"
+                                  style={{ marginBottom: 6, width: '100%' }}
+                                />
+                                <input
+                                  type="url"
+                                  value={item.github || ''}
+                                  onChange={e => {
+                                    const newValue = [...fieldValue];
+                                    newValue[index] = { ...item, github: e.target.value };
+                                    handleFormChange(fieldName, newValue);
+                                  }}
+                                  placeholder="Project GitHub Link (optional)"
+                                  style={{ marginBottom: 6, width: '100%' }}
+                                />
+                                <button className="remove-item-btn" onClick={() => {
                                   const newValue = fieldValue.filter((_, i) => i !== index);
                                   handleFormChange(fieldName, newValue);
-                                }}
-                              >
-                                <Trash2 />
-                              </button>
-                            </div>
-                          ))}
-                          <button 
-                            className="add-item-btn"
-                            onClick={() => {
+                                }}><Trash2 /></button>
+                              </div>
+                            ))}
+                            <button className="add-item-btn" onClick={() => {
+                              const newValue = [...fieldValue, { name: '', description: '', github: '' }];
+                              handleFormChange(fieldName, newValue);
+                            }}><PlusCircle /> Add Project</button>
+                          </div>
+                        ) : Array.isArray(fieldValue) ? (
+                          <div className="array-edit">
+                            {fieldValue.map((item, index) => (
+                              <div key={index} className="array-item-edit">
+                                <textarea
+                                  value={typeof item === 'object' ? JSON.stringify(item, null, 2) : item}
+                                  onChange={e => {
+                                    const newValue = [...fieldValue];
+                                    try {
+                                      newValue[index] = JSON.parse(e.target.value);
+                                    } catch {
+                                      newValue[index] = e.target.value;
+                                    }
+                                    handleFormChange(fieldName, newValue);
+                                  }}
+                                  placeholder={`Enter ${formatFieldName(fieldName).toLowerCase()}`}
+                                />
+                                <button className="remove-item-btn" onClick={() => {
+                                  const newValue = fieldValue.filter((_, i) => i !== index);
+                                  handleFormChange(fieldName, newValue);
+                                }}><Trash2 /></button>
+                              </div>
+                            ))}
+                            <button className="add-item-btn" onClick={() => {
                               const newValue = [...fieldValue, ''];
                               handleFormChange(fieldName, newValue);
+                            }}><PlusCircle /> Add Item</button>
+                          </div>
+                        ) : (
+                          <textarea
+                            value={typeof fieldValue === 'object' ? JSON.stringify(fieldValue, null, 2) : fieldValue}
+                            onChange={e => {
+                              try {
+                                const parsed = JSON.parse(e.target.value);
+                                handleFormChange(fieldName, parsed);
+                              } catch {
+                                handleFormChange(fieldName, e.target.value);
+                              }
                             }}
-                          >
-                            <PlusCircle />
-                            Add Item
-                          </button>
-                        </div>
-                      ) : (
-                        <textarea
-                          value={typeof fieldValue === 'object' ? JSON.stringify(fieldValue, null, 2) : fieldValue}
-                          onChange={(e) => {
-                            try {
-                              const parsed = JSON.parse(e.target.value);
-                              handleFormChange(fieldName, parsed);
-                            } catch {
-                              handleFormChange(fieldName, e.target.value);
-                            }
-                          }}
-                          placeholder={`Enter ${formatFieldName(fieldName).toLowerCase()}`}
-                        />
-                      )}
-                    </div>
-                  ) : (
-                    <div className="view-mode">
-                      {renderFieldValue(fieldName, fieldValue)}
-                    </div>
-                  )}
+                            placeholder={`Enter ${formatFieldName(fieldName).toLowerCase()}`}
+                          />
+                        )}
+                      </div>
+                    ) : (
+                      <div className="view-mode">
+                        {/* Special handling for projects array */}
+                        {fieldName === 'projects' && Array.isArray(fieldValue) ? (
+                          <div className="array-field">
+                            {fieldValue.map((item, index) => (
+                              <div key={index} className="object-item">
+                                <div><strong>{item.name}</strong></div>
+                                <div>{item.description}</div>
+                                {item.github && <div><a href={item.github} target="_blank" rel="noopener noreferrer" style={{ color: '#06b6d4', textDecoration: 'underline' }}>GitHub Link</a></div>}
+                              </div>
+                            ))}
+                          </div>
+                        ) : renderFieldValue(fieldName, fieldValue)}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
           </div>
         </div>
       </div>

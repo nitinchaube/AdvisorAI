@@ -20,6 +20,8 @@ import {
   Edit,
   Home,
   Copy,
+  Github,
+  Linkedin,
 } from "lucide-react";
 
 const ProfileData = () => {
@@ -87,6 +89,47 @@ const ProfileData = () => {
 
   // Helper function to render field value
   const renderFieldValue = (fieldName, value) => {
+    if (fieldName === "projects" && Array.isArray(value)) {
+      return (
+        <div style={{ marginLeft: "1rem" }}>
+          {value.map((item, index) => (
+            <div
+              key={index}
+              style={{
+                marginBottom: "0.5rem",
+                padding: "0.5rem",
+                backgroundColor: "rgba(255,255,255,0.1)",
+                borderRadius: "4px",
+              }}
+            >
+              <div>
+                <strong>{item.name}</strong>
+              </div>
+              <div>{item.description}</div>
+              {item.github && (
+                <div style={{ marginTop: 4 }}>
+                  <a
+                    href={item.github}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      color: "#06b6d4",
+                      textDecoration: "underline",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    <Github style={{ width: 18, height: 18 }} /> GitHub
+                  </a>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      );
+    }
+
     if (Array.isArray(value)) {
       return (
         <div style={{ marginLeft: "1rem" }}>
@@ -290,6 +333,53 @@ const ProfileData = () => {
               >
                 Profile Data
               </h1>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "1rem",
+                  marginTop: 8,
+                  justifyContent: "center",
+                }}
+              >
+                {profileData?.github && (
+                  <a
+                    href={profileData.github}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="GitHub"
+                    style={{
+                      color: "#fff",
+                      background: "#23272f",
+                      borderRadius: "50%",
+                      padding: 6,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Github style={{ width: 22, height: 22 }} />
+                  </a>
+                )}
+                {profileData?.linkedin && (
+                  <a
+                    href={profileData.linkedin}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="LinkedIn"
+                    style={{
+                      color: "#fff",
+                      background: "#0a66c2",
+                      borderRadius: "50%",
+                      padding: 6,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Linkedin style={{ width: 22, height: 22 }} />
+                  </a>
+                )}
+              </div>
               <div
                 style={{
                   display: "inline-flex",
