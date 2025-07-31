@@ -515,9 +515,15 @@ def get_public_profile(user_id):
                 # Only include public/important fields
                 public_fields = [
                     'fullName', 'email', 'location', 'summary',
+                    'github', 'linkedin',
                     'experience', 'education', 'skills', 'certifications', 'projects'
                 ]
                 public_profile = {k: profile.get(k) for k in public_fields if k in profile}
+                # For each project, only include github if present
+                if 'projects' in public_profile and isinstance(public_profile['projects'], list):
+                    for proj in public_profile['projects']:
+                        if 'github' not in proj:
+                            proj['github'] = None
                 return jsonify({
                     "success": True,
                     "profile": public_profile
