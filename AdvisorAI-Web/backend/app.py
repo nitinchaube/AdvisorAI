@@ -8,12 +8,12 @@ from datetime import timedelta, datetime
 import json
 from dotenv import load_dotenv
 from resume_processor import ResumeProcessor
-from rag_service import rag_service
+# Replace RAG service with chatbot integration
+from chatbot_integration import get_chatbot_integration
 import logging
 import time
 import redis
 from functools import wraps
-from rag_service import load_vector_store
 import uuid
 from langchain_core.documents import Document
 
@@ -82,7 +82,7 @@ except Exception as e:
 # Restore only Firebase Admin SDK initialization for authentication
 if not firebase_admin._apps:
     cred = credentials.Certificate('firebae_key1.json')
-    firebase_admin.initialize_app(cred)
+firebase_admin.initialize_app(cred)
 
 # Cache decorator for chat sessions
 def cache_chat_sessions(expiry=3600):  # 1 hour cache
@@ -498,7 +498,7 @@ def update_user_profile():
 @app.route('/api/chat/query', methods=['POST'])
 @jwt_required()
 def chat_query():
-    """Process chat query with RAG"""
+    """Process chat query with LangGraph chatbot agents"""
     try:
         user_id = get_jwt_identity()
         data = request.get_json()
@@ -511,8 +511,11 @@ def chat_query():
         
         print(f"🔍 Processing chat query for user {user_id} in session {session_id}: {query}")
         
-        # Process query with RAG service
-        result = rag_service.process_query(
+        # Get chatbot integration service
+        chatbot_service = get_chatbot_integration()
+        
+        # Process query with LangGraph chatbot agents
+        result = chatbot_service.process_query(
             user_query=query,
             user_id=user_id,
             chat_history=chat_history
@@ -615,7 +618,7 @@ def chat_stream():
         
         def generate():
             try:
-                for token in rag_service.stream_query(
+                for token in get_chatbot_integration().stream_query(
                     user_query=query,
                     user_id=user_id,
                     chat_history=chat_history
@@ -875,14 +878,20 @@ def get_chat_history():
 def get_rag_stats():
     """Get RAG system statistics"""
     try:
-        stats = rag_service.get_system_stats()
+        chatbot_service = get_chatbot_integration()
+        stats = chatbot_service.get_system_stats()
+        
         return jsonify({
             "success": True,
             "stats": stats
         }), 200
+        
     except Exception as e:
-        print(f"  Get RAG stats error: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        print(f"  RAG stats error: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 
 @app.route('/api/chat/user-history', methods=['GET'])
 @jwt_required()
@@ -943,7 +952,7 @@ def get_courses():
 def get_course(id):
     collection_name = request.args.get('collection_name', 'courses')
     try:
-        collection = load_vector_store(collection_name)
+        collection = get_chatbot_integration().load_vector_store(collection_name)
         result = collection.get(ids=[id], include=['metadatas', 'documents'])
         if result['ids']:
             course = {
@@ -1017,19 +1026,19 @@ def admin_required(fn):
 @admin_required
 def get_collections():
     try:
-        stats = rag_service.get_system_stats()
+        stats = get_chatbot_integration().get_system_stats()
         return jsonify({'success': True, 'collections': stats['collection_names']})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
 def sync_course_to_chroma(course_id, course_data):
-    collection = load_vector_store('AllCourseRelatedData')
+    collection = get_chatbot_integration().load_vector_store('AllCourseRelatedData')
     content = json.dumps(course_data)
     metadata = {'title': course_data.get('Course Title', ''), 'code': course_data.get('Course Code', '')}
     collection.upsert(ids=[course_id], documents=[content], metadatas=[metadata])
 
 def delete_from_chroma(course_id):
-    collection = load_vector_store('AllCourseRelatedData')
+    collection = get_chatbot_integration().load_vector_store('AllCourseRelatedData')
     collection.delete(ids=[course_id])
 
 @app.route('/api/admin/courses', methods=['GET'])
