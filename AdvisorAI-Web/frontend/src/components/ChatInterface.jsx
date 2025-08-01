@@ -234,7 +234,7 @@ const ChatInterface = ({
       const errorMessage = {
         id: Date.now() + 1,
         type: 'ai',
-        content: `I apologize, but I encountered an error: ${error.message}. Please try again.`,
+        content: "I apologize, but I'm experiencing some technical difficulties. Please try again in a moment.",
         timestamp: new Date().toLocaleTimeString(),
         error: true
       };
