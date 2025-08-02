@@ -77,14 +77,15 @@ class ChatbotIntegrationService:
                     "response": result["answer"],
                     "sources": {
                         "collections_used": result.get("metadata", {}).get("tools_used", []),
-                        "documents_retrieved": 0,  # Will be updated if available
+                        "documents_retrieved": 0, # Will be updated if available
                         "web_search_performed": result.get("metadata", {}).get("web_search_performed", False),
                         "user_info_included": bool(user_id),
-                        "chat_history_included": bool(formatted_history),
+                        "chat_history_included": result.get("metadata", {}).get("chat_history_included", False),
                         "top_documents": []
                     },
                     "processing_time": time.time() - start_time,
-                    "error": False
+                    "error": False,
+                    "chat_name": result.get("metadata", {}).get("chat_name", "New Chat")
                 }
                 
                 # Add metadata from LangGraph result
