@@ -956,6 +956,41 @@ def get_course(id):
             return jsonify({'success': False, 'error': 'Course not found'}), 404
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+    
+
+@app.route('/api/faculty', methods=['GET'])
+@jwt_required()
+def get_faculty():
+    """Fetches all documents from the faculty collection."""
+    try:
+        faculty_list = []
+        # This line correctly points to your 'faculty' collection.
+        docs = mongo_db.faculty.find()
+        for doc in docs:
+            professor = mongo_doc_to_json(doc)
+            faculty_list.append(professor)
+        # The key 'faculty' matches the frontend code's expectation.
+        return jsonify({'success': True, 'faculty': faculty_list})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+    
+@app.route('/api/faculty/<id>', methods=['GET'])
+@jwt_required()
+def get_single_faculty(id):
+    """Fetches a single faculty member by their MongoDB document ID."""
+    try:
+        # Find the document in the 'faculty' collection by its ObjectId
+        doc = mongo_db.faculty.find_one({'_id': ObjectId(id)})
+
+        if doc:
+            # Convert the document to a JSON-friendly format
+            professor = mongo_doc_to_json(doc)
+            return jsonify({'success': True, 'professor': professor})
+        else:
+            return jsonify({'success': False, 'error': 'Faculty not found'}), 404
+    except Exception as e:
+        # This will catch errors, including an invalid ID format
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 # --- Course Reviews Endpoints ---
 @app.route('/api/courses/<course_id>/reviews', methods=['GET'])
@@ -1105,7 +1140,8 @@ def get_admin_course(id):
         return jsonify({'success': False, 'error': 'Course not found'}), 404
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
-
+    
+    
 # Utility endpoint to check and fix profile completion status
 @app.route('/api/admin/fix-profile-completion', methods=['POST'])
 @jwt_required()
