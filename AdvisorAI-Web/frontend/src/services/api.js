@@ -284,6 +284,42 @@ class ApiService {
     return this.makeRequest(`/admin/courses/${id}`);
   }
 
+
+  //get faculty data
+  async getFaculty() {
+    return this.makeRequest("/faculty");
+  }
+
+  async getSingleFaculty(id) {
+    return this.makeRequest(`/faculty/${id}`);
+  }
+
+  async getAllFaculty() {
+    return this.makeRequest("/admin/faculty");
+  }
+
+  async addFaculty(data) {
+    return this.makeRequest("/admin/faculty", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateFaculty(id, data) {
+    return this.makeRequest(`/admin/faculty/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteFaculty(id) {
+    return this.makeRequest(`/admin/faculty/${id}`, {
+      method: "DELETE",
+    });
+  }
+
+
+
   // Admin methods
   async addCourse(content, metadata) {
     return this.makeRequest("/admin/courses", {

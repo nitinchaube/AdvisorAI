@@ -8,6 +8,7 @@ import ChatHistoryView from "./ChatHistoryView";
 import RatingPage from "./RatingPage";
 import CourseExplorer from "./CourseExplorer";
 import CourseDetails from "./CourseDetails";
+import ProfessorDetails from "./ProfessorDetails";
 import { Link } from "react-router-dom";
 import { apiService } from "../services/api";
 import { chatCache } from "../utils/chatCache";
@@ -20,6 +21,7 @@ const Dashboard = () => {
   const [activeTab, setActiveTab] = useState("chat");
   const [sessionInitialized, setSessionInitialized] = useState(false);
   const [selectedCourseId, setSelectedCourseId] = useState(null);
+  const [selectedProfessorId, setSelectedProfessorId] = useState(null);
 
   const handleMenuToggle = () => {
     setSidebarOpen(!sidebarOpen);
@@ -64,6 +66,16 @@ const Dashboard = () => {
       setCurrentSessionTitle(newTitle);
     }
   };
+
+  const handleSelect = (itemId, category) => {
+  if (category === 'course') {
+    setSelectedCourseId(itemId);
+    setSelectedProfessorId(null); // Clear the other ID
+  } else if (category === 'professor') {
+    setSelectedProfessorId(itemId);
+    setSelectedCourseId(null); 
+  }
+};
 
   const loadSessionTitle = async (sessionId) => {
     try {
@@ -190,6 +202,14 @@ const Dashboard = () => {
           </div>
         );
       case "courses":
+        if (selectedProfessorId) { // Check for professor first
+          return (
+            <ProfessorDetails
+              professorId={selectedProfessorId}
+              onBack={() => setSelectedProfessorId(null)}
+            />
+          );
+        }
         if (selectedCourseId) {
           return (
             <CourseDetails
@@ -200,7 +220,8 @@ const Dashboard = () => {
         }
         return (
           <div className="h-full w-full overflow-hidden">
-            <CourseExplorer onSelectCourse={setSelectedCourseId} />
+            {/* Pass the new handler to CourseExplorer */}
+            <CourseExplorer onSelectCourse={handleSelect} />
           </div>
         );
       case "analytics":
