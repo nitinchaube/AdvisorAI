@@ -31,8 +31,18 @@ class WebTool:
         if "stevens" in query.lower() or "institute" in query.lower():
             return query
         
-        # Add Stevens Institute of Technology to the query
-        enhanced_query = f"{query} Stevens Institute of Technology"
+        # For professor queries, use a more specific search
+        if "professor" in query.lower() or "prof" in query.lower():
+            # Extract professor name if possible
+            words = query.lower().split()
+            if "dehnad" in words:
+                enhanced_query = "Professor Dehnad Stevens Institute of Technology faculty"
+            else:
+                enhanced_query = f"{query} Stevens Institute of Technology faculty"
+        else:
+            # Add Stevens Institute of Technology to the query
+            enhanced_query = f"{query} Stevens Institute of Technology"
+        
         print(f"Enhanced web query: '{query}' -> '{enhanced_query}'")
         return enhanced_query
 
@@ -169,15 +179,21 @@ class WebTool:
             # Enhance query with Stevens Institute of Technology
             enhanced_query = self._enhance_query_with_stevens(query)
             
+            print(f"🔍 WEB: Searching for: {enhanced_query}")
+            
             # Use existing web scraper function with RAG service approach
             web_content = scrape_web_content(enhanced_query, self.max_results)
             
-            # Extract and clean content
-            content = web_content.get("content", "")
-            urls = web_content.get("urls", [])
+            # Handle the response properly - scrape_web_content returns a string
+            if isinstance(web_content, str):
+                content = web_content
+                urls = []  # URLs not available in string format
+            else:
+                content = str(web_content)
+                urls = []
             
             # Clean and format content for better use
-            if content:
+            if content and len(content.strip()) > 100:  # Ensure we have meaningful content
                 # Remove excessive whitespace and format
                 content = re.sub(r'\s+', ' ', content).strip()
                 # Remove HTML tags if any
@@ -185,15 +201,18 @@ class WebTool:
                 # Remove special characters that might interfere
                 content = re.sub(r'[^\w\s\.\,\!\?\;\:\-\(\)]', '', content)
                 # Limit content length for processing but keep more content
-                content = content[:3000] if len(content) > 3000 else content
+                content = content[:5000] if len(content) > 5000 else content
                 
-                # Add source information
-                if urls:
-                    content += f"\n\nSources: {', '.join(urls[:3])}"
+                print(f"✅ WEB: Successfully extracted {len(content)} characters of web content")
+                print(f"📝 WEB: Content preview: {content[:200]}...")
+            else:
+                print(f"⚠️  WEB: No meaningful web content extracted (length: {len(content) if content else 0})")
+                content = "No relevant web content found for this query."
 
             return {
                 "search_results": urls,
                 "scraped_content": content,
+                "web_content": content,  # Add both keys for compatibility
                 "query": enhanced_query,
                 "original_query": query,
                 "success": True,
@@ -202,6 +221,7 @@ class WebTool:
             }
 
         except Exception as e:
+            print(f"❌ WEB: Error in web search and scrape: {str(e)}")
             return {
                 "error": f"Web search and scrape failed: {str(e)}",
                 "success": False

@@ -19,13 +19,13 @@ class ChromaAgent(BaseAgent):
         # Use RAG service logic for collection routing and document retrieval
         try:
             # Search collections using RAG service approach
-            search_results = self.chroma_tool.search_collections(query)
+            search_results = await self.chroma_tool.search_collections(query)
             
             # Update state with search results
             state["chroma_results"] = search_results
             state["collections_searched"] = search_results.get("collections_used", [])
             
-            print(f"Chroma search completed: {search_results.get('total_docs', 0)} documents from {len(search_results.get('collections_used', []))} collections")
+            print(f"Chroma search completed: {len(search_results.get('documents', []))} documents from {len(search_results.get('collections_used', []))} collections")
             
         except Exception as e:
             state["chroma_error"] = str(e)

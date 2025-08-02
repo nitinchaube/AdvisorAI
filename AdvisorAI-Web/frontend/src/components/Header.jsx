@@ -173,7 +173,7 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
             {/* Enhanced Dropdown Menu */}
             {showUserMenu && (
               <div
-                className="absolute right-0 mt-3 w-80 bg-gradient-to-br from-slate-900/95 via-purple-900/90 to-indigo-900/95 backdrop-blur-2xl rounded-3xl shadow-2xl border border-white/20 py-6 z-50 overflow-hidden"
+                className="absolute right-0 mt-3 w-80 max-h-[80vh] bg-gradient-to-br from-slate-900/95 via-purple-900/90 to-indigo-900/95 backdrop-blur-2xl rounded-3xl shadow-2xl border border-white/20 py-6 z-50 overflow-y-auto overflow-x-hidden"
                 style={{ pointerEvents: "auto" }}
               >
                 {/* Background decoration */}
