@@ -92,9 +92,9 @@ class ChromaTool:
         
         return collections
 
-    def _ask_router_llm(self, user_query: str) -> List[str]:
+    async def _ask_router_llm(self, user_query: str) -> List[str]:
         """Ask LLM which collections to search based on user query (RAG service logic)"""
-        collections = list(self.collections.keys())
+        collections = list(self.collections.keys()) # Ensure this is up-to-date
         
         # If no collections are loaded, return empty list
         if not collections:
@@ -123,7 +123,7 @@ class ChromaTool:
         
         try:
             llm = self.llm_router.get_llm()
-            response = llm.invoke(prompt)
+            response = await llm.ainvoke([{"role": "user", "content": prompt}])
             if response.content is None:
                 print("LLM returned None content, falling back")
                 return collections  # or []
@@ -143,7 +143,7 @@ class ChromaTool:
             print("Falling back to all available collections")
             return collections
 
-    def _retrieve_from_collections(self, user_query: str, collection_names: List[str]) -> List[Document]:
+    async def _retrieve_from_collections(self, user_query: str, collection_names: List[str]) -> List[Document]:
         """Retrieve documents from specified collections and return top-k sorted results (RAG service logic)"""
         all_docs = []
         
@@ -214,8 +214,17 @@ class ChromaTool:
             
             print(f"✅ CHROMA: Found {len(all_documents)} documents from {len(selected_collections)} collections")
             
+            # Convert documents to a format that can be serialized
+            documents_data = []
+            for doc in all_documents:
+                documents_data.append({
+                    "content": doc.page_content,
+                    "metadata": doc.metadata,
+                    "collection": doc.metadata.get("collection", "unknown")
+                })
+            
             return {
-                "documents": all_documents,
+                "documents": documents_data,
                 "collections_searched": selected_collections,
                 "success": True
             }

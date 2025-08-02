@@ -521,6 +521,9 @@ def chat_query():
             chat_history=chat_history
         )
         
+        # Extract chat name from the result if available
+        chat_name = result.get('chat_name', 'New Chat')
+        
         # Save messages to session document if available and session_id provided
         if mongo_db is not None and result.get('response') and session_id:
             try:
@@ -540,24 +543,37 @@ def chat_query():
                     }
                     messages.append(user_message)
                     
-                    # Add AI response
+                    # Add AI response with agent metadata
                     ai_message = {
                         'id': f"ai_{int(time.time() * 1000)}",
                         'role': 'assistant',
                         'content': result['response'],
                         'timestamp': datetime.now().isoformat(),
                         'sources': result.get('sources', {}),
-                        'processing_time': result.get('processing_time', 0)
+                        'processing_time': result.get('processing_time', 0),
+                        'agent_metadata': {
+                            'tools_used': result.get('sources', {}).get('collections_used', []),
+                            'web_search_performed': result.get('sources', {}).get('web_search_performed', False),
+                            'general_tool_used': result.get('sources', {}).get('general_tool_used', False),
+                            'chat_history_included': result.get('sources', {}).get('chat_history_included', False)
+                        }
                     }
                     messages.append(ai_message)
                     
-                    # Update session with new messages
-                    mongo_db.chat_sessions.replace_one({'_id': ObjectId(session_id)}, {
+                    # Update session with new messages and chat name if it's still "New Chat"
+                    update_data = {
                         **session_data,
                         'messages': messages,
                         'last_updated': datetime.now(),
                         'message_count': len(messages)
-                    })
+                    }
+                    
+                    # Update chat name if it's still "New Chat" and we have a better name
+                    if session_data.get('title') == 'New Chat' and chat_name != 'New Chat':
+                        update_data['title'] = chat_name
+                        print(f"📝 Updating chat title to: {chat_name}")
+                    
+                    mongo_db.chat_sessions.replace_one({'_id': ObjectId(session_id)}, update_data)
                     
                     # Invalidate cache
                     invalidate_chat_cache(user_id)
@@ -568,6 +584,7 @@ def chat_query():
                     
             except Exception as e:
                 print(f"  Error saving chat messages to session: {e}")
+                # Don't fail the request if session saving fails
         
         # Also save to legacy chat_history for backward compatibility
         if mongo_db is not None and result.get('response'):
@@ -1159,6 +1176,55 @@ def fix_profile_completion():
     except Exception as e:
         print(f"  Fix profile completion error: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/chat/feedback', methods=['POST'])
+@jwt_required()
+def submit_feedback():
+    """Submit feedback for a chat message"""
+    try:
+        user_id = get_jwt_identity()
+        data = request.get_json()
+        message_id = data.get('message_id')
+        feedback = data.get('feedback')  # 'positive' or 'negative'
+        timestamp = data.get('timestamp')
+        
+        if not message_id or not feedback:
+            return jsonify({"error": "Message ID and feedback are required"}), 400
+        
+        if feedback not in ['positive', 'negative']:
+            return jsonify({"error": "Feedback must be 'positive' or 'negative'"}), 400
+        
+        # Save feedback to database
+        if mongo_db is not None:
+            feedback_doc = {
+                'user_id': user_id,
+                'message_id': message_id,
+                'feedback': feedback,
+                'timestamp': datetime.fromisoformat(timestamp.replace('Z', '+00:00')) if timestamp else datetime.now(),
+                'created_at': datetime.now()
+            }
+            mongo_db.message_feedback.insert_one(feedback_doc)
+            
+            # Also update the message in chat_sessions if it exists
+            try:
+                # Find the message in chat_sessions and update it
+                result = mongo_db.chat_sessions.update_one(
+                    {'messages.id': message_id},
+                    {'$set': {'messages.$.feedback': feedback}}
+                )
+                print(f"✅ Feedback saved for message {message_id}: {feedback}")
+            except Exception as e:
+                print(f"⚠️  Could not update message in chat_sessions: {e}")
+        
+        return jsonify({
+            "success": True,
+            "message": "Feedback submitted successfully",
+            "feedback": feedback
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Feedback submission error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5003))

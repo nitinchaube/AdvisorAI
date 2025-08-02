@@ -315,7 +315,7 @@ class ApiService {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          ...(token && { Authorization: `Bearer ${token}` }),
         },
         body: JSON.stringify({
           query,
@@ -332,7 +332,6 @@ class ApiService {
 
       while (true) {
         const { done, value } = await reader.read();
-
         if (done) break;
 
         const chunk = decoder.decode(value);
@@ -340,14 +339,14 @@ class ApiService {
 
         for (const line of lines) {
           if (line.startsWith("data: ")) {
+            const data = line.slice(6);
+            if (data === "[DONE]") {
+              return;
+            }
             try {
-              const data = JSON.parse(line.slice(6));
-              if (data.token) {
-                onToken(data.token);
-              } else if (data.done) {
-                return;
-              } else if (data.error) {
-                throw new Error(data.error);
+              const parsed = JSON.parse(data);
+              if (parsed.token && onToken) {
+                onToken(parsed.token);
               }
             } catch (e) {
               console.error("Error parsing stream data:", e);
@@ -356,9 +355,21 @@ class ApiService {
         }
       }
     } catch (error) {
-      console.error("❌ Stream chat error:", error);
+      console.error("Stream error:", error);
       throw error;
     }
+  }
+
+  // Submit feedback for a message
+  async submitFeedback(messageId, feedback) {
+    return this.makeRequest("/chat/feedback", {
+      method: "POST",
+      body: JSON.stringify({
+        message_id: messageId,
+        feedback: feedback, // 'positive' or 'negative'
+        timestamp: new Date().toISOString()
+      }),
+    });
   }
 }
 
