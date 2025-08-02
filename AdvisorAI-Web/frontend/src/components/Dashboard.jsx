@@ -43,8 +43,7 @@ const Dashboard = () => {
           setCurrentSessionId(response.session_id);
           setCurrentSessionTitle("New Chat");
           localStorage.setItem("currentChatSessionId", response.session_id);
-          // Clear any cached messages for this new session
-          chatCache.clearSessionMessages(response.session_id);
+          // Don't clear cache for new sessions - let the messages persist
           console.log("📱 Created new chat session:", response.session_id);
         }
       } catch (error) {

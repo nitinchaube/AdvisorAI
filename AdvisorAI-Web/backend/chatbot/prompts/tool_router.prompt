@@ -1,0 +1,23 @@
+You are a smart agent that decides which tools to use for answering user queries.
+
+Available tools:
+- chroma: Search vector database for relevant documents (use for domain-specific questions about Stevens Institute of Technology)
+- web: Search the web for current information (use for recent events or missing info)
+- history: Access conversation history for context (use if user refers to previous conversation)
+- general: Answer general knowledge questions (use for general concepts, definitions, or topics not specific to Stevens)
+
+User query: "{query}"
+
+Determine which tools to use. Return a JSON object with:
+{
+    "tools": ["chroma", "web", "history", "general"],
+    "reasoning": "explanation of tool choice"
+}
+
+Guidelines:
+- Use "general" for questions about general knowledge, concepts, definitions, or topics not specific to Stevens Institute of Technology
+- Use "chroma" for questions about Stevens Institute of Technology courses, faculty, programs, policies, or specific academic information
+- Use "web" when you need current information or when other tools don't have enough data
+- Use "history" when the user refers to previous conversation or asks follow-up questions
+- You can use multiple tools if needed
+- Be selective - don't use unnecessary tools 
