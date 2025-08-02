@@ -104,8 +104,8 @@ def clean_html(html):
     combined_text = " ".join(text_elements)
     return " ".join(combined_text.split())  # Clean whitespace
 
-def scrape_top3(query, num_results=3, api_key=None):
-    """Search and fetch top 3 URLs, return their cleaned text."""
+def scrape_top3(query, num_results=5, api_key=None):
+    """Search and fetch top 5 URLs, return their cleaned text."""
     
     print(f"Searching for: {query}")
     
@@ -135,7 +135,7 @@ def scrape_top3(query, num_results=3, api_key=None):
             
             text = clean_html(resp.text)
             if text:
-                results.append({"url": url, "content": text[:2000]})  # limit to 2000 chars
+                results.append({"url": url, "content": text[:3000]})  # Increased from 2000 to 3000 chars
                 print(f"Successfully extracted {len(text)} characters")
             else:
                 results.append({"url": url, "content": "No text content found"})
@@ -150,13 +150,13 @@ def scrape_top3(query, num_results=3, api_key=None):
     
     return results
 
-def scrape_web_content(query, num_results=3, api_key=None):
+def scrape_web_content(query, num_results=5, api_key=None):
     """
     Simple function to scrape web content for a query.
     
     Args:
         query: The search query
-        num_results: Number of results to process
+        num_results: Number of results to process (increased from 3 to 5)
         
     Returns:
         Combined text content from web sources
