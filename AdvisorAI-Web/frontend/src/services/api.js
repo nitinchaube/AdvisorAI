@@ -284,6 +284,10 @@ class ApiService {
     return this.makeRequest(`/admin/courses/${id}`);
   }
 
+  async getAllCourseReviews() {
+    return this.makeRequest("/reviews/courses");
+  }
+
 
   //get faculty data
   async getFaculty() {
@@ -316,6 +320,10 @@ class ApiService {
     return this.makeRequest(`/admin/faculty/${id}`, {
       method: "DELETE",
     });
+  }
+
+  async getAllProfessorReviews() {
+    return this.makeRequest("/reviews/professors");
   }
 
 
@@ -437,6 +445,35 @@ apiService.postCourseReview = async function (courseId, data, token) {
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error("Failed to post review");
+  return await res.json();
+};
+
+apiService.getProfessorReviews = async function (professorId) {
+  const res = await fetch(`${this.baseURL}/faculty/${professorId}/reviews`, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${localStorage.getItem("backendToken") || ""}`,
+    },
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error("Failed to fetch professor reviews");
+  return await res.json();
+};
+
+apiService.postProfessorReview = async function (professorId, data, token) {
+  const res = await fetch(`${this.baseURL}/faculty/${professorId}/reviews`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${
+        token || localStorage.getItem("backendToken") || ""
+      }`,
+    },
+    credentials: "include",
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("Failed to post professor review");
   return await res.json();
 };
 

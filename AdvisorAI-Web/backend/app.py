@@ -1060,6 +1060,82 @@ def add_course_review(course_id):
         return jsonify({'success': True, 'review': review_doc}), 201
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+    
+# --- Professor Reviews Endpoints ---
+@app.route('/api/faculty/<faculty_id>/reviews', methods=['GET'])
+@jwt_required()
+def get_professor_reviews(faculty_id):
+    """Fetches all reviews for a specific professor."""
+    try:
+        reviews = []
+        # Find reviews matching the faculty_id in a new 'professor_reviews' collection
+        docs = mongo_db.professor_reviews.find({'faculty_id': faculty_id})
+        for doc in docs:
+            review = mongo_doc_to_json(doc)
+            reviews.append(review)
+        return jsonify({'success': True, 'reviews': reviews}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/faculty/<faculty_id>/reviews', methods=['POST'])
+@jwt_required()
+def add_professor_review(faculty_id):
+    """Adds a new review for a specific professor."""
+    try:
+        user_id = get_jwt_identity()
+        data = request.get_json()
+        rating = data.get('rating')
+        text = data.get('text', '')
+        isAnonymous = data.get('isAnonymous', False)
+
+        # Get the user's name for the review
+        user_doc = mongo_db.users.find_one({'uid': user_id})
+        if isAnonymous or not user_doc:
+            userName = "Anonymous"
+        else:
+            userName = user_doc.get('fullName') or user_doc.get('email', '').split('@')[0]
+
+        # Create the review document
+        review_doc = {
+            'faculty_id': faculty_id,
+            'user_id': user_id,
+            'userName': userName,
+            'rating': rating,
+            'text': text,
+            'isAnonymous': isAnonymous,
+            'createdAt': datetime.now()
+        }
+        # Insert the review into a new 'professor_reviews' collection
+        result = mongo_db.professor_reviews.insert_one(review_doc)
+        review_doc['id'] = str(result.inserted_id)
+
+        return jsonify({'success': True, 'review': mongo_doc_to_json(review_doc)}), 201
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# --- fetch all course and professor reviews ---
+
+@app.route('/api/reviews/courses', methods=['GET'])
+@jwt_required()
+def get_all_course_reviews():
+    """Fetches all course reviews from the database."""
+    try:
+        docs = mongo_db.course_reviews.find()
+        reviews = [mongo_doc_to_json(doc) for doc in docs]
+        return jsonify({'success': True, 'reviews': reviews}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/reviews/professors', methods=['GET'])
+@jwt_required()
+def get_all_professor_reviews():
+    """Fetches all professor reviews from the database."""
+    try:
+        docs = mongo_db.professor_reviews.find()
+        reviews = [mongo_doc_to_json(doc) for doc in docs]
+        return jsonify({'success': True, 'reviews': reviews}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 def admin_required(fn):
     @wraps(fn)
