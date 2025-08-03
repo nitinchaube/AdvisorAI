@@ -114,37 +114,70 @@ const CourseExplorer = ({ onSelectCourse }) => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [courseResponse, facultyResponse] = await Promise.all([
+        const [courseResponse, facultyResponse, courseReviewsResponse, profReviewsResponse] = await Promise.all([
           apiService.getCourses(),
           apiService.getFaculty(),
+          apiService.getAllCourseReviews(),
+          apiService.getAllProfessorReviews(),
         ]);
 
-        const courses = (courseResponse?.courses || []).map(course => ({
-          id: course.id || course["Course Code"],
-          name: course["Course Title"] || course["Course Name"] || "",
-          code: course["Course Code"] || "",
-          description: course["Course Description"] || "",
-          department: course["Course Code"] ? course["Course Code"].split(" ")[0] : "Unknown",
-          credits: parseInt(course["Credits"]) || 3,
-          duration: course["Offered Semester"] || "Not specified",
-          instructor: course["Course Professor"] || "Not available",
-          rating: typeof course.rating === "number" ? course.rating : 0,
-          reviews: typeof course.reviews === "number" ? course.reviews : 0,
-          difficulty: course.difficulty || "Intermediate",
-          category: 'course',
-        }));
+        //--- Process Course Reviews ---
+        const courseRatings = {};
+        if (courseReviewsResponse.success) {
+          courseReviewsResponse.reviews.forEach(review => {
+            if (!courseRatings[review.course_id]) {
+              courseRatings[review.course_id] = { total: 0, count: 0 };
+            }
+            courseRatings[review.course_id].total += review.rating;
+            courseRatings[review.course_id].count += 1;
+          });
+        }
 
-        const faculty = (facultyResponse?.faculty || []).map(prof => ({
-          id: prof.id,
-          name: prof.name || "",
-          generalInfo: prof.general_info || "No general information available.",
-          researchInfo: prof.research_info || "No research information available.",
-          department: "School of Business",
-          rating: 0,
-          reviews: 0,
-          coursesTaught: [],
-          category: 'professor',
-        }));
+        const courses = (courseResponse?.courses || []).map(course => {
+          const id = course.id || course["Course Code"];  
+          const ratingInfo = courseRatings[id];
+            return {
+              id: id,
+              name: course["Course Title"] || course["Course Name"] || "",
+              code: course["Course Code"] || "",
+              description: course["Course Description"] || "",
+              department: course["Course Code"] ? course["Course Code"].split(" ")[0] : "Unknown",
+              credits: parseInt(course["Credits"]) || 3,
+              duration: course["Offered Semester"] || "Not specified",
+              instructor: course["Course Professor"] || "Not available",
+              rating: ratingInfo ? ratingInfo.total / ratingInfo.count : 0,
+              reviews: ratingInfo ? ratingInfo.count : 0,
+              difficulty: course.difficulty || "Intermediate",
+              category: 'course',
+            };
+        });
+
+        //--- Process Faculty Reviews ---
+        const professorRatings = {};
+        if (profReviewsResponse.success) {
+            profReviewsResponse.reviews.forEach(review => {
+                if (!professorRatings[review.faculty_id]) {
+                    professorRatings[review.faculty_id] = { total: 0, count: 0 };
+                }
+                professorRatings[review.faculty_id].total += review.rating;
+                professorRatings[review.faculty_id].count += 1;
+            });
+        }
+
+        const faculty = (facultyResponse?.faculty || []).map(prof => {
+            const ratingInfo = professorRatings[prof.id];
+            return {
+              id: prof.id,
+              name: prof.name || "",
+              generalInfo: prof.general_info || "No general information available.",
+              researchInfo: prof.research_info || "No research information available.",
+              department: "School of Business",
+              rating: ratingInfo ? ratingInfo.total / ratingInfo.count : 0,
+              reviews: ratingInfo ? ratingInfo.count : 0,
+              coursesTaught: [],
+              category: 'professor',
+            };
+        });
 
         setAllItems([...courses, ...faculty]);
       } catch (error) {

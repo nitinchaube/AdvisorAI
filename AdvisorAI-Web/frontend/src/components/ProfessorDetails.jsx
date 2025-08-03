@@ -6,18 +6,29 @@ import {
   Star,
   MessageCircle,
   Send,
+  ToggleLeft,
+  ToggleRight,
   AlertCircle,
 } from "lucide-react";
-import { apiService } from "../services/api"; // Assuming you have this service
+import { useAuth } from "../contexts/AuthContext";
+import { apiService } from "../services/api"; 
 
 const ProfessorDetails = ({ professorId, onBack }) => {
   const [professor, setProfessor] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  // Placeholder for future review functionality
   const [reviews, setReviews] = useState([]); 
   const [newComment, setNewComment] = useState("");
   const [newRating, setNewRating] = useState(0);
+  const [isAnonymous, setIsAnonymous] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const { currentUser, token } = useAuth();
+  const averageRating =
+    reviews.length > 0
+    ? (
+        reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
+      ).toFixed(1)
+    : "N/A";
 
   useEffect(() => {
     const fetchProfessorDetails = async () => {
@@ -25,7 +36,6 @@ const ProfessorDetails = ({ professorId, onBack }) => {
       try {
         setLoading(true);
         setError(null);
-        // Use the new API endpoint for a single faculty member
         const response = await apiService.getSingleFaculty(professorId);
         if (response.success) {
           setProfessor(response.professor);
@@ -41,6 +51,63 @@ const ProfessorDetails = ({ professorId, onBack }) => {
     };
     fetchProfessorDetails();
   }, [professorId]);
+
+//   
+  const handleSubmitComment = async () => {
+  console.log("Submit button clicked. Checking validation...");
+
+  if (!currentUser) {
+    console.error("Validation FAILED: User not logged in.", currentUser);
+    setError("Please login to add a review.");
+    return;
+  }
+
+  if (!newComment.trim() || newRating === 0) {
+    console.error("Validation FAILED: Rating or comment missing.", { newRating, newComment });
+    setError("Please provide a rating and review text.");
+    return;
+  }
+
+  console.log("Validation PASSED. Preparing to submit...");
+  setSubmitting(true);
+  setError(null);
+
+  try {
+    console.log("Submitting to the API...");
+    const response = await apiService.postProfessorReview(
+      professorId,
+      {
+        rating: newRating,
+        text: newComment,
+        isAnonymous,
+      },
+      token
+    );
+    console.log("API call SUCCEEDED. Response:", response);
+
+    setNewComment("");
+    setNewRating(0);
+    setIsAnonymous(false);
+
+    console.log("Refreshing reviews...");
+    const reviewRes = await apiService.getProfessorReviews(professorId);
+    setReviews(
+      Array.isArray(reviewRes.reviews)
+        ? reviewRes.reviews.sort(
+            (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+          )
+        : []
+    );
+    console.log("Reviews refreshed.");
+
+  } catch (err) {
+    console.error("API call FAILED.", err);
+    setError("Failed to submit review. Please try again.");
+  } finally {
+    console.log("Resetting submitting state.");
+    setSubmitting(false);
+  }
+};
 
   const renderStars = (rating, size = 5) => (
     <div className="flex">
@@ -98,17 +165,90 @@ const ProfessorDetails = ({ professorId, onBack }) => {
             </div>
           </div>
           
-          {/* Placeholder for future review section */}
+          <div className="mt-8">
+               <h2 className="text-xl font-semibold mb-4 flex items-center space-x-2">
+                  <Star className="w-5 h-5 text-yellow-500" />
+                  <span>Ratings & Reviews</span>
+                </h2>
+                <div className="flex items-center space-x-3 mb-4">
+                  {averageRating !== "N/A" && renderStars(Math.floor(parseFloat(averageRating)), 6)}
+                  <span className="text-2xl font-bold text-gray-900">
+                    {averageRating}
+                  </span>
+                  <span className="text-gray-500">
+                    (Based on {reviews.length} reviews)
+                  </span>
+                </div>
+            </div>
+          </div>
+          
           <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl p-6 lg:p-8">
              <h2 className="text-xl font-semibold mb-6 flex items-center space-x-2">
               <MessageCircle className="w-5 h-5 text-orange-600" />
-              <span>Student Reviews (Coming Soon)</span>
+              <span>Student Reviews</span>
             </h2>
-            <div className="text-center py-8 text-gray-500">
-              Review functionality for professors will be available soon.
+            <div className="space-y-6 mb-8 max-h-96 overflow-y-auto pr-4">
+              {reviews.length > 0 ? (
+                reviews.map((review) => (
+                  <div key={review.id} className="border-b pb-6 last:border-b-0">
+                    <div className="flex items-center space-x-2 mb-2">
+                      {renderStars(review.rating, 4)}
+                    </div>
+                    <p className="font-semibold text-gray-800 mb-1">
+                      {review.userName || "Anonymous"}
+                    </p>
+                    <p className="text-gray-700 mb-2">{review.text}</p>
+                    <p className="text-sm text-gray-500">
+                      {new Date(review.createdAt).toLocaleString()}
+                    </p>
+                  </div>
+                ))
+              ) : (
+                <p className="text-gray-500 text-center py-8">
+                  No reviews yet. Be the first to share your thoughts!
+                </p>
+              )}
             </div>
-          </div>
 
+            <div className="bg-gradient-to-br from-gray-50 to-orange-50 p-4 rounded-xl">
+              {error && (
+                <div className="flex items-center space-x-2 text-red-600 mb-4">
+                  <AlertCircle className="w-5 h-5" />
+                  <span>{error}</span>
+                </div>
+              )}
+              <div className="flex items-center space-x-1 mb-3">
+                {[...Array(5)].map((_, i) => (
+                  <Star
+                    key={i}
+                    onClick={() => setNewRating(i + 1)}
+                    className={`w-6 h-6 cursor-pointer transition-colors ${i < newRating ? "text-yellow-400 fill-current" : "text-gray-300 hover:text-gray-400"}`}
+                  />
+                ))}
+              </div>
+              <textarea
+                value={newComment}
+                onChange={(e) => setNewComment(e.target.value)}
+                placeholder="Share your thoughts about this professor..."
+                rows={4}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 resize-none mb-3"
+              />
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center space-x-2">
+                    <button onClick={() => setIsAnonymous(!isAnonymous)} className="flex items-center space-x-2 text-gray-700 hover:text-orange-600 transition-colors">
+                        {isAnonymous ? <ToggleRight className="w-6 h-6 text-orange-600" /> : <ToggleLeft className="w-6 h-6 text-gray-400" />}
+                        <span>Post anonymously</span>
+                    </button>
+                </div>
+                <span className="text-sm text-gray-500">
+                  {newComment.length}/500
+                </span>
+              </div>
+              <button onClick={handleSubmitComment} className="w-full bg-gradient-to-r from-orange-600 to-red-600 text-white py-3 rounded-lg font-medium hover:from-orange-700 hover:to-red-700 transition-all shadow-md hover:shadow-lg flex items-center justify-center space-x-2" disabled={submitting}>
+                <Send className="w-5 h-5" />
+                <span>{submitting ? "Submitting..." : "Submit Review"}</span>
+              </button>
+            </div>
         </div>
       </div>
     </div>
