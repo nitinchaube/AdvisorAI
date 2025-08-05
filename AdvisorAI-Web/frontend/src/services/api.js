@@ -415,6 +415,14 @@ class ApiService {
       }),
     });
   }
+
+  // Get public profile for portfolio
+  async getPublicProfile(userId) {
+    return this.makeRequest(`/public-profile/${userId}`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 }
 
 const apiService = new ApiService();
