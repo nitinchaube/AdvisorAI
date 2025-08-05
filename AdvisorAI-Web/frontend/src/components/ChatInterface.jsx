@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Send, Bot, User, Sparkles, Paperclip, Mic, History, Info, Plus } from "lucide-react";
+import { Send, Bot, User, Sparkles, Paperclip, Mic, History, Info, Plus, ThumbsUp, ThumbsDown, Copy, Check } from "lucide-react";
 import { apiService } from "../services/api";
 import { useAuth } from "../contexts/AuthContext";
 import { chatCache } from '../utils/chatCache';
@@ -53,7 +53,8 @@ const MarkdownRenderer = ({ content }) => {
 
 const ChatInterface = ({ 
   onToggleHistory, 
-  currentSessionId,   onSessionUpdate,
+  currentSessionId,   
+  onSessionUpdate,
   sessionTitle = "AI Academic Advisor",
   onNewChat
 }) => {
@@ -65,7 +66,40 @@ const ChatInterface = ({
   const [showSources, setShowSources] = useState(false);
   const [currentSources, setCurrentSources] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [copiedMessages, setCopiedMessages] = useState(new Set());
   const messagesEndRef = useRef(null);
+
+  // Copy message content to clipboard
+  const copyToClipboard = async (content, messageId) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedMessages(prev => new Set([...prev, messageId]));
+      setTimeout(() => {
+        setCopiedMessages(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(messageId);
+          return newSet;
+        });
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to copy: ', err);
+    }
+  };
+
+  // Handle feedback submission
+  const handleFeedback = async (messageId, feedback) => {
+    try {
+      await apiService.submitFeedback(messageId, feedback);
+      // Update the message to show feedback was submitted
+      setMessages(prev => prev.map(msg => 
+        msg.id === messageId 
+          ? { ...msg, feedback: feedback }
+          : msg
+      ));
+    } catch (error) {
+      console.error('Error submitting feedback:', error);
+    }
+  };
 
   // Load messages for current session
   const loadSessionMessages = async (sessionId) => {
@@ -168,16 +202,20 @@ const ChatInterface = ({
       timestamp: new Date().toLocaleTimeString()
     };
 
+    // Store the current input message
+    const currentInput = inputMessage;
+    setInputMessage('');
+    setIsTyping(true);
+    setShowSources(false);
+    setCurrentSources(null);
+
+    // Add user message immediately
     setMessages(prev => {
       const updated = [...prev, userMessage];
       // Update cache
       if (currentSessionId) chatCache.setSessionMessages(currentSessionId, updated);
       return updated;
     });
-    setInputMessage('');
-    setIsTyping(true);
-    setShowSources(false);
-    setCurrentSources(null);
 
     try {
       // If no current session, create one when user first starts chatting
@@ -198,7 +236,7 @@ const ChatInterface = ({
         }
       }
 
-      // Get chat history for context
+      // Get chat history for context (include the current user message)
       const chatHistory = messages
         .filter(msg => msg.type === 'user' || msg.type === 'ai')
         .slice(-6) // Last 6 messages for context
@@ -208,7 +246,7 @@ const ChatInterface = ({
         }));
 
       // Send message to RAG service with session ID
-      const response = await apiService.sendChatMessage(inputMessage, chatHistory, sessionId);
+      const response = await apiService.sendChatMessage(currentInput, chatHistory, sessionId);
       
       if (response.success) {
         const aiMessage = {
@@ -234,7 +272,7 @@ const ChatInterface = ({
       const errorMessage = {
         id: Date.now() + 1,
         type: 'ai',
-        content: `I apologize, but I encountered an error: ${error.message}. Please try again.`,
+        content: "I apologize, but I'm experiencing some technical difficulties. Please try again in a moment.",
         timestamp: new Date().toLocaleTimeString(),
         error: true
       };
@@ -334,7 +372,10 @@ const ChatInterface = ({
                       ) : (
                         <MarkdownRenderer content={message.content} />
                       )}
-                      
+                    </div>
+                    
+                    {/* Action buttons positioned below message */}
+                    <div className="flex items-center justify-start mt-2 space-x-3">
                       {/* Sources button for AI messages */}
                       {message.type === 'ai' && message.sources && (
                         <button
@@ -342,13 +383,57 @@ const ChatInterface = ({
                             setCurrentSources(message.sources);
                             setShowSources(!showSources);
                           }}
-                          className="mt-2 flex items-center space-x-1 text-xs text-blue-600 hover:text-blue-800 transition-colors"
+                          className="flex items-center justify-center w-6 h-6 text-gray-500 hover:text-blue-600 transition-colors"
+                          title="View Sources"
                         >
-                          <Info className="w-3 h-3" />
-                          <span>View Sources</span>
+                          <Info className="w-4 h-4" />
                         </button>
                       )}
+                      
+                      {/* Copy button */}
+                      <button
+                        onClick={() => copyToClipboard(message.content, message.id)}
+                        className="flex items-center justify-center w-6 h-6 text-gray-500 hover:text-gray-700 transition-colors"
+                        title="Copy message"
+                      >
+                        {copiedMessages.has(message.id) ? (
+                          <Check className="w-4 h-4 text-green-500" />
+                        ) : (
+                          <Copy className="w-4 h-4" />
+                        )}
+                      </button>
+                      
+                      {/* Feedback buttons for AI messages */}
+                      {message.type === 'ai' && (
+                        <>
+                          <button
+                            onClick={() => handleFeedback(message.id, 'positive')}
+                            disabled={message.feedback === 'positive'}
+                            className={`flex items-center justify-center w-6 h-6 transition-colors ${
+                              message.feedback === 'positive'
+                                ? 'text-green-600'
+                                : 'text-gray-500 hover:text-green-600'
+                            }`}
+                            title="Helpful"
+                          >
+                            <ThumbsUp className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleFeedback(message.id, 'negative')}
+                            disabled={message.feedback === 'negative'}
+                            className={`flex items-center justify-center w-6 h-6 transition-colors ${
+                              message.feedback === 'negative'
+                                ? 'text-red-600'
+                                : 'text-gray-500 hover:text-red-600'
+                            }`}
+                            title="Not helpful"
+                          >
+                            <ThumbsDown className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
                     </div>
+                    
                     <span className="text-xs text-gray-500 mt-2">{message.timestamp}</span>
                   </div>
                 </div>

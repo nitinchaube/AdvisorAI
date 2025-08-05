@@ -8,12 +8,12 @@ from datetime import timedelta, datetime
 import json
 from dotenv import load_dotenv
 from resume_processor import ResumeProcessor
-from rag_service import rag_service
+# Replace RAG service with chatbot integration
+from chatbot_integration import get_chatbot_integration
 import logging
 import time
 import redis
 from functools import wraps
-from rag_service import load_vector_store
 import uuid
 from langchain_core.documents import Document
 
@@ -82,7 +82,7 @@ except Exception as e:
 # Restore only Firebase Admin SDK initialization for authentication
 if not firebase_admin._apps:
     cred = credentials.Certificate('firebae_key1.json')
-    firebase_admin.initialize_app(cred)
+firebase_admin.initialize_app(cred)
 
 # Cache decorator for chat sessions
 def cache_chat_sessions(expiry=3600):  # 1 hour cache
@@ -541,7 +541,7 @@ def get_public_profile(user_id):
 @app.route('/api/chat/query', methods=['POST'])
 @jwt_required()
 def chat_query():
-    """Process chat query with RAG"""
+    """Process chat query with LangGraph chatbot agents"""
     try:
         user_id = get_jwt_identity()
         data = request.get_json()
@@ -554,12 +554,18 @@ def chat_query():
         
         print(f"🔍 Processing chat query for user {user_id} in session {session_id}: {query}")
         
-        # Process query with RAG service
-        result = rag_service.process_query(
+        # Get chatbot integration service
+        chatbot_service = get_chatbot_integration()
+        
+        # Process query with LangGraph chatbot agents
+        result = chatbot_service.process_query(
             user_query=query,
             user_id=user_id,
             chat_history=chat_history
         )
+        
+        # Extract chat name from the result if available
+        chat_name = result.get('chat_name', 'New Chat')
         
         # Save messages to session document if available and session_id provided
         if mongo_db is not None and result.get('response') and session_id:
@@ -580,24 +586,37 @@ def chat_query():
                     }
                     messages.append(user_message)
                     
-                    # Add AI response
+                    # Add AI response with agent metadata
                     ai_message = {
                         'id': f"ai_{int(time.time() * 1000)}",
                         'role': 'assistant',
                         'content': result['response'],
                         'timestamp': datetime.now().isoformat(),
                         'sources': result.get('sources', {}),
-                        'processing_time': result.get('processing_time', 0)
+                        'processing_time': result.get('processing_time', 0),
+                        'agent_metadata': {
+                            'tools_used': result.get('sources', {}).get('collections_used', []),
+                            'web_search_performed': result.get('sources', {}).get('web_search_performed', False),
+                            'general_tool_used': result.get('sources', {}).get('general_tool_used', False),
+                            'chat_history_included': result.get('sources', {}).get('chat_history_included', False)
+                        }
                     }
                     messages.append(ai_message)
                     
-                    # Update session with new messages
-                    mongo_db.chat_sessions.replace_one({'_id': ObjectId(session_id)}, {
+                    # Update session with new messages and chat name if it's still "New Chat"
+                    update_data = {
                         **session_data,
                         'messages': messages,
                         'last_updated': datetime.now(),
                         'message_count': len(messages)
-                    })
+                    }
+                    
+                    # Update chat name if it's still "New Chat" and we have a better name
+                    if session_data.get('title') == 'New Chat' and chat_name != 'New Chat':
+                        update_data['title'] = chat_name
+                        print(f"📝 Updating chat title to: {chat_name}")
+                    
+                    mongo_db.chat_sessions.replace_one({'_id': ObjectId(session_id)}, update_data)
                     
                     # Invalidate cache
                     invalidate_chat_cache(user_id)
@@ -608,6 +627,7 @@ def chat_query():
                     
             except Exception as e:
                 print(f"  Error saving chat messages to session: {e}")
+                # Don't fail the request if session saving fails
         
         # Also save to legacy chat_history for backward compatibility
         if mongo_db is not None and result.get('response'):
@@ -658,7 +678,7 @@ def chat_stream():
         
         def generate():
             try:
-                for token in rag_service.stream_query(
+                for token in get_chatbot_integration().stream_query(
                     user_query=query,
                     user_id=user_id,
                     chat_history=chat_history
@@ -918,14 +938,20 @@ def get_chat_history():
 def get_rag_stats():
     """Get RAG system statistics"""
     try:
-        stats = rag_service.get_system_stats()
+        chatbot_service = get_chatbot_integration()
+        stats = chatbot_service.get_system_stats()
+        
         return jsonify({
             "success": True,
             "stats": stats
         }), 200
+        
     except Exception as e:
-        print(f"  Get RAG stats error: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        print(f"  RAG stats error: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 
 @app.route('/api/chat/user-history', methods=['GET'])
 @jwt_required()
@@ -986,7 +1012,7 @@ def get_courses():
 def get_course(id):
     collection_name = request.args.get('collection_name', 'courses')
     try:
-        collection = load_vector_store(collection_name)
+        collection = get_chatbot_integration().load_vector_store(collection_name)
         result = collection.get(ids=[id], include=['metadatas', 'documents'])
         if result['ids']:
             course = {
@@ -998,6 +1024,41 @@ def get_course(id):
         else:
             return jsonify({'success': False, 'error': 'Course not found'}), 404
     except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+    
+
+@app.route('/api/faculty', methods=['GET'])
+@jwt_required()
+def get_faculty():
+    """Fetches all documents from the faculty collection."""
+    try:
+        faculty_list = []
+        # This line correctly points to your 'faculty' collection.
+        docs = mongo_db.faculty.find()
+        for doc in docs:
+            professor = mongo_doc_to_json(doc)
+            faculty_list.append(professor)
+        # The key 'faculty' matches the frontend code's expectation.
+        return jsonify({'success': True, 'faculty': faculty_list})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+    
+@app.route('/api/faculty/<id>', methods=['GET'])
+@jwt_required()
+def get_single_faculty(id):
+    """Fetches a single faculty member by their MongoDB document ID."""
+    try:
+        # Find the document in the 'faculty' collection by its ObjectId
+        doc = mongo_db.faculty.find_one({'_id': ObjectId(id)})
+
+        if doc:
+            # Convert the document to a JSON-friendly format
+            professor = mongo_doc_to_json(doc)
+            return jsonify({'success': True, 'professor': professor})
+        else:
+            return jsonify({'success': False, 'error': 'Faculty not found'}), 404
+    except Exception as e:
+        # This will catch errors, including an invalid ID format
         return jsonify({'success': False, 'error': str(e)}), 500
 
 # --- Course Reviews Endpoints ---
@@ -1041,6 +1102,82 @@ def add_course_review(course_id):
         return jsonify({'success': True, 'review': bson_safe(review_doc)}), 201
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+    
+# --- Professor Reviews Endpoints ---
+@app.route('/api/faculty/<faculty_id>/reviews', methods=['GET'])
+@jwt_required()
+def get_professor_reviews(faculty_id):
+    """Fetches all reviews for a specific professor."""
+    try:
+        reviews = []
+        # Find reviews matching the faculty_id in a new 'professor_reviews' collection
+        docs = mongo_db.professor_reviews.find({'faculty_id': faculty_id})
+        for doc in docs:
+            review = mongo_doc_to_json(doc)
+            reviews.append(review)
+        return jsonify({'success': True, 'reviews': reviews}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/faculty/<faculty_id>/reviews', methods=['POST'])
+@jwt_required()
+def add_professor_review(faculty_id):
+    """Adds a new review for a specific professor."""
+    try:
+        user_id = get_jwt_identity()
+        data = request.get_json()
+        rating = data.get('rating')
+        text = data.get('text', '')
+        isAnonymous = data.get('isAnonymous', False)
+
+        # Get the user's name for the review
+        user_doc = mongo_db.users.find_one({'uid': user_id})
+        if isAnonymous or not user_doc:
+            userName = "Anonymous"
+        else:
+            userName = user_doc.get('fullName') or user_doc.get('email', '').split('@')[0]
+
+        # Create the review document
+        review_doc = {
+            'faculty_id': faculty_id,
+            'user_id': user_id,
+            'userName': userName,
+            'rating': rating,
+            'text': text,
+            'isAnonymous': isAnonymous,
+            'createdAt': datetime.now()
+        }
+        # Insert the review into a new 'professor_reviews' collection
+        result = mongo_db.professor_reviews.insert_one(review_doc)
+        review_doc['id'] = str(result.inserted_id)
+
+        return jsonify({'success': True, 'review': mongo_doc_to_json(review_doc)}), 201
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# --- fetch all course and professor reviews ---
+
+@app.route('/api/reviews/courses', methods=['GET'])
+@jwt_required()
+def get_all_course_reviews():
+    """Fetches all course reviews from the database."""
+    try:
+        docs = mongo_db.course_reviews.find()
+        reviews = [mongo_doc_to_json(doc) for doc in docs]
+        return jsonify({'success': True, 'reviews': reviews}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/reviews/professors', methods=['GET'])
+@jwt_required()
+def get_all_professor_reviews():
+    """Fetches all professor reviews from the database."""
+    try:
+        docs = mongo_db.professor_reviews.find()
+        reviews = [mongo_doc_to_json(doc) for doc in docs]
+        return jsonify({'success': True, 'reviews': reviews}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 def admin_required(fn):
     @wraps(fn)
@@ -1059,19 +1196,19 @@ def admin_required(fn):
 @admin_required
 def get_collections():
     try:
-        stats = rag_service.get_system_stats()
+        stats = get_chatbot_integration().get_system_stats()
         return jsonify({'success': True, 'collections': stats['collection_names']})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
 def sync_course_to_chroma(course_id, course_data):
-    collection = load_vector_store('AllCourseRelatedData')
+    collection = get_chatbot_integration().load_vector_store('AllCourseRelatedData')
     content = json.dumps(course_data)
     metadata = {'title': course_data.get('Course Title', ''), 'code': course_data.get('Course Code', '')}
     collection.upsert(ids=[course_id], documents=[content], metadatas=[metadata])
 
 def delete_from_chroma(course_id):
-    collection = load_vector_store('AllCourseRelatedData')
+    collection = get_chatbot_integration().load_vector_store('AllCourseRelatedData')
     collection.delete(ids=[course_id])
 
 @app.route('/api/admin/courses', methods=['GET'])
@@ -1147,7 +1284,8 @@ def get_admin_course(id):
         return jsonify({'success': False, 'error': 'Course not found'}), 404
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
-
+    
+    
 # Utility endpoint to check and fix profile completion status
 @app.route('/api/admin/fix-profile-completion', methods=['POST'])
 @jwt_required()
@@ -1192,6 +1330,55 @@ def fix_profile_completion():
     except Exception as e:
         print(f"  Fix profile completion error: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/chat/feedback', methods=['POST'])
+@jwt_required()
+def submit_feedback():
+    """Submit feedback for a chat message"""
+    try:
+        user_id = get_jwt_identity()
+        data = request.get_json()
+        message_id = data.get('message_id')
+        feedback = data.get('feedback')  # 'positive' or 'negative'
+        timestamp = data.get('timestamp')
+        
+        if not message_id or not feedback:
+            return jsonify({"error": "Message ID and feedback are required"}), 400
+        
+        if feedback not in ['positive', 'negative']:
+            return jsonify({"error": "Feedback must be 'positive' or 'negative'"}), 400
+        
+        # Save feedback to database
+        if mongo_db is not None:
+            feedback_doc = {
+                'user_id': user_id,
+                'message_id': message_id,
+                'feedback': feedback,
+                'timestamp': datetime.fromisoformat(timestamp.replace('Z', '+00:00')) if timestamp else datetime.now(),
+                'created_at': datetime.now()
+            }
+            mongo_db.message_feedback.insert_one(feedback_doc)
+            
+            # Also update the message in chat_sessions if it exists
+            try:
+                # Find the message in chat_sessions and update it
+                result = mongo_db.chat_sessions.update_one(
+                    {'messages.id': message_id},
+                    {'$set': {'messages.$.feedback': feedback}}
+                )
+                print(f"✅ Feedback saved for message {message_id}: {feedback}")
+            except Exception as e:
+                print(f"⚠️  Could not update message in chat_sessions: {e}")
+        
+        return jsonify({
+            "success": True,
+            "message": "Feedback submitted successfully",
+            "feedback": feedback
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Feedback submission error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5003))
