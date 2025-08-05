@@ -12,6 +12,7 @@ import ProfileCompletion from "./components/ProfileCompletion.jsx";
 import ProfileData from "./components/ProfileData.jsx";
 import CourseDetails from "./components/CourseDetails";
 import AdminDashboard from "./components/AdminDashboard";
+import PortfolioView from "./components/PortfolioView";
 
 function App() {
   return (
@@ -70,6 +71,9 @@ function App() {
               </ProtectedRoute>
             }
           />
+
+          {/* Public Portfolio Route */}
+          <Route path="/portfolio/:userId" element={<PortfolioView />} />
 
           {/* Catch all route - redirect to home */}
           <Route
