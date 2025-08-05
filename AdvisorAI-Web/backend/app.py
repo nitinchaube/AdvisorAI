@@ -516,7 +516,8 @@ def get_public_profile(user_id):
                 public_fields = [
                     'fullName', 'email', 'location', 'summary',
                     'github', 'linkedin',
-                    'experience', 'education', 'skills', 'certifications', 'projects'
+                    'experience', 'education', 'skills', 'certifications', 'projects',
+                    'portfolioTheme'
                 ]
                 public_profile = {k: profile.get(k) for k in public_fields if k in profile}
                 # For each project, only include github if present

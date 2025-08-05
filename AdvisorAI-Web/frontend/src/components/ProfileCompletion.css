@@ -4,7 +4,7 @@
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
   position: relative !important;
   overflow: hidden !important;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif !important;
 }
 
 /* Enhanced Animated Background */
@@ -40,7 +40,8 @@
 }
 
 @keyframes float {
-  0%, 100% {
+  0%,
+  100% {
     transform: translateY(0px) scale(1);
     opacity: 0.3;
   }
@@ -56,7 +57,11 @@
   left: 0 !important;
   width: 100% !important;
   height: 100% !important;
-  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.1) 0%, transparent 70%) !important;
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(255, 255, 255, 0.1) 0%,
+    transparent 70%
+  ) !important;
 }
 
 /* Main Content */
@@ -114,7 +119,8 @@
 }
 
 @keyframes pulse {
-  0%, 100% {
+  0%,
+  100% {
     transform: scale(1);
     box-shadow: 0 8px 32px rgba(102, 126, 234, 0.4);
   }
@@ -283,7 +289,11 @@
   width: 100% !important;
   height: 100% !important;
   border-radius: 50% !important;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, transparent 100%) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.2) 0%,
+    transparent 100%
+  ) !important;
 }
 
 .sparkle-icon {
@@ -378,8 +388,12 @@
 }
 
 @keyframes rotate {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .upload-icon {
@@ -470,7 +484,11 @@
   width: 100% !important;
   height: 100% !important;
   border-radius: 12px !important;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, transparent 100%) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.2) 0%,
+    transparent 100%
+  ) !important;
 }
 
 .file-icon {
@@ -550,13 +568,22 @@
   left: -100% !important;
   width: 100% !important;
   height: 100% !important;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent) !important;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.4),
+    transparent
+  ) !important;
   animation: shimmer 2s infinite !important;
 }
 
 @keyframes shimmer {
-  0% { left: -100%; }
-  100% { left: 100%; }
+  0% {
+    left: -100%;
+  }
+  100% {
+    left: 100%;
+  }
 }
 
 .progress-text {
@@ -574,7 +601,8 @@
   justify-content: center !important;
 }
 
-.primary-btn, .secondary-btn {
+.primary-btn,
+.secondary-btn {
   display: inline-flex !important;
   align-items: center !important;
   gap: 0.5rem !important;
@@ -611,7 +639,8 @@
   transform: translateY(-2px) !important;
 }
 
-.primary-btn:disabled, .secondary-btn:disabled {
+.primary-btn:disabled,
+.secondary-btn:disabled {
   opacity: 0.6 !important;
   cursor: not-allowed !important;
   transform: none !important;
@@ -632,8 +661,12 @@
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 /* Debug Panel */
@@ -690,7 +723,7 @@
 
 .divider::before,
 .divider::after {
-  content: '' !important;
+  content: "" !important;
   flex: 1 !important;
   border-bottom: 1px solid rgba(255, 255, 255, 0.2) !important;
 }
@@ -731,7 +764,11 @@
   width: 100% !important;
   height: 100% !important;
   border-radius: 50% !important;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, transparent 100%) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.2) 0%,
+    transparent 100%
+  ) !important;
 }
 
 .manual-icon {
@@ -961,7 +998,7 @@
   padding: 1rem !important;
   color: #fff !important;
   font-size: 0.9rem !important;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace !important;
+  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace !important;
   resize: vertical !important;
 }
 
@@ -1036,8 +1073,8 @@
 }
 
 .view-mode {
-  color: rgba(255, 255, 255, 0.9) !important;
-  line-height: 1.6 !important;
+  color: #232946;
+  line-height: 1.6;
 }
 
 .array-field {
@@ -1059,7 +1096,8 @@
   gap: 0.5rem !important;
 }
 
-.object-field, .nested-field {
+.object-field,
+.nested-field {
   display: flex !important;
   gap: 0.5rem !important;
   align-items: baseline !important;
@@ -1073,8 +1111,8 @@
 }
 
 .field-value {
-  color: #fff !important;
-  flex: 1 !important;
+  color: #232946;
+  flex: 1;
 }
 
 /* Toast Notifications */
@@ -1198,7 +1236,7 @@
     flex-direction: column !important;
     align-items: stretch !important;
   }
-  
+
   .form-actions {
     justify-content: center !important;
   }
@@ -1208,39 +1246,42 @@
   .main-content {
     padding: 1rem !important;
   }
-  
+
   .header-section h1 {
     font-size: 2.5rem !important;
   }
-  
-  .upload-card, .profile-form-container {
+
+  .upload-card,
+  .profile-form-container {
     padding: 2rem !important;
   }
-  
-  .action-buttons, .form-actions {
+
+  .action-buttons,
+  .form-actions {
     flex-direction: column !important;
   }
-  
-  .primary-btn, .secondary-btn {
+
+  .primary-btn,
+  .secondary-btn {
     width: 100% !important;
     justify-content: center !important;
   }
-  
+
   .field-header {
     flex-wrap: wrap !important;
   }
-  
+
   .field-content {
     margin-left: 0 !important;
     margin-top: 1rem !important;
   }
-  
+
   .toast {
     top: 1rem !important;
     right: 1rem !important;
     left: 1rem !important;
   }
-  
+
   .fab {
     bottom: 1rem !important;
     right: 1rem !important;
@@ -1251,18 +1292,17 @@
   .upload-area {
     padding: 2rem 1rem !important;
   }
-  
+
   .file-selected {
     flex-direction: column !important;
     text-align: center !important;
   }
-  
+
   .profile-form-container {
     padding: 1.5rem !important;
   }
-  
+
   .form-field {
     padding: 1rem !important;
   }
 }
- 
