@@ -284,6 +284,50 @@ class ApiService {
     return this.makeRequest(`/admin/courses/${id}`);
   }
 
+  async getAllCourseReviews() {
+    return this.makeRequest("/reviews/courses");
+  }
+
+
+  //get faculty data
+  async getFaculty() {
+    return this.makeRequest("/faculty");
+  }
+
+  async getSingleFaculty(id) {
+    return this.makeRequest(`/faculty/${id}`);
+  }
+
+  async getAllFaculty() {
+    return this.makeRequest("/admin/faculty");
+  }
+
+  async addFaculty(data) {
+    return this.makeRequest("/admin/faculty", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateFaculty(id, data) {
+    return this.makeRequest(`/admin/faculty/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteFaculty(id) {
+    return this.makeRequest(`/admin/faculty/${id}`, {
+      method: "DELETE",
+    });
+  }
+
+  async getAllProfessorReviews() {
+    return this.makeRequest("/reviews/professors");
+  }
+
+
+
   // Admin methods
   async addCourse(content, metadata) {
     return this.makeRequest("/admin/courses", {
@@ -315,7 +359,7 @@ class ApiService {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          ...(token && { Authorization: `Bearer ${token}` }),
         },
         body: JSON.stringify({
           query,
@@ -332,7 +376,6 @@ class ApiService {
 
       while (true) {
         const { done, value } = await reader.read();
-
         if (done) break;
 
         const chunk = decoder.decode(value);
@@ -340,14 +383,14 @@ class ApiService {
 
         for (const line of lines) {
           if (line.startsWith("data: ")) {
+            const data = line.slice(6);
+            if (data === "[DONE]") {
+              return;
+            }
             try {
-              const data = JSON.parse(line.slice(6));
-              if (data.token) {
-                onToken(data.token);
-              } else if (data.done) {
-                return;
-              } else if (data.error) {
-                throw new Error(data.error);
+              const parsed = JSON.parse(data);
+              if (parsed.token && onToken) {
+                onToken(parsed.token);
               }
             } catch (e) {
               console.error("Error parsing stream data:", e);
@@ -356,9 +399,21 @@ class ApiService {
         }
       }
     } catch (error) {
-      console.error("❌ Stream chat error:", error);
+      console.error("Stream error:", error);
       throw error;
     }
+  }
+
+  // Submit feedback for a message
+  async submitFeedback(messageId, feedback) {
+    return this.makeRequest("/chat/feedback", {
+      method: "POST",
+      body: JSON.stringify({
+        message_id: messageId,
+        feedback: feedback, // 'positive' or 'negative'
+        timestamp: new Date().toISOString()
+      }),
+    });
   }
 
   // Get public profile for portfolio
@@ -398,6 +453,35 @@ apiService.postCourseReview = async function (courseId, data, token) {
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error("Failed to post review");
+  return await res.json();
+};
+
+apiService.getProfessorReviews = async function (professorId) {
+  const res = await fetch(`${this.baseURL}/faculty/${professorId}/reviews`, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${localStorage.getItem("backendToken") || ""}`,
+    },
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error("Failed to fetch professor reviews");
+  return await res.json();
+};
+
+apiService.postProfessorReview = async function (professorId, data, token) {
+  const res = await fetch(`${this.baseURL}/faculty/${professorId}/reviews`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${
+        token || localStorage.getItem("backendToken") || ""
+      }`,
+    },
+    credentials: "include",
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("Failed to post professor review");
   return await res.json();
 };
 
