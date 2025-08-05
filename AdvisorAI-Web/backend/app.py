@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from resume_processor import ResumeProcessor
 # Replace RAG service with chatbot integration
 from chatbot_integration import get_chatbot_integration
+from faculty_data_mapper import mongo_faculty_to_admin_format, admin_format_to_mongo_faculty
 import logging
 import time
 import redis
@@ -1036,8 +1037,11 @@ def get_faculty():
         # This line correctly points to your 'faculty' collection.
         docs = mongo_db.faculty.find()
         for doc in docs:
-            professor = mongo_doc_to_json(doc)
-            faculty_list.append(professor)
+            # Convert MongoDB document to JSON
+            mongo_faculty = mongo_doc_to_json(doc)
+            # Convert to admin dashboard format for consistency
+            admin_faculty = mongo_faculty_to_admin_format(mongo_faculty)
+            faculty_list.append(admin_faculty)
         # The key 'faculty' matches the frontend code's expectation.
         return jsonify({'success': True, 'faculty': faculty_list})
     except Exception as e:
@@ -1052,9 +1056,11 @@ def get_single_faculty(id):
         doc = mongo_db.faculty.find_one({'_id': ObjectId(id)})
 
         if doc:
-            # Convert the document to a JSON-friendly format
-            professor = mongo_doc_to_json(doc)
-            return jsonify({'success': True, 'professor': professor})
+            # Convert MongoDB document to JSON
+            mongo_faculty = mongo_doc_to_json(doc)
+            # Convert to admin dashboard format for consistency
+            admin_faculty = mongo_faculty_to_admin_format(mongo_faculty)
+            return jsonify({'success': True, 'professor': admin_faculty})
         else:
             return jsonify({'success': False, 'error': 'Faculty not found'}), 404
     except Exception as e:
@@ -1202,14 +1208,30 @@ def get_collections():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 def sync_course_to_chroma(course_id, course_data):
-    collection = get_chatbot_integration().load_vector_store('AllCourseRelatedData')
-    content = json.dumps(course_data)
-    metadata = {'title': course_data.get('Course Title', ''), 'code': course_data.get('Course Code', '')}
-    collection.upsert(ids=[course_id], documents=[content], metadatas=[metadata])
+    """Sync course data to Chroma vector database"""
+    try:
+        collection = get_chatbot_integration().load_vector_store('AllCourseRelatedData')
+        if collection:
+            content = json.dumps(course_data)
+            metadata = {'title': course_data.get('Course Title', ''), 'code': course_data.get('Course Code', '')}
+            collection.upsert(ids=[course_id], documents=[content], metadatas=[metadata])
+            print(f"✅ Course {course_id} synced to Chroma")
+        else:
+            print(f"⚠️  Chroma collection 'AllCourseRelatedData' not available")
+    except Exception as e:
+        print(f"❌ Error syncing course {course_id} to Chroma: {e}")
 
 def delete_from_chroma(course_id):
-    collection = get_chatbot_integration().load_vector_store('AllCourseRelatedData')
-    collection.delete(ids=[course_id])
+    """Delete course data from Chroma vector database"""
+    try:
+        collection = get_chatbot_integration().load_vector_store('AllCourseRelatedData')
+        if collection:
+            collection.delete(ids=[course_id])
+            print(f"✅ Course {course_id} deleted from Chroma")
+        else:
+            print(f"⚠️  Chroma collection 'AllCourseRelatedData' not available")
+    except Exception as e:
+        print(f"❌ Error deleting course {course_id} from Chroma: {e}")
 
 @app.route('/api/admin/courses', methods=['GET'])
 @jwt_required()
@@ -1282,6 +1304,102 @@ def get_admin_course(id):
             course['id'] = id
             return jsonify({'success': True, 'course': course})
         return jsonify({'success': False, 'error': 'Course not found'}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# --- Faculty Admin CRUD Endpoints ---
+@app.route('/api/admin/faculty', methods=['GET'])
+@jwt_required()
+@admin_required
+def get_all_faculty():
+    """Admin endpoint to get all faculty members"""
+    try:
+        faculty_list = []
+        docs = mongo_db.faculty.find()
+        for doc in docs:
+            # Convert MongoDB document to JSON
+            mongo_faculty = mongo_doc_to_json(doc)
+            # Convert to admin dashboard format
+            admin_faculty = mongo_faculty_to_admin_format(mongo_faculty)
+            faculty_list.append(admin_faculty)
+        return jsonify({'success': True, 'faculty': faculty_list})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/admin/faculty', methods=['POST'])
+@jwt_required()
+@admin_required
+def add_faculty():
+    """Admin endpoint to add a new faculty member"""
+    admin_data = request.get_json()
+    if not admin_data:
+        return jsonify({'error': 'Data is required'}), 400
+    try:
+        # Convert admin format to MongoDB format
+        mongo_data = admin_format_to_mongo_faculty(admin_data)
+        # Add creation timestamp
+        mongo_data['createdAt'] = datetime.now()
+        mongo_data['updatedAt'] = datetime.now()
+        result = mongo_db.faculty.insert_one(mongo_data)
+        faculty_id = str(result.inserted_id)
+        return jsonify({'success': True, 'id': faculty_id}), 201
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/admin/faculty/<id>', methods=['GET'])
+@jwt_required()
+@admin_required
+def get_admin_faculty(id):
+    """Admin endpoint to get a single faculty member"""
+    try:
+        doc = mongo_db.faculty.find_one({'_id': ObjectId(id)})
+        if doc:
+            # Convert MongoDB document to JSON
+            mongo_faculty = mongo_doc_to_json(doc)
+            # Convert to admin dashboard format
+            admin_faculty = mongo_faculty_to_admin_format(mongo_faculty)
+            admin_faculty['id'] = id
+            return jsonify({'success': True, 'faculty': admin_faculty})
+        return jsonify({'success': False, 'error': 'Faculty not found'}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/admin/faculty/<id>', methods=['PUT'])
+@jwt_required()
+@admin_required
+def update_faculty(id):
+    """Admin endpoint to update a faculty member"""
+    admin_data = request.get_json()
+    if not admin_data:
+        return jsonify({'error': 'Data is required'}), 400
+    try:
+        faculty_ref = mongo_db.faculty.find_one({'_id': ObjectId(id)})
+        if not faculty_ref:
+            return jsonify({'error': 'Faculty not found'}), 404
+        
+        # Convert admin format to MongoDB format
+        mongo_data = admin_format_to_mongo_faculty(admin_data)
+        # Add update timestamp
+        mongo_data['updatedAt'] = datetime.now()
+        mongo_db.faculty.update_one({'_id': ObjectId(id)}, {'$set': mongo_data})
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/admin/faculty/<id>', methods=['DELETE'])
+@jwt_required()
+@admin_required
+def delete_faculty(id):
+    """Admin endpoint to delete a faculty member"""
+    try:
+        faculty_ref = mongo_db.faculty.find_one({'_id': ObjectId(id)})
+        if not faculty_ref:
+            return jsonify({'error': 'Faculty not found'}), 404
+        
+        # Also delete related reviews
+        mongo_db.professor_reviews.delete_many({'faculty_id': id})
+        mongo_db.faculty.delete_one({'_id': ObjectId(id)})
+        return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
     
