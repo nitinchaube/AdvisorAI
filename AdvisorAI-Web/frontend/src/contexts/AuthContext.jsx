@@ -43,9 +43,6 @@ export function AuthProvider({ children }) {
         await updateProfile(result.user, { displayName });
       }
 
-      // Set profile completion status to false for new users
-      localStorage.setItem("profileCompleted", "false");
-
       return result;
     } catch (error) {
       setError(error.message);
@@ -71,8 +68,8 @@ export function AuthProvider({ children }) {
   // Logout function
   async function logout() {
     try {
-      // Clear profile completion status on logout
-      localStorage.removeItem("profileCompleted");
+      // Clear user profile state
+      setUserProfile(null);
       // Clear backend token
       localStorage.removeItem("backendToken");
       // Clear chat cache
@@ -86,98 +83,47 @@ export function AuthProvider({ children }) {
     }
   }
 
-  // Mark profile as completed
-  function markProfileCompleted() {
-    localStorage.setItem("profileCompleted", "true");
-    // Update current user state if available
-    if (currentUser) {
-      setCurrentUser((prev) => ({
-        ...prev,
-        profileCompleted: true,
-      }));
-    }
-    // Update userProfile state if available
-    if (userProfile) {
-      setUserProfile((prev) => ({
-        ...prev,
-        profileCompleted: true,
-      }));
-    }
-    console.log("AuthContext: Profile marked as completed");
+  // Mark profile as completed by refetching from the backend
+  async function markProfileCompleted() {
+    console.log(
+      "AuthContext: Marking profile as completed by refetching profile..."
+    );
+    await loadUserProfile();
   }
 
-  // Check if profile is completed
+  // Check if profile is completed from the userProfile state
   function isProfileCompleted() {
-    const localStorageStatus =
-      localStorage.getItem("profileCompleted") === "true";
-    const userStatus = currentUser?.profileCompleted;
-    const userProfileStatus = userProfile?.profileCompleted === true;
-
-    // If any source indicates completion, return true
-    const isCompleted = localStorageStatus || userStatus || userProfileStatus;
-
+    const isCompleted = userProfile?.profileCompleted === true;
     console.log(
-      "AuthContext: Profile completion check - localStorage:",
-      localStorageStatus,
-      "userState:",
-      userStatus,
-      "userProfile:",
-      userProfileStatus,
+      "AuthContext: Profile completion check from state - userProfile:",
+      userProfile,
       "final:",
       isCompleted
     );
-
     return isCompleted;
   }
 
   // Load user profile from backend
   const loadUserProfile = useCallback(async () => {
-    if (!currentUser) return null;
-
+    // No need to check for currentUser here, as this is checked in the useEffect
+    console.log("AuthContext: Firing loadUserProfile");
     try {
       const response = await apiService.getUserProfile();
       if (response.success && response.profile) {
         setUserProfile(response.profile);
         console.log("AuthContext: User profile loaded:", response.profile);
-
-        // Also update profile completion status
-        if (response.profile.profileCompleted) {
-          markProfileCompleted();
-        }
-
         return response.profile;
       }
+      // If the profile is empty or request fails, set it to a default state
+      setUserProfile({ profileCompleted: false });
       return null;
     } catch (error) {
       console.error("AuthContext: Error loading user profile:", error);
+      // Set a default state on error to avoid blocking rendering
+      setUserProfile({ profileCompleted: false });
       return null;
     }
-  }, [currentUser]);
-
-  // Check profile completion status from backend
-  async function checkProfileCompletionFromBackend() {
-    if (!currentUser) return false;
-
-    try {
-      const response = await apiService.getUserProfile();
-      if (
-        response.success &&
-        response.profile &&
-        Object.keys(response.profile).length > 0
-      ) {
-        setUserProfile(response.profile);
-        markProfileCompleted();
-        return true;
-      }
-      return false;
-    } catch (error) {
-      console.error(
-        "AuthContext: Error checking profile completion from backend:",
-        error
-      );
-      return false;
-    }
-  }
+  }, []);
 
   // Get current user's ID token
   async function getIdToken() {
@@ -213,25 +159,22 @@ export function AuthProvider({ children }) {
           }
         }
       } else {
+        // Clear all user-related state on logout
         setCurrentUser(null);
         setUserProfile(null);
-
-        localStorage.removeItem('profileCompleted');
-        localStorage.removeItem('backendToken');
-
+        localStorage.removeItem("backendToken");
       }
       setLoading(false);
     });
     return unsubscribe;
   }, []);
 
-  // Separate effect to load user profile when user and token are available
+  // Effect to load user profile when user is available
   useEffect(() => {
     const loadProfileIfNeeded = async () => {
-      const backendToken = localStorage.getItem("backendToken");
-      if (currentUser && backendToken && !userProfile) {
+      if (currentUser) {
         try {
-          console.log("AuthContext: Loading user profile...");
+          console.log("AuthContext: User detected, loading profile...");
           await loadUserProfile();
         } catch (error) {
           console.error("AuthContext: Failed to load user profile:", error);
@@ -239,10 +182,8 @@ export function AuthProvider({ children }) {
       }
     };
 
-    if (currentUser) {
-      loadProfileIfNeeded();
-    }
-  }, [currentUser, loadUserProfile, userProfile]);
+    loadProfileIfNeeded();
+  }, [currentUser, loadUserProfile]);
 
   const value = {
     currentUser,

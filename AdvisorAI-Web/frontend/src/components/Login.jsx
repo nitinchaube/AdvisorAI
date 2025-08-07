@@ -29,7 +29,7 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [currentFeature, setCurrentFeature] = useState(0);
-  const { login, isProfileCompleted, loadUserProfile } = useAuth();
+  const { login, loadUserProfile } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -66,31 +66,21 @@ const Login = () => {
 
       // Step 3: Sign in with backend
       console.log("🔗 Signing in with backend...");
-      const backendResponse = await apiService.signinWithBackend(idToken);
-      console.log("✅ Backend login successful:", backendResponse);
+      await apiService.signinWithBackend(idToken);
+      console.log("✅ Backend login successful");
 
-      // Step 4: Store the backend token
-      localStorage.setItem("backendToken", backendResponse.access_token);
-      console.log("💾 Token stored in localStorage");
-
-      // Step 5: Load user profile into AuthContext and check completion
-      console.log("🔍 Loading user profile into AuthContext...");
+      // Step 4: Load user profile and navigate based on completion status
+      console.log("🔍 Loading user profile...");
       const profile = await loadUserProfile();
-      if (profile) {
-        localStorage.setItem(
-          "profileCompleted",
-          profile.profileCompleted ? "true" : "false"
-        );
-        console.log("📊 Profile completed:", profile.profileCompleted);
-        console.log("👑 User role:", profile.role);
-        if (profile.profileCompleted) {
-          navigate("/dashboard");
-        } else {
-          navigate("/profile-completion");
-        }
+      console.log("✅ User profile loaded:", profile);
+
+      if (profile && profile.profileCompleted) {
+        console.log("📊 Profile complete, navigating to dashboard...");
+        navigate("/dashboard");
       } else {
-        // fallback if profile fetch fails
-        localStorage.setItem("profileCompleted", "false");
+        console.log(
+          "📊 Profile not complete or failed to load, navigating to profile completion..."
+        );
         navigate("/profile-completion");
       }
     } catch (error) {
