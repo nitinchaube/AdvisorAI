@@ -192,17 +192,33 @@ export function AuthProvider({ children }) {
   }
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      console.log(
-        "AuthContext: Auth state changed:",
-        user ? user.uid : "No user"
-      );
+
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      console.log('AuthContext: Auth state changed:', user ? user.uid : 'No user');
+
       if (user) {
         setCurrentUser(user);
+        
+        // Auto-get backend token if user is authenticated but no backend token exists
+        const backendToken = localStorage.getItem('backendToken');
+        if (!backendToken) {
+          try {
+            console.log('🔑 Auto-getting backend token for authenticated user...');
+            const idToken = await user.getIdToken();
+            const backendResponse = await apiService.signinWithBackend(idToken);
+            localStorage.setItem('backendToken', backendResponse.access_token);
+            console.log('✅ Backend token auto-retrieved and stored');
+          } catch (error) {
+            console.error('❌ Failed to auto-get backend token:', error);
+          }
+        }
       } else {
         setCurrentUser(null);
         setUserProfile(null);
-        localStorage.removeItem("profileCompleted");
+
+        localStorage.removeItem('profileCompleted');
+        localStorage.removeItem('backendToken');
+
       }
       setLoading(false);
     });
