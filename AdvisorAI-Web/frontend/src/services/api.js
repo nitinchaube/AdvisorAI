@@ -11,6 +11,28 @@ class ApiService {
     return token ? { Authorization: `Bearer ${token}` } : {};
   }
 
+  // Helper method to refresh backend token
+  async refreshBackendToken() {
+    try {
+      // Get current Firebase user
+      const { auth } = await import('../config/firebase');
+      const user = auth.currentUser;
+      
+      if (user) {
+        console.log('🔄 Refreshing backend token...');
+        const idToken = await user.getIdToken();
+        const response = await this.signinWithBackend(idToken);
+        localStorage.setItem('backendToken', response.access_token);
+        console.log('✅ Backend token refreshed');
+        return response.access_token;
+      }
+    } catch (error) {
+      console.error('❌ Failed to refresh backend token:', error);
+      throw error;
+    }
+    return null;
+  }
+
   // Helper method to make API calls
   async makeRequest(endpoint, options = {}) {
     const url = `${this.baseURL}${endpoint}`;
@@ -40,6 +62,38 @@ class ApiService {
       console.log("📥 Response data:", data);
 
       if (!response.ok) {
+        // Handle 401 Unauthorized by trying to refresh token
+        if (response.status === 401) {
+          console.log("🔐 401 Unauthorized - attempting token refresh...");
+          try {
+            await this.refreshBackendToken();
+            // Retry the request with new token
+            const newHeaders = {
+              ...config.headers,
+              ...this.getAuthHeaders(),
+            };
+            const retryConfig = { ...config, headers: newHeaders };
+            const retryResponse = await fetch(url, retryConfig);
+            const retryData = await retryResponse.json();
+            
+            if (!retryResponse.ok) {
+              const errorMessage =
+                retryData.error ||
+                retryData.message ||
+                `HTTP ${retryResponse.status}: ${retryResponse.statusText}`;
+              console.error("❌ API Error Response after token refresh:", errorMessage);
+              throw new Error(errorMessage);
+            }
+            
+            return retryData;
+          } catch (refreshError) {
+            console.error("❌ Token refresh failed:", refreshError);
+            // Clear invalid token
+            localStorage.removeItem('backendToken');
+            throw new Error("Authentication failed. Please log in again.");
+          }
+        }
+        
         const errorMessage =
           data.error ||
           data.message ||
