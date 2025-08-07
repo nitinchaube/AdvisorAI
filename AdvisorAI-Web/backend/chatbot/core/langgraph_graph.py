@@ -204,6 +204,9 @@ class LangGraphOrchestrator:
         - "Do you have courses on deep learning?" → {{"tools": ["chroma", "web"], "primary_tool": "chroma"}}
         - "What courses are available?" → {{"tools": ["chroma", "web"], "primary_tool": "chroma"}}
         - "Check again" → {{"tools": ["history"], "primary_tool": "history"}}
+        - "try again with my previous question" → {{"tools": ["history"], "primary_tool": "history"}}
+        - "what about my last question" → {{"tools": ["history"], "primary_tool": "history"}}
+        - "repeat that" → {{"tools": ["history"], "primary_tool": "history"}}
         - "What is the meaning of life?" → {{"tools": ["general"], "primary_tool": "general"}}
         - "Explain neural networks" → {{"tools": ["general"], "primary_tool": "general"}}
         """
@@ -400,9 +403,10 @@ class LangGraphOrchestrator:
 
         Think step by step:
         1. What specific information is the user asking for?
-        2. Do we have sufficient information from our database and general knowledge?
-        3. What might be missing that would require web search?
-        4. Is this a current/recent information request?
+        2. Is this a follow-up question that should use existing history?
+        3. Do we have sufficient information from our database and general knowledge?
+        4. What might be missing that would require web search?
+        5. Is this a current/recent information request?
 
         Decision Guidelines:
         - Set need_web_search to true if:
@@ -413,6 +417,8 @@ class LangGraphOrchestrator:
           * The question requires external context not in the database
           * The user asks for specific details not covered
           * We have no or very few documents from the database
+          * The question asks for specific professor contact information or current availability
+          * The question asks for current course offerings or schedules
         - Set need_web_search to false if:
           * Available information is comprehensive and sufficient
           * The question is about general knowledge that's well covered
@@ -421,6 +427,21 @@ class LangGraphOrchestrator:
           * It's a simple greeting or casual conversation
           * The general tool has provided a satisfactory answer
           * The question is basic and doesn't require current information
+          * It's a follow-up question (try again, check again, repeat, what about, etc.)
+          * The user is asking to rephrase or clarify a previous answer
+          * The question refers to "my previous question" or "last question"
+          * The question asks to "try again" or "check again"
+          * We have relevant history available and the question is about previous context
+
+        Examples:
+        - "try again with my previous question" → need_web_search: false (use history)
+        - "check again" → need_web_search: false (use history)
+        - "what about my last question" → need_web_search: false (use history)
+        - "repeat that" → need_web_search: false (use history)
+        - "tell me about Professor Dehnad" → need_web_search: true (current info needed)
+        - "what courses are available in 2025" → need_web_search: true (current info needed)
+        - "what is machine learning" → need_web_search: false (general knowledge)
+        - "how do I apply for admission" → need_web_search: true (current process needed)
 
         Return ONLY a valid JSON object:
         {{
@@ -569,6 +590,42 @@ class LangGraphOrchestrator:
         history_results = state.get("history_results", {})
         reasoning_result = state.get("reasoning_result", {})
         
+        # Check if this is a follow-up question and handle it specially
+        is_follow_up = history_results.get("is_follow_up", False)
+        if is_follow_up and history_results.get("relevant_history"):
+            print(f"🔄 FINAL: Detected follow-up question, using history directly")
+            # For follow-up questions, use the most recent history entry
+            latest_history = history_results["relevant_history"][-1] if history_results["relevant_history"] else None
+            if latest_history:
+                previous_query = latest_history.get("query", "")
+                previous_response = latest_history.get("response", "")
+                
+                # Create a direct response for follow-up questions
+                follow_up_prompt = f"""
+                The user is asking a follow-up question: "{query}"
+                
+                Based on the conversation history, their previous question was: "{previous_query}"
+                And your previous answer was: "{previous_response}"
+                
+                For follow-up questions like "try again with my previous question", "check again", etc., 
+                provide the same information from your previous response, but you can add any additional 
+                relevant information if needed.
+                
+                Respond directly with the information from your previous answer:
+                """
+                
+                try:
+                    response = await llm.ainvoke([{"role": "user", "content": follow_up_prompt}])
+                    answer = response.content.strip()
+                    print(f"✅ FINAL: Follow-up response generated using history")
+                    state["answer"] = answer
+                    return state
+                except Exception as e:
+                    print(f"❌ FINAL: Error generating follow-up response: {str(e)}")
+                    # Fallback to previous response
+                    state["answer"] = previous_response
+                    return state
+        
         # Build comprehensive context
         context_parts = []
         
@@ -595,10 +652,16 @@ class LangGraphOrchestrator:
         # Add history
         if history_results.get("relevant_history"):
             context_parts.append("Previous Conversation Context (for reference only):")
+            print(f"📚 FINAL: Found {len(history_results['relevant_history'])} history entries")
             for i, entry in enumerate(history_results["relevant_history"][:5]):
                 context_parts.append(f"Previous Q: {entry.get('query', 'Unknown')}")
                 context_parts.append(f"Previous A: {entry.get('response', 'Unknown')[:100]}...")
+                print(f"📚 FINAL: History entry {i+1}: Q='{entry.get('query', 'Unknown')[:50]}...' A='{entry.get('response', 'Unknown')[:50]}...'")
             print(f"📚 FINAL: Using conversation history")
+            print(f"📚 FINAL: Is follow-up: {history_results.get('is_follow_up', False)}")
+        else:
+            print(f"⚠️ FINAL: No relevant history found")
+            print(f"📚 FINAL: History results keys: {list(history_results.keys()) if history_results else 'None'}")
         
         # Add reasoning context
         if reasoning_result.get("reasoning"):
@@ -635,6 +698,15 @@ class LangGraphOrchestrator:
         - If general concepts are asked, use general knowledge appropriately
         - If information is missing, be honest about limitations
         - Always prioritize accuracy over completeness
+
+        Special Handling for Follow-up Questions:
+        - If the user says "try again with my previous question", find the most recent question in the conversation history and provide that answer again
+        - If the user says "check again", look at the most recent conversation and repeat or clarify that information
+        - If the user says "what about my last question", find the most recent question and provide the answer
+        - If the user says "repeat that", find the most recent answer and repeat it
+        - For these follow-up questions, DO NOT ask the user to provide the question - use the conversation history to find it
+        - If you find relevant previous questions in the history, provide those answers directly
+        - If no relevant history is found, then ask the user to clarify what they want to know
 
         Synthesize your answer:
         """

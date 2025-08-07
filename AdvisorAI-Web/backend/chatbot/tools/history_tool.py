@@ -80,7 +80,11 @@ class HistoryTool:
             "check again", "check", "again", "more", "what else", "tell me more", 
             "additional", "further", "expand", "elaborate", "details", "specifically",
             "continue", "go on", "and?", "what about", "how about", "can you tell me more",
-            "give me more", "show me more", "explain more", "describe more"
+            "give me more", "show me more", "explain more", "describe more",
+            "try again", "repeat", "rephrase", "clarify", "previous question",
+            "last question", "my previous question", "what about my last question",
+            "repeat that", "say that again", "can you repeat", "what was that",
+            "remind me", "recall", "remember", "what did you say", "can you clarify"
         ]
         
         query_lower = query.lower().strip()
@@ -98,6 +102,23 @@ class HistoryTool:
         # Check for short queries that might be follow-ups
         if len(query_lower) <= 20 and any(word in query_lower for word in ["more", "else", "and", "what", "how", "why"]):
             return True
+        
+        # Check for specific follow-up patterns
+        follow_up_patterns = [
+            "try again with",
+            "check again",
+            "what about",
+            "tell me more about",
+            "can you repeat",
+            "say that again",
+            "remind me",
+            "what was",
+            "can you clarify"
+        ]
+        
+        for pattern in follow_up_patterns:
+            if pattern in query_lower:
+                return True
         
         return False
     
