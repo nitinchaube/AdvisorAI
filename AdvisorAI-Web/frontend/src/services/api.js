@@ -1,24 +1,35 @@
+import { auth } from "../config/firebase";
 const API_BASE_URL = "http://localhost:5002/api";
 
 class ApiService {
-  constructor() {
+  constructor(auth) {
     this.baseURL = API_BASE_URL;
+    this.auth = auth;
   }
 
   // Helper method to get auth headers
-  getAuthHeaders() {
-    const token = localStorage.getItem("backendToken");
-    return token ? { Authorization: `Bearer ${token}` } : {};
+  async getAuthHeaders() {
+    if (this.auth.currentUser) {
+      try {
+        const token = await this.auth.currentUser.getIdToken();
+        return { Authorization: `Bearer ${token}` };
+      } catch (error) {
+        console.error("Error getting ID token:", error);
+        return {};
+      }
+    }
+    return {};
   }
 
   // Helper method to make API calls
   async makeRequest(endpoint, options = {}) {
     const url = `${this.baseURL}${endpoint}`;
+    const authHeaders = await this.getAuthHeaders();
 
     const defaultOptions = {
       headers: {
         "Content-Type": "application/json",
-        ...this.getAuthHeaders(),
+        ...authHeaders,
         ...options.headers,
       },
     };
@@ -62,20 +73,15 @@ class ApiService {
   // File upload method with auth
   async uploadFile(endpoint, formData) {
     const url = `${this.baseURL}${endpoint}`;
-    const token = localStorage.getItem("backendToken");
+    const authHeaders = await this.getAuthHeaders();
 
     try {
       console.log(` Uploading file to: ${url}`);
-      console.log("🔑 Token present:", !!token);
-
-      const headers = {};
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
-      }
+      console.log("🔑 Token present:", !!authHeaders.Authorization);
 
       const response = await fetch(url, {
         method: "POST",
-        headers: headers,
+        headers: authHeaders,
         body: formData, // Don't set Content-Type for FormData
       });
 
@@ -422,14 +428,15 @@ class ApiService {
   }
 }
 
-const apiService = new ApiService();
+const apiService = new ApiService(auth);
 
 apiService.getCourseReviews = async function (courseId) {
+  const authHeaders = await this.getAuthHeaders();
   const res = await fetch(`${this.baseURL}/courses/${courseId}/reviews`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${localStorage.getItem("backendToken") || ""}`,
+      ...authHeaders,
     },
     credentials: "include",
   });
@@ -437,14 +444,13 @@ apiService.getCourseReviews = async function (courseId) {
   return await res.json();
 };
 
-apiService.postCourseReview = async function (courseId, data, token) {
+apiService.postCourseReview = async function (courseId, data) {
+  const authHeaders = await this.getAuthHeaders();
   const res = await fetch(`${this.baseURL}/courses/${courseId}/reviews`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${
-        token || localStorage.getItem("backendToken") || ""
-      }`,
+      ...authHeaders,
     },
     credentials: "include",
     body: JSON.stringify(data),
@@ -454,11 +460,12 @@ apiService.postCourseReview = async function (courseId, data, token) {
 };
 
 apiService.getProfessorReviews = async function (professorId) {
+  const authHeaders = await this.getAuthHeaders();
   const res = await fetch(`${this.baseURL}/faculty/${professorId}/reviews`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${localStorage.getItem("backendToken") || ""}`,
+      ...authHeaders,
     },
     credentials: "include",
   });
@@ -466,14 +473,13 @@ apiService.getProfessorReviews = async function (professorId) {
   return await res.json();
 };
 
-apiService.postProfessorReview = async function (professorId, data, token) {
+apiService.postProfessorReview = async function (professorId, data) {
+  const authHeaders = await this.getAuthHeaders();
   const res = await fetch(`${this.baseURL}/faculty/${professorId}/reviews`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${
-        token || localStorage.getItem("backendToken") || ""
-      }`,
+      ...authHeaders,
     },
     credentials: "include",
     body: JSON.stringify(data),
@@ -486,12 +492,12 @@ apiService.postProfessorReview = async function (professorId, data, token) {
 export const adminAPI = {
   // Courses Admin API
   async getAllCourses() {
-    const token = localStorage.getItem("backendToken");
+    const authHeaders = await apiService.getAuthHeaders();
     const response = await fetch(`${API_BASE_URL}/admin/courses`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+        ...authHeaders,
       },
     });
     if (!response.ok) throw new Error("Failed to fetch courses");
@@ -499,12 +505,12 @@ export const adminAPI = {
   },
 
   async getCourse(id) {
-    const token = localStorage.getItem("backendToken");
+    const authHeaders = await apiService.getAuthHeaders();
     const response = await fetch(`${API_BASE_URL}/admin/courses/${id}`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+        ...authHeaders,
       },
     });
     if (!response.ok) throw new Error("Failed to fetch course");
@@ -512,12 +518,12 @@ export const adminAPI = {
   },
 
   async addCourse(courseData) {
-    const token = localStorage.getItem("backendToken");
+    const authHeaders = await apiService.getAuthHeaders();
     const response = await fetch(`${API_BASE_URL}/admin/courses`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+        ...authHeaders,
       },
       body: JSON.stringify(courseData),
     });
@@ -526,12 +532,12 @@ export const adminAPI = {
   },
 
   async updateCourse(id, courseData) {
-    const token = localStorage.getItem("backendToken");
+    const authHeaders = await apiService.getAuthHeaders();
     const response = await fetch(`${API_BASE_URL}/admin/courses/${id}`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+        ...authHeaders,
       },
       body: JSON.stringify(courseData),
     });
@@ -540,12 +546,12 @@ export const adminAPI = {
   },
 
   async deleteCourse(id) {
-    const token = localStorage.getItem("backendToken");
+    const authHeaders = await apiService.getAuthHeaders();
     const response = await fetch(`${API_BASE_URL}/admin/courses/${id}`, {
       method: "DELETE",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+        ...authHeaders,
       },
     });
     if (!response.ok) throw new Error("Failed to delete course");
@@ -554,12 +560,12 @@ export const adminAPI = {
 
   // Faculty Admin API
   async getAllFaculty() {
-    const token = localStorage.getItem("backendToken");
+    const authHeaders = await apiService.getAuthHeaders();
     const response = await fetch(`${API_BASE_URL}/admin/faculty`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+        ...authHeaders,
       },
     });
     if (!response.ok) throw new Error("Failed to fetch faculty");
@@ -567,12 +573,12 @@ export const adminAPI = {
   },
 
   async getFaculty(id) {
-    const token = localStorage.getItem("backendToken");
+    const authHeaders = await apiService.getAuthHeaders();
     const response = await fetch(`${API_BASE_URL}/admin/faculty/${id}`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+        ...authHeaders,
       },
     });
     if (!response.ok) throw new Error("Failed to fetch faculty member");
@@ -580,12 +586,12 @@ export const adminAPI = {
   },
 
   async addFaculty(facultyData) {
-    const token = localStorage.getItem("backendToken");
+    const authHeaders = await apiService.getAuthHeaders();
     const response = await fetch(`${API_BASE_URL}/admin/faculty`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+        ...authHeaders,
       },
       body: JSON.stringify(facultyData),
     });
@@ -594,12 +600,12 @@ export const adminAPI = {
   },
 
   async updateFaculty(id, facultyData) {
-    const token = localStorage.getItem("backendToken");
+    const authHeaders = await apiService.getAuthHeaders();
     const response = await fetch(`${API_BASE_URL}/admin/faculty/${id}`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+        ...authHeaders,
       },
       body: JSON.stringify(facultyData),
     });
@@ -608,12 +614,12 @@ export const adminAPI = {
   },
 
   async deleteFaculty(id) {
-    const token = localStorage.getItem("backendToken");
+    const authHeaders = await apiService.getAuthHeaders();
     const response = await fetch(`${API_BASE_URL}/admin/faculty/${id}`, {
       method: "DELETE",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+        ...authHeaders,
       },
     });
     if (!response.ok) throw new Error("Failed to delete faculty member");
