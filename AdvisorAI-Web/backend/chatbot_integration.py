@@ -156,12 +156,21 @@ class ChatbotIntegrationService:
         
         return "\n\n".join(formatted_parts)
     
+    def load_vector_store(self, collection_name: str):
+        """Load a specific vector store collection"""
+        try:
+            return self.chroma_tool.get_collection(collection_name)
+        except Exception as e:
+            print(f"Error loading vector store {collection_name}: {e}")
+            return None
+    
     def get_system_stats(self) -> Dict:
         """Get system statistics"""
         try:
             chroma_stats = self.chroma_tool.get_collection_stats()
             return {
                 "collections": chroma_stats,
+                "collection_names": list(chroma_stats.keys()) if chroma_stats else [],
                 "total_collections": len(chroma_stats),
                 "web_search_enabled": self.web_tool.search_enabled,
                 "orchestrator_available": self.orchestrator is not None

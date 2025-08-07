@@ -1,14 +1,20 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { 
-  createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword, 
-  signOut, 
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+} from "react";
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
   onAuthStateChanged,
-  updateProfile
-} from 'firebase/auth';
-import { auth } from '../config/firebase';
-import { apiService } from '../services/api';
-import { chatCache } from '../utils/chatCache';
+  updateProfile,
+} from "firebase/auth";
+import { auth } from "../config/firebase";
+import { apiService } from "../services/api";
+import { chatCache } from "../utils/chatCache";
 
 const AuthContext = createContext();
 
@@ -19,23 +25,27 @@ export function useAuth() {
 export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [userProfile, setUserProfile] = useState(null);
 
   // Sign up function
   async function signup(email, password, displayName) {
     try {
-      setError('');
-      const result = await createUserWithEmailAndPassword(auth, email, password);
-      
+      setError("");
+      const result = await createUserWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
+
       // Update profile with display name
       if (displayName) {
         await updateProfile(result.user, { displayName });
       }
-      
+
       // Set profile completion status to false for new users
-      localStorage.setItem('profileCompleted', 'false');
-      
+      localStorage.setItem("profileCompleted", "false");
+
       return result;
     } catch (error) {
       setError(error.message);
@@ -46,13 +56,13 @@ export function AuthProvider({ children }) {
   // Login function
   async function login(email, password) {
     try {
-      setError('');
-      console.log('AuthContext: Attempting Firebase login...');
+      setError("");
+      console.log("AuthContext: Attempting Firebase login...");
       const result = await signInWithEmailAndPassword(auth, email, password);
-      console.log('AuthContext: Firebase login successful');
+      console.log("AuthContext: Firebase login successful");
       return result;
     } catch (error) {
-      console.error('AuthContext: Firebase login error:', error);
+      console.error("AuthContext: Firebase login error:", error);
       setError(error.message);
       throw error;
     }
@@ -62,68 +72,109 @@ export function AuthProvider({ children }) {
   async function logout() {
     try {
       // Clear profile completion status on logout
-      localStorage.removeItem('profileCompleted');
+      localStorage.removeItem("profileCompleted");
       // Clear backend token
-      localStorage.removeItem('backendToken');
+      localStorage.removeItem("backendToken");
       // Clear chat cache
       chatCache.clearAll();
       // Sign out from Firebase
       await signOut(auth);
-      console.log('AuthContext: Logout successful');
+      console.log("AuthContext: Logout successful");
     } catch (error) {
-      console.error('AuthContext: Logout error:', error);
+      console.error("AuthContext: Logout error:", error);
       throw error;
     }
   }
 
   // Mark profile as completed
   function markProfileCompleted() {
-    localStorage.setItem('profileCompleted', 'true');
+    localStorage.setItem("profileCompleted", "true");
     // Update current user state if available
     if (currentUser) {
-      setCurrentUser(prev => ({
+      setCurrentUser((prev) => ({
         ...prev,
-        profileCompleted: true
+        profileCompleted: true,
       }));
     }
     // Update userProfile state if available
     if (userProfile) {
-      setUserProfile(prev => ({
+      setUserProfile((prev) => ({
         ...prev,
-        profileCompleted: true
+        profileCompleted: true,
       }));
     }
-    console.log('AuthContext: Profile marked as completed');
+    console.log("AuthContext: Profile marked as completed");
   }
 
   // Check if profile is completed
   function isProfileCompleted() {
-    const localStorageStatus = localStorage.getItem('profileCompleted') === 'true';
+    const localStorageStatus =
+      localStorage.getItem("profileCompleted") === "true";
     const userStatus = currentUser?.profileCompleted;
     const userProfileStatus = userProfile?.profileCompleted === true;
-    
+
     // If any source indicates completion, return true
     const isCompleted = localStorageStatus || userStatus || userProfileStatus;
-    
-    console.log('AuthContext: Profile completion check - localStorage:', localStorageStatus, 
-                'userState:', userStatus, 'userProfile:', userProfileStatus, 'final:', isCompleted);
-    
+
+    console.log(
+      "AuthContext: Profile completion check - localStorage:",
+      localStorageStatus,
+      "userState:",
+      userStatus,
+      "userProfile:",
+      userProfileStatus,
+      "final:",
+      isCompleted
+    );
+
     return isCompleted;
   }
+
+  // Load user profile from backend
+  const loadUserProfile = useCallback(async () => {
+    if (!currentUser) return null;
+
+    try {
+      const response = await apiService.getUserProfile();
+      if (response.success && response.profile) {
+        setUserProfile(response.profile);
+        console.log("AuthContext: User profile loaded:", response.profile);
+
+        // Also update profile completion status
+        if (response.profile.profileCompleted) {
+          markProfileCompleted();
+        }
+
+        return response.profile;
+      }
+      return null;
+    } catch (error) {
+      console.error("AuthContext: Error loading user profile:", error);
+      return null;
+    }
+  }, [currentUser]);
 
   // Check profile completion status from backend
   async function checkProfileCompletionFromBackend() {
     if (!currentUser) return false;
-    
+
     try {
       const response = await apiService.getUserProfile();
-      if (response.success && response.profile && Object.keys(response.profile).length > 0) {
+      if (
+        response.success &&
+        response.profile &&
+        Object.keys(response.profile).length > 0
+      ) {
+        setUserProfile(response.profile);
         markProfileCompleted();
         return true;
       }
       return false;
     } catch (error) {
-      console.error('AuthContext: Error checking profile completion from backend:', error);
+      console.error(
+        "AuthContext: Error checking profile completion from backend:",
+        error
+      );
       return false;
     }
   }
@@ -137,7 +188,7 @@ export function AuthProvider({ children }) {
   }
 
   function isAdmin() {
-    return userProfile?.role === 'admin';
+    return userProfile?.role === "admin";
   }
 
   useEffect(() => {
@@ -170,6 +221,25 @@ export function AuthProvider({ children }) {
     return unsubscribe;
   }, []);
 
+  // Separate effect to load user profile when user and token are available
+  useEffect(() => {
+    const loadProfileIfNeeded = async () => {
+      const backendToken = localStorage.getItem("backendToken");
+      if (currentUser && backendToken && !userProfile) {
+        try {
+          console.log("AuthContext: Loading user profile...");
+          await loadUserProfile();
+        } catch (error) {
+          console.error("AuthContext: Failed to load user profile:", error);
+        }
+      }
+    };
+
+    if (currentUser) {
+      loadProfileIfNeeded();
+    }
+  }, [currentUser, loadUserProfile, userProfile]);
+
   const value = {
     currentUser,
     userProfile,
@@ -179,15 +249,12 @@ export function AuthProvider({ children }) {
     getIdToken,
     markProfileCompleted,
     isProfileCompleted,
+    loadUserProfile,
     error,
     setError,
     loading,
-    isAdmin
+    isAdmin,
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
-} 
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}

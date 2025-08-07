@@ -2,14 +2,14 @@ import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { apiService } from "../services/api";
-import { 
-  User, 
-  Mail, 
-  Lock, 
-  CheckCircle, 
-  X, 
-  Eye, 
-  EyeOff, 
+import {
+  User,
+  Mail,
+  Lock,
+  CheckCircle,
+  X,
+  Eye,
+  EyeOff,
   Brain,
   Sparkles,
   ArrowRight,
@@ -18,7 +18,7 @@ import {
   Star,
   Key,
   Clock,
-  Users
+  Users,
 } from "lucide-react";
 import "./Login.css";
 
@@ -29,21 +29,21 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [currentFeature, setCurrentFeature] = useState(0);
-  const { login, isProfileCompleted } = useAuth();
+  const { login, isProfileCompleted, loadUserProfile } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
     // Auto-rotate features
     const interval = setInterval(() => {
-      setCurrentFeature(prev => (prev + 1) % 3);
+      setCurrentFeature((prev) => (prev + 1) % 3);
     }, 3000);
-    
+
     return () => clearInterval(interval);
   }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!email || !password) {
       setError("Please enter both email and password.");
       return;
@@ -58,49 +58,52 @@ const Login = () => {
       console.log("🔥 Signing in with Firebase...");
       const result = await login(email, password);
       console.log("✅ Firebase login successful:", result.user.uid);
-      
+
       // Step 2: Get the ID token
       console.log("🎫 Getting ID token...");
       const idToken = await result.user.getIdToken();
       console.log("✅ ID token received");
-      
+
       // Step 3: Sign in with backend
       console.log("🔗 Signing in with backend...");
       const backendResponse = await apiService.signinWithBackend(idToken);
       console.log("✅ Backend login successful:", backendResponse);
-      
+
       // Step 4: Store the backend token
-      localStorage.setItem('backendToken', backendResponse.access_token);
+      localStorage.setItem("backendToken", backendResponse.access_token);
       console.log("💾 Token stored in localStorage");
-      
-      // Step 5: Fetch user profile and set profileCompleted
-      console.log("🔍 Fetching user profile after backend token set...");
-      const profile = await apiService.getUserProfile();
-      if (profile.success && profile.profile) {
-        localStorage.setItem('profileCompleted', profile.profile.profileCompleted ? 'true' : 'false');
-        console.log("📊 Profile completed:", profile.profile.profileCompleted);
-        if (profile.profile.profileCompleted) {
-          navigate('/dashboard');
+
+      // Step 5: Load user profile into AuthContext and check completion
+      console.log("🔍 Loading user profile into AuthContext...");
+      const profile = await loadUserProfile();
+      if (profile) {
+        localStorage.setItem(
+          "profileCompleted",
+          profile.profileCompleted ? "true" : "false"
+        );
+        console.log("📊 Profile completed:", profile.profileCompleted);
+        console.log("👑 User role:", profile.role);
+        if (profile.profileCompleted) {
+          navigate("/dashboard");
         } else {
-          navigate('/profile-completion');
+          navigate("/profile-completion");
         }
       } else {
         // fallback if profile fetch fails
-        localStorage.setItem('profileCompleted', 'false');
-        navigate('/profile-completion');
+        localStorage.setItem("profileCompleted", "false");
+        navigate("/profile-completion");
       }
-      
     } catch (error) {
-      console.error('❌ Login error:', error);
-      
+      console.error("❌ Login error:", error);
+
       // Handle specific Firebase errors
-      if (error.code === 'auth/user-not-found') {
+      if (error.code === "auth/user-not-found") {
         setError("No account found with this email address.");
-      } else if (error.code === 'auth/wrong-password') {
+      } else if (error.code === "auth/wrong-password") {
         setError("Incorrect password.");
-      } else if (error.code === 'auth/invalid-email') {
+      } else if (error.code === "auth/invalid-email") {
         setError("Invalid email address.");
-      } else if (error.code === 'auth/too-many-requests') {
+      } else if (error.code === "auth/too-many-requests") {
         setError("Too many failed attempts. Please try again later.");
       } else if (error.message) {
         setError(`Login failed: ${error.message}`);
@@ -117,36 +120,37 @@ const Login = () => {
     {
       icon: <Brain className="feature-icon" />,
       title: "AI-Powered Insights",
-      description: "Get personalized academic guidance from advanced AI algorithms"
+      description:
+        "Get personalized academic guidance from advanced AI algorithms",
     },
     {
       icon: <Zap className="feature-icon" />,
       title: "Instant Access",
-      description: "Quick and secure access to your academic dashboard"
+      description: "Quick and secure access to your academic dashboard",
     },
     {
       icon: <Shield className="feature-icon" />,
       title: "Secure & Private",
-      description: "Your data is protected with enterprise-grade security"
-    }
+      description: "Your data is protected with enterprise-grade security",
+    },
   ];
 
   const testimonials = [
     {
       text: "AdvisorAI helped me choose the perfect courses for my career goals!",
       author: "Sarah M.",
-      role: "Computer Science Student"
+      role: "Computer Science Student",
     },
     {
       text: "The AI recommendations are incredibly accurate and personalized.",
       author: "Michael R.",
-      role: "Engineering Student"
+      role: "Engineering Student",
     },
     {
       text: "Finally, an AI that understands academic planning!",
       author: "Emma L.",
-      role: "Business Student"
-    }
+      role: "Business Student",
+    },
   ];
 
   return (
@@ -159,10 +163,10 @@ const Login = () => {
               key={i}
               className="particle"
               style={{
-                '--delay': `${Math.random() * 3}s`,
-                '--duration': `${2 + Math.random() * 3}s`,
-                '--x': `${Math.random() * 100}%`,
-                '--y': `${Math.random() * 100}%`
+                "--delay": `${Math.random() * 3}s`,
+                "--duration": `${2 + Math.random() * 3}s`,
+                "--x": `${Math.random() * 100}%`,
+                "--y": `${Math.random() * 100}%`,
               }}
             />
           ))}
@@ -177,21 +181,21 @@ const Login = () => {
             <div className="form-header">
               <div className="logo-container">
                 <Brain className="logo-icon" />
-                <span className="logo-text">Advisor<span className="logo-highlight">AI</span></span>
+                <span className="logo-text">
+                  Advisor<span className="logo-highlight">AI</span>
+                </span>
               </div>
-              
+
               <div className="welcome-text">
                 <div className="welcome-badge">
                   <Sparkles className="badge-icon" />
                   <span>Welcome Back!</span>
                 </div>
-                
-                <h1 className="welcome-title">
-                  Sign In to Your Account
-                </h1>
-                
+
+                <h1 className="welcome-title">Sign In to Your Account</h1>
+
                 <p className="welcome-description">
-                  Continue your academic journey with AI-powered guidance. 
+                  Continue your academic journey with AI-powered guidance.
                   Access your personalized dashboard and recommendations.
                 </p>
               </div>
@@ -235,7 +239,11 @@ const Login = () => {
                     onClick={() => setShowPassword(!showPassword)}
                     disabled={loading}
                   >
-                    {showPassword ? <EyeOff className="toggle-icon" /> : <Eye className="toggle-icon" />}
+                    {showPassword ? (
+                      <EyeOff className="toggle-icon" />
+                    ) : (
+                      <Eye className="toggle-icon" />
+                    )}
                   </button>
                 </div>
               </div>
@@ -263,7 +271,7 @@ const Login = () => {
 
               <div className="form-footer">
                 <p className="signup-prompt">
-                  Don't have an account? 
+                  Don't have an account?
                   <Link to="/signup" className="signup-link">
                     Create Account
                   </Link>
@@ -285,10 +293,13 @@ const Login = () => {
 
             <div className="features-showcase">
               {features.map((feature, index) => (
-                <div key={index} className={`feature-card ${currentFeature === index ? 'active' : ''}`}>
-                  <div className="feature-icon-container">
-                    {feature.icon}
-                  </div>
+                <div
+                  key={index}
+                  className={`feature-card ${
+                    currentFeature === index ? "active" : ""
+                  }`}
+                >
+                  <div className="feature-icon-container">{feature.icon}</div>
                   <h3 className="feature-title">{feature.title}</h3>
                   <p className="feature-description">{feature.description}</p>
                 </div>
@@ -303,7 +314,9 @@ const Login = () => {
                     <div className="testimonial-content">
                       <p className="testimonial-text">"{testimonial.text}"</p>
                       <div className="testimonial-author">
-                        <span className="author-name">{testimonial.author}</span>
+                        <span className="author-name">
+                          {testimonial.author}
+                        </span>
                         <span className="author-role">{testimonial.role}</span>
                       </div>
                     </div>

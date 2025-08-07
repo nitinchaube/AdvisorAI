@@ -342,7 +342,6 @@ class ApiService {
     return this.makeRequest("/reviews/courses");
   }
 
-
   //get faculty data
   async getFaculty() {
     return this.makeRequest("/faculty");
@@ -379,8 +378,6 @@ class ApiService {
   async getAllProfessorReviews() {
     return this.makeRequest("/reviews/professors");
   }
-
-
 
   // Admin methods
   async addCourse(content, metadata) {
@@ -465,7 +462,7 @@ class ApiService {
       body: JSON.stringify({
         message_id: messageId,
         feedback: feedback, // 'positive' or 'negative'
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       }),
     });
   }
@@ -537,6 +534,145 @@ apiService.postProfessorReview = async function (professorId, data, token) {
   });
   if (!res.ok) throw new Error("Failed to post professor review");
   return await res.json();
+};
+
+// Admin API methods
+export const adminAPI = {
+  // Courses Admin API
+  async getAllCourses() {
+    const token = localStorage.getItem("backendToken");
+    const response = await fetch(`${API_BASE_URL}/admin/courses`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) throw new Error("Failed to fetch courses");
+    return await response.json();
+  },
+
+  async getCourse(id) {
+    const token = localStorage.getItem("backendToken");
+    const response = await fetch(`${API_BASE_URL}/admin/courses/${id}`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) throw new Error("Failed to fetch course");
+    return await response.json();
+  },
+
+  async addCourse(courseData) {
+    const token = localStorage.getItem("backendToken");
+    const response = await fetch(`${API_BASE_URL}/admin/courses`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(courseData),
+    });
+    if (!response.ok) throw new Error("Failed to add course");
+    return await response.json();
+  },
+
+  async updateCourse(id, courseData) {
+    const token = localStorage.getItem("backendToken");
+    const response = await fetch(`${API_BASE_URL}/admin/courses/${id}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(courseData),
+    });
+    if (!response.ok) throw new Error("Failed to update course");
+    return await response.json();
+  },
+
+  async deleteCourse(id) {
+    const token = localStorage.getItem("backendToken");
+    const response = await fetch(`${API_BASE_URL}/admin/courses/${id}`, {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) throw new Error("Failed to delete course");
+    return await response.json();
+  },
+
+  // Faculty Admin API
+  async getAllFaculty() {
+    const token = localStorage.getItem("backendToken");
+    const response = await fetch(`${API_BASE_URL}/admin/faculty`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) throw new Error("Failed to fetch faculty");
+    return await response.json();
+  },
+
+  async getFaculty(id) {
+    const token = localStorage.getItem("backendToken");
+    const response = await fetch(`${API_BASE_URL}/admin/faculty/${id}`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) throw new Error("Failed to fetch faculty member");
+    return await response.json();
+  },
+
+  async addFaculty(facultyData) {
+    const token = localStorage.getItem("backendToken");
+    const response = await fetch(`${API_BASE_URL}/admin/faculty`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(facultyData),
+    });
+    if (!response.ok) throw new Error("Failed to add faculty member");
+    return await response.json();
+  },
+
+  async updateFaculty(id, facultyData) {
+    const token = localStorage.getItem("backendToken");
+    const response = await fetch(`${API_BASE_URL}/admin/faculty/${id}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(facultyData),
+    });
+    if (!response.ok) throw new Error("Failed to update faculty member");
+    return await response.json();
+  },
+
+  async deleteFaculty(id) {
+    const token = localStorage.getItem("backendToken");
+    const response = await fetch(`${API_BASE_URL}/admin/faculty/${id}`, {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) throw new Error("Failed to delete faculty member");
+    return await response.json();
+  },
 };
 
 export { apiService };
