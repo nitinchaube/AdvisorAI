@@ -333,8 +333,6 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    alert("Logout button clicked!");
-                    console.log("Logout button clicked!");
                     handleLogout();
                   }}
                   className="w-full flex items-center space-x-3 px-6 py-3 text-sm text-rose-300 hover:bg-rose-500/20 transition-all duration-300 hover:text-rose-200 group mx-2 rounded-xl cursor-pointer relative"

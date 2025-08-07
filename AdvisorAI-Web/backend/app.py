@@ -1,4 +1,4 @@
-from flask import Flask, request, session, jsonify, Response
+from flask import Flask, request, session, jsonify, Response, g
 from flask_cors import CORS
 import firebase_admin
 from firebase_admin import auth, credentials
@@ -145,6 +145,26 @@ def mongo_doc_to_json(doc):
         return doc
     return doc
 
+def verify_token(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        id_token = None
+        if 'Authorization' in request.headers and request.headers['Authorization'].startswith('Bearer '):
+            id_token = request.headers['Authorization'].split('Bearer ')[1]
+
+        if not id_token:
+            return jsonify({"error": "Authorization token is missing"}), 401
+
+        try:
+            decoded_token = auth.verify_id_token(id_token)
+            g.user = decoded_token
+        except auth.InvalidIdTokenError:
+            return jsonify({"error": "Invalid token"}), 401
+        except Exception as e:
+            return jsonify({"error": f"Token verification failed: {e}"}), 401
+
+        return f(*args, **kwargs)
+    return decorated_function
 def bson_safe(obj):
     if isinstance(obj, ObjectId):
         return str(obj)
@@ -191,11 +211,11 @@ def llm_status():
 
 # Debug text extraction endpoint
 @app.route('/api/resume/debug-extraction', methods=['POST'])
-@jwt_required()
+@verify_token
 def debug_text_extraction():
     """Debug text extraction from resume file"""
     try:
-        user_id = get_jwt_identity()
+        user_id = g.user['uid']
         print(f"🔍 Debug text extraction for user: {user_id}")
         
         if 'resume' not in request.files:
@@ -334,17 +354,13 @@ def signin_with_token():
         # Get user record
         user_record = auth.get_user(user_id)
 
-        # Create JWT token
-        access_token = create_access_token(identity=user_id)
-
         return jsonify({
             "message": "Signin successful",
             "user": {
                 "uid": user_record.uid,
                 "email": user_record.email,
                 "fullName": user_record.display_name or ""
-            },
-            "access_token": access_token
+            }
         }), 200
 
     except Exception as e:
@@ -353,12 +369,12 @@ def signin_with_token():
 
 # Resume upload and parsing endpoint
 @app.route('/api/resume/upload-and-parse', methods=['POST'])
-@jwt_required()
+@verify_token
 def upload_and_parse_resume():
     """Upload and parse resume file"""
     try:
-        # Get current user ID from JWT
-        user_id = get_jwt_identity()
+        # Get current user ID from the token
+        user_id = g.user['uid']
         print(f"🔑 Processing resume upload for user: {user_id}")
         
         if 'resume' not in request.files:
@@ -424,25 +440,15 @@ def upload_and_parse_resume():
         print(f"  Resume upload error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-# Debug endpoint to check token
-@app.route('/api/debug/token', methods=['GET'])
-@jwt_required()
-def debug_token():
-    """Debug endpoint to check JWT token"""
-    user_id = get_jwt_identity()
-    return jsonify({
-        "message": "Token is valid",
-        "user_id": user_id,
-        "timestamp": str(datetime.now())
-    })
+
 
 # Get user profile
 @app.route('/api/user/profile', methods=['GET'])
-@jwt_required()
+@verify_token
 def get_user_profile():
     """Get user profile data"""
     try:
-        user_id = get_jwt_identity()
+        user_id = g.user['uid']
         
         if mongo_db is not None:
             user_doc = mongo_db.users.find_one({'uid': user_id})
@@ -466,11 +472,11 @@ def get_user_profile():
 
 # Update user profile
 @app.route('/api/user/profile', methods=['PUT'])
-@jwt_required()
+@verify_token
 def update_user_profile():
     """Update user profile data"""
     try:
-        user_id = get_jwt_identity()
+        user_id = g.user['uid']
         data = request.get_json()
         
         if mongo_db is not None:
@@ -540,11 +546,11 @@ def get_public_profile(user_id):
 
 # Chat endpoints
 @app.route('/api/chat/query', methods=['POST'])
-@jwt_required()
+@verify_token
 def chat_query():
     """Process chat query with LangGraph chatbot agents"""
     try:
-        user_id = get_jwt_identity()
+        user_id = g.user['uid']
         data = request.get_json()
         query = data.get('query', '')
         chat_history = data.get('chat_history', [])
@@ -663,11 +669,11 @@ def chat_query():
         }), 500
 
 @app.route('/api/chat/stream', methods=['POST'])
-@jwt_required()
+@verify_token
 def chat_stream():
     """Stream chat response"""
     try:
-        user_id = get_jwt_identity()
+        user_id = g.user['uid']
         data = request.get_json()
         query = data.get('query', '')
         chat_history = data.get('chat_history', [])
@@ -708,11 +714,11 @@ def chat_stream():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/chat/sessions', methods=['GET'])
-@jwt_required()
+@verify_token
 def get_chat_sessions():
     """Get user's chat sessions with caching"""
     try:
-        user_id = get_jwt_identity()
+        user_id = g.user['uid']
         
         # Try to get from cache first
         if redis_client:
@@ -760,11 +766,11 @@ def get_chat_sessions():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/chat/sessions', methods=['POST'])
-@jwt_required()
+@verify_token
 def create_chat_session():
     """Create a new chat session"""
     try:
-        user_id = get_jwt_identity()
+        user_id = g.user['uid']
         data = request.get_json()
         title = data.get('title', 'New Chat')
         
@@ -797,11 +803,11 @@ def create_chat_session():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/chat/sessions/<session_id>', methods=['GET'])
-@jwt_required()
+@verify_token
 def get_chat_session_messages(session_id):
     """Get messages for a specific chat session"""
     try:
-        user_id = get_jwt_identity()
+        user_id = g.user['uid']
         
         if mongo_db is not None:
             # Verify session belongs to user
@@ -827,11 +833,11 @@ def get_chat_session_messages(session_id):
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/chat/sessions/<session_id>', methods=['PUT'])
-@jwt_required()
+@verify_token
 def update_chat_session(session_id):
     """Update chat session title"""
     try:
-        user_id = get_jwt_identity()
+        user_id = g.user['uid']
         data = request.get_json()
         title = data.get('title', '')
         
@@ -871,11 +877,11 @@ def update_chat_session(session_id):
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/chat/sessions/<session_id>', methods=['DELETE'])
-@jwt_required()
+@verify_token
 def delete_chat_session(session_id):
     """Delete a chat session"""
     try:
-        user_id = get_jwt_identity()
+        user_id = g.user['uid']
         
         if mongo_db is not None:
             # Verify session belongs to user
@@ -906,11 +912,11 @@ def delete_chat_session(session_id):
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/chat/history', methods=['GET'])
-@jwt_required()
+@verify_token
 def get_chat_history():
     """Get user's chat history (legacy endpoint)"""
     try:
-        user_id = get_jwt_identity()
+        user_id = g.user['uid']
         limit = request.args.get('limit', 50, type=int)
         
         if mongo_db is not None:
@@ -935,7 +941,7 @@ def get_chat_history():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/rag/stats', methods=['GET'])
-@jwt_required()
+@verify_token
 def get_rag_stats():
     """Get RAG system statistics"""
     try:
@@ -955,11 +961,11 @@ def get_rag_stats():
         }), 500
 
 @app.route('/api/chat/user-history', methods=['GET'])
-@jwt_required()
+@verify_token
 def get_user_chat_history():
     """Get comprehensive chat history for a user"""
     try:
-        user_id = get_jwt_identity()
+        user_id = g.user['uid']
         
         if mongo_db is not None:
             # Get all chat sessions for the user (without ordering to avoid index requirement)
@@ -996,7 +1002,7 @@ def get_user_chat_history():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/courses', methods=['GET'])
-@jwt_required()
+@verify_token
 def get_courses():
     try:
         courses = []
@@ -1009,7 +1015,7 @@ def get_courses():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/courses/<id>', methods=['GET'])
-@jwt_required()
+@verify_token
 def get_course(id):
     collection_name = request.args.get('collection_name', 'courses')
     try:
@@ -1029,7 +1035,7 @@ def get_course(id):
     
 
 @app.route('/api/faculty', methods=['GET'])
-@jwt_required()
+@verify_token
 def get_faculty():
     """Fetches all documents from the faculty collection."""
     try:
@@ -1048,7 +1054,7 @@ def get_faculty():
         return jsonify({'success': False, 'error': str(e)}), 500
     
 @app.route('/api/faculty/<id>', methods=['GET'])
-@jwt_required()
+@verify_token
 def get_single_faculty(id):
     """Fetches a single faculty member by their MongoDB document ID."""
     try:
@@ -1069,7 +1075,7 @@ def get_single_faculty(id):
 
 # --- Course Reviews Endpoints ---
 @app.route('/api/courses/<course_id>/reviews', methods=['GET'])
-@jwt_required()
+@verify_token
 def get_course_reviews(course_id):
     try:
         reviews = []
@@ -1082,10 +1088,10 @@ def get_course_reviews(course_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/courses/<course_id>/reviews', methods=['POST'])
-@jwt_required()
+@verify_token
 def add_course_review(course_id):
     try:
-        user_id = get_jwt_identity()
+        user_id = g.user['uid']
         data = request.get_json()
         rating = data.get('rating')
         text = data.get('text', '')
@@ -1111,7 +1117,7 @@ def add_course_review(course_id):
     
 # --- Professor Reviews Endpoints ---
 @app.route('/api/faculty/<faculty_id>/reviews', methods=['GET'])
-@jwt_required()
+@verify_token
 def get_professor_reviews(faculty_id):
     """Fetches all reviews for a specific professor."""
     try:
@@ -1126,11 +1132,11 @@ def get_professor_reviews(faculty_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/faculty/<faculty_id>/reviews', methods=['POST'])
-@jwt_required()
+@verify_token
 def add_professor_review(faculty_id):
     """Adds a new review for a specific professor."""
     try:
-        user_id = get_jwt_identity()
+        user_id = g.user['uid']
         data = request.get_json()
         rating = data.get('rating')
         text = data.get('text', '')
@@ -1164,7 +1170,7 @@ def add_professor_review(faculty_id):
 # --- fetch all course and professor reviews ---
 
 @app.route('/api/reviews/courses', methods=['GET'])
-@jwt_required()
+@verify_token
 def get_all_course_reviews():
     """Fetches all course reviews from the database."""
     try:
@@ -1175,7 +1181,7 @@ def get_all_course_reviews():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/reviews/professors', methods=['GET'])
-@jwt_required()
+@verify_token
 def get_all_professor_reviews():
     """Fetches all professor reviews from the database."""
     try:
@@ -1187,8 +1193,9 @@ def get_all_professor_reviews():
 
 def admin_required(fn):
     @wraps(fn)
+    @verify_token
     def wrapper(*args, **kwargs):
-        user_id = get_jwt_identity()
+        user_id = g.user['uid']
         if mongo_db is None:
             return jsonify({"error": "Database not available"}), 500
         user_doc = mongo_db.users.find_one({'uid': user_id})
@@ -1198,7 +1205,6 @@ def admin_required(fn):
     return wrapper
 
 @app.route('/api/admin/collections', methods=['GET'])
-@jwt_required()
 @admin_required
 def get_collections():
     try:
@@ -1234,7 +1240,6 @@ def delete_from_chroma(course_id):
         print(f"❌ Error deleting course {course_id} from Chroma: {e}")
 
 @app.route('/api/admin/courses', methods=['GET'])
-@jwt_required()
 @admin_required
 def get_all_courses():
     try:
@@ -1248,7 +1253,6 @@ def get_all_courses():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/admin/courses', methods=['POST'])
-@jwt_required()
 @admin_required
 def add_course():
     data = request.get_json()
@@ -1263,7 +1267,6 @@ def add_course():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/admin/courses/<id>', methods=['PUT'])
-@jwt_required()
 @admin_required
 def update_course(id):
     data = request.get_json()
@@ -1280,7 +1283,6 @@ def update_course(id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/admin/courses/<id>', methods=['DELETE'])
-@jwt_required()
 @admin_required
 def delete_course(id):
     try:
@@ -1294,7 +1296,6 @@ def delete_course(id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/admin/courses/<id>', methods=['GET'])
-@jwt_required()
 @admin_required
 def get_admin_course(id):
     try:
@@ -1309,7 +1310,6 @@ def get_admin_course(id):
 
 # --- Faculty Admin CRUD Endpoints ---
 @app.route('/api/admin/faculty', methods=['GET'])
-@jwt_required()
 @admin_required
 def get_all_faculty():
     """Admin endpoint to get all faculty members"""
@@ -1327,7 +1327,6 @@ def get_all_faculty():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/admin/faculty', methods=['POST'])
-@jwt_required()
 @admin_required
 def add_faculty():
     """Admin endpoint to add a new faculty member"""
@@ -1347,7 +1346,6 @@ def add_faculty():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/admin/faculty/<id>', methods=['GET'])
-@jwt_required()
 @admin_required
 def get_admin_faculty(id):
     """Admin endpoint to get a single faculty member"""
@@ -1365,7 +1363,6 @@ def get_admin_faculty(id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/admin/faculty/<id>', methods=['PUT'])
-@jwt_required()
 @admin_required
 def update_faculty(id):
     """Admin endpoint to update a faculty member"""
@@ -1387,7 +1384,6 @@ def update_faculty(id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/admin/faculty/<id>', methods=['DELETE'])
-@jwt_required()
 @admin_required
 def delete_faculty(id):
     """Admin endpoint to delete a faculty member"""
@@ -1406,11 +1402,11 @@ def delete_faculty(id):
     
 # Utility endpoint to check and fix profile completion status
 @app.route('/api/admin/fix-profile-completion', methods=['POST'])
-@jwt_required()
+@verify_token
 def fix_profile_completion():
     """Fix profile completion status for users who have profile data but missing the flag"""
     try:
-        user_id = get_jwt_identity()
+        user_id = g.user['uid']
         
         if mongo_db is not None:
             # Get user document
@@ -1450,11 +1446,11 @@ def fix_profile_completion():
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/chat/feedback', methods=['POST'])
-@jwt_required()
+@verify_token
 def submit_feedback():
     """Submit feedback for a chat message"""
     try:
-        user_id = get_jwt_identity()
+        user_id = g.user['uid']
         data = request.get_json()
         message_id = data.get('message_id')
         feedback = data.get('feedback')  # 'positive' or 'negative'
