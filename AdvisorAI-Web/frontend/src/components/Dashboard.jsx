@@ -9,6 +9,7 @@ import RatingPage from "./RatingPage";
 import CourseExplorer from "./CourseExplorer";
 import CourseDetails from "./CourseDetails";
 import ProfessorDetails from "./ProfessorDetails";
+
 import { Link } from "react-router-dom";
 import { apiService } from "../services/api";
 import { chatCache } from "../utils/chatCache";
@@ -67,14 +68,14 @@ const Dashboard = () => {
   };
 
   const handleSelect = (itemId, category) => {
-  if (category === 'course') {
-    setSelectedCourseId(itemId);
-    setSelectedProfessorId(null); // Clear the other ID
-  } else if (category === 'professor') {
-    setSelectedProfessorId(itemId);
-    setSelectedCourseId(null); 
-  }
-};
+    if (category === "course") {
+      setSelectedCourseId(itemId);
+      setSelectedProfessorId(null); // Clear the other ID
+    } else if (category === "professor") {
+      setSelectedProfessorId(itemId);
+      setSelectedCourseId(null);
+    }
+  };
 
   const loadSessionTitle = async (sessionId) => {
     try {
@@ -201,7 +202,8 @@ const Dashboard = () => {
           </div>
         );
       case "courses":
-        if (selectedProfessorId) { // Check for professor first
+        if (selectedProfessorId) {
+          // Check for professor first
           return (
             <ProfessorDetails
               professorId={selectedProfessorId}
