@@ -3,23 +3,18 @@ import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { apiService } from "../services/api";
 import {
-  User,
   Mail,
   Lock,
-  CheckCircle,
   X,
   Eye,
   EyeOff,
-  Brain,
-  Sparkles,
   ArrowRight,
   Shield,
-  Zap,
-  Star,
-  Key,
-  Clock,
-  Users,
 } from "lucide-react";
+
+import StaticHeader from "./StaticHeader";
+import BenefitsSection from "./common/BenefitsSection";
+import BottomSection from "./common/BottomSection";
 import "./Login.css";
 
 const Login = () => {
@@ -106,232 +101,162 @@ const Login = () => {
     }
   };
 
-  const features = [
-    {
-      icon: <Brain className="feature-icon" />,
-      title: "AI-Powered Insights",
-      description:
-        "Get personalized academic guidance from advanced AI algorithms",
-    },
-    {
-      icon: <Zap className="feature-icon" />,
-      title: "Instant Access",
-      description: "Quick and secure access to your academic dashboard",
-    },
-    {
-      icon: <Shield className="feature-icon" />,
-      title: "Secure & Private",
-      description: "Your data is protected with enterprise-grade security",
-    },
-  ];
 
-  const testimonials = [
-    {
-      text: "AdvisorAI helped me choose the perfect courses for my career goals!",
-      author: "Sarah M.",
-      role: "Computer Science Student",
-    },
-    {
-      text: "The AI recommendations are incredibly accurate and personalized.",
-      author: "Michael R.",
-      role: "Engineering Student",
-    },
-    {
-      text: "Finally, an AI that understands academic planning!",
-      author: "Emma L.",
-      role: "Business Student",
-    },
-  ];
 
   return (
     <div className="login-container">
-      {/* Animated Background */}
-      <div className="animated-background">
-        <div className="floating-particles">
-          {[...Array(15)].map((_, i) => (
-            <div
-              key={i}
-              className="particle"
-              style={{
-                "--delay": `${Math.random() * 3}s`,
-                "--duration": `${2 + Math.random() * 3}s`,
-                "--x": `${Math.random() * 100}%`,
-                "--y": `${Math.random() * 100}%`,
-              }}
-            />
-          ))}
-        </div>
-      </div>
-
+      {/* Header Section */}
+      <StaticHeader showSignIn={false} showSignUp={true} />
+      
       {/* Main Content */}
       <div className="login-content">
-        {/* Left Side - Form */}
-        <div className="form-section">
-          <div className="form-container">
-            <div className="form-header">
-              <div className="logo-container">
-                <Brain className="logo-icon" />
-                <span className="logo-text">
-                  Advisor<span className="logo-highlight">AI</span>
-                </span>
-              </div>
-
-              <div className="welcome-text">
-                <div className="welcome-badge">
-                  <Sparkles className="badge-icon" />
-                  <span>Welcome Back!</span>
-                </div>
-
-                <h1 className="welcome-title">Sign In to Your Account</h1>
-
-                <p className="welcome-description">
-                  Continue your academic journey with AI-powered guidance.
-                  Access your personalized dashboard and recommendations.
-                </p>
-              </div>
-            </div>
-
-            <form className="login-form" onSubmit={handleSubmit}>
-              <div className="form-group">
-                <label className="form-label">
-                  <Mail className="label-icon" />
-                  Email Address
-                </label>
-                <input
-                  className="form-input"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Enter your email"
-                  autoComplete="email"
-                  disabled={loading}
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">
-                  <Lock className="label-icon" />
-                  Password
-                </label>
-                <div className="password-input-container">
+        {/* Top Section - Login Form and Features Side by Side */}
+        <div className="top-section">
+          {/* Left Side - Form */}
+          <div className="form-section">
+            <div className="form-container">
+              <form className="signup-form" onSubmit={handleSubmit}>
+                <div className="form-field">
+                  <label className="field-label">Email</label>
                   <input
-                    className="form-input password-input"
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter your password"
-                    autoComplete="current-password"
+                    className="field-input"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Enter your email"
+                    autoComplete="email"
                     disabled={loading}
                   />
-                  <button
-                    type="button"
-                    className="password-toggle"
-                    onClick={() => setShowPassword(!showPassword)}
-                    disabled={loading}
-                  >
-                    {showPassword ? (
-                      <EyeOff className="toggle-icon" />
-                    ) : (
-                      <Eye className="toggle-icon" />
-                    )}
-                  </button>
                 </div>
-              </div>
 
-              {error && (
-                <div className="error-message">
-                  <X className="error-icon" />
-                  <span>{error}</span>
+                <div className="form-field">
+                  <label className="field-label">
+                    Password
+                  </label>
+                  <div className="password-field">
+                    <input
+                      className="field-input password-input"
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter your password"
+                      autoComplete="current-password"
+                      disabled={loading}
+                    />
+                    <button
+                      type="button"
+                      className="password-toggle-btn"
+                      onClick={() => setShowPassword(!showPassword)}
+                      disabled={loading}
+                      title={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? <EyeOff className="toggle-icon" /> : <Eye className="toggle-icon" />}
+                    </button>
+                  </div>
                 </div>
-              )}
 
-              <button className="login-button" type="submit" disabled={loading}>
-                {loading ? (
-                  <>
-                    <div className="loading-spinner" />
-                    Signing In...
-                  </>
-                ) : (
-                  <>
-                    <span>Sign In</span>
-                    <ArrowRight className="button-icon" />
-                  </>
+                {error && (
+                  <div className="error-message">
+                    <X className="error-icon" />
+                    <span>{error}</span>
+                  </div>
                 )}
-              </button>
 
-              <div className="form-footer">
-                <p className="signup-prompt">
-                  Don't have an account?
-                  <Link to="/signup" className="signup-link">
-                    Create Account
-                  </Link>
-                </p>
-              </div>
-            </form>
+                <button className="submit-button" type="submit" disabled={loading}>
+                  {loading ? (
+                    <>
+                      <div className="button-spinner" />
+                      Signing In...
+                    </>
+                  ) : (
+                    <>
+                      <span>Sign In</span>
+                      <ArrowRight className="button-icon" />
+                    </>
+                  )}
+                </button>
+
+                <div className="form-footer">
+                  <p className="signup-prompt">
+                    Don't have an account?
+                    <Link to="/signup" className="signup-link">
+                      Create Account
+                    </Link>
+                  </p>
+                </div>
+              </form>
+            </div>
           </div>
+
+          {/* Right Side - Why Choose Us */}
+          <BenefitsSection />
         </div>
 
-        {/* Right Side - Features & Testimonials */}
-        <div className="features-section">
-          <div className="features-container">
-            <div className="features-header">
-              <h2 className="features-title">Why Students Love AdvisorAI</h2>
-              <p className="features-subtitle">
-                Join thousands of students making smarter academic decisions
+        {/* Bottom Section - What You'll Get (Horizontal Layout) */}
+        <BottomSection />
+      </div>
+      
+      {/* Footer */}
+      <footer className="footer">
+        <div className="footer-content">
+          <div className="footer-main">
+            <div className="footer-brand">
+              <div className="footer-logo">
+                <div className="footer-logo-icon-wrapper">
+                  <Shield className="footer-logo-icon" />
+                </div>
+                <span>AdvisorAI</span>
+              </div>
+              <p className="footer-text">
+                Empowering students with AI-driven academic guidance for a brighter future. Make smarter decisions, achieve your goals, and unlock your potential.
               </p>
             </div>
-
-            <div className="features-showcase">
-              {features.map((feature, index) => (
-                <div
-                  key={index}
-                  className={`feature-card ${
-                    currentFeature === index ? "active" : ""
-                  }`}
-                >
-                  <div className="feature-icon-container">{feature.icon}</div>
-                  <h3 className="feature-title">{feature.title}</h3>
-                  <p className="feature-description">{feature.description}</p>
-                </div>
-              ))}
-            </div>
-
-            <div className="testimonials-section">
-              <h3 className="testimonials-title">What Our Users Say</h3>
-              <div className="testimonials-list">
-                {testimonials.map((testimonial, index) => (
-                  <div key={index} className="testimonial-item">
-                    <div className="testimonial-content">
-                      <p className="testimonial-text">"{testimonial.text}"</p>
-                      <div className="testimonial-author">
-                        <span className="author-name">
-                          {testimonial.author}
-                        </span>
-                        <span className="author-role">{testimonial.role}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+            
+            <div className="footer-links">
+              <div className="footer-link-group">
+                <h4>Product</h4>
+                <a href="#" className="footer-link">Features</a>
+                <a href="#" className="footer-link">Pricing</a>
+                <a href="#" className="footer-link">API</a>
+                <a href="#" className="footer-link">Documentation</a>
               </div>
-            </div>
-
-            <div className="stats-preview">
-              <div className="stat-item">
-                <div className="stat-number">10K+</div>
-                <div className="stat-label">Active Users</div>
+              
+              <div className="footer-link-group">
+                <h4>Company</h4>
+                <a href="#" className="footer-link">About</a>
+                <a href="#" className="footer-link">Blog</a>
+                <a href="#" className="footer-link">Careers</a>
+                <a href="#" className="footer-link">Press</a>
               </div>
-              <div className="stat-item">
-                <div className="stat-number">95%</div>
-                <div className="stat-label">Satisfaction</div>
+              
+              <div className="footer-link-group">
+                <h4>Support</h4>
+                <a href="#" className="footer-link">Help Center</a>
+                <a href="#" className="footer-link">Contact</a>
+                <a href="#" className="footer-link">Status</a>
+                <a href="#" className="footer-link">Community</a>
               </div>
-              <div className="stat-item">
-                <div className="stat-number">24/7</div>
-                <div className="stat-label">AI Support</div>
+              
+              <div className="footer-link-group">
+                <h4>Legal</h4>
+                <a href="#" className="footer-link">Privacy Policy</a>
+                <a href="#" className="footer-link">Terms of Service</a>
+                <a href="#" className="footer-link">Cookie Policy</a>
+                <a href="#" className="footer-link">GDPR</a>
               </div>
             </div>
           </div>
+          
+          <div className="footer-bottom">
+            <p>&copy; {new Date().getFullYear()} AdvisorAI. All rights reserved.</p>
+            <div className="footer-social">
+              <a href="#" className="social-link">
+                <Mail className="footer-social-icon" />
+              </a>
+            </div>
+          </div>
         </div>
-      </div>
+      </footer>
     </div>
   );
 };
