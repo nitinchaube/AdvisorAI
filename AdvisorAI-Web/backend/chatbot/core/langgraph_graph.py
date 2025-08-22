@@ -64,39 +64,74 @@ class LangGraphOrchestrator:
         
         llm = self.llm_router.get_llm()
         
-        # First, check if this is a simple query using LLM
-        simple_check_prompt = f"""
-        You are analyzing a user query to determine if it's a simple interaction that doesn't need complex reasoning.
-
-        User Query: "{query}"
-
-        Determine if this is a simple query that should get a direct, friendly response without complex analysis.
-
-        Simple queries include:
-        - Greetings (hello, hi, hey, good morning)
-        - Thanks/acknowledgments (thanks, thank you, ok, sure)
-        - Basic expressions (cool, nice, great, wow)
-        - Simple questions (how are you, what's up)
-        - Short responses (yes, no, maybe)
-
-        Return ONLY a JSON object:
-        {{
-            "is_simple": true/false,
-            "reasoning": "brief explanation of why it's simple or complex"
-        }}
-
-        Examples:
-        - "thanks" → {{"is_simple": true, "reasoning": "Simple thank you expression"}}
-        - "hello" → {{"is_simple": true, "reasoning": "Basic greeting"}}
-        - "Tell me about Professor Dehnad" → {{"is_simple": false, "reasoning": "Complex information request"}}
-        - "What is machine learning?" → {{"is_simple": false, "reasoning": "Knowledge question requiring explanation"}}
-        """
-
+        # Generate chat name for ALL queries (before simple query check)
         try:
+            chat_name_prompt = f"""
+            Generate a short, descriptive name for this chat session based on the user's query.
+            
+            User Query: "{query}"
+            
+            Create a concise name (3-8 words) that captures the main topic or intent of this conversation.
+            
+            Examples:
+            - "How are you?" → "General Greeting & Introduction"
+            - "Tell me about Professor Dehnad" → "Professor Dehnad Information"
+            - "What courses are available in computer science?" → "CS Course Recommendations"
+            - "How do I apply for admission?" → "Admission Application Guide"
+            - "What is machine learning?" → "Machine Learning Explanation"
+            - "Can you help me with course selection?" → "Course Selection Help"
+            
+            Return ONLY the chat name, no quotes or extra text.
+            """
+            
+            print(f"🤖 ROUTER: Generating chat name...")
+            name_response = await llm.ainvoke([{"role": "user", "content": chat_name_prompt}])
+            chat_name = name_response.content.strip().replace('"', '').replace("'", "")
+            print(f"📝 ROUTER: Generated chat name: '{chat_name}'")
+            state["chat_name"] = chat_name
+            print(f"📝 ROUTER: Set chat_name in state: '{state['chat_name']}'")
+            
+        except Exception as e:
+            print(f"❌ ROUTER: Error generating chat name: {str(e)}")
+            state["chat_name"] = "New Chat"
+            print(f"📝 ROUTER: Set fallback chat_name in state: '{state['chat_name']}'")
+        
+        # Check if this is a simple query that can be answered directly
+        try:
+            simple_check_prompt = f"""
+            Determine if this query is simple and can be answered directly without complex reasoning or tool usage.
+            
+            User Query: "{query}"
+            
+            A simple query is:
+            - A basic greeting or introduction
+            - A straightforward question about general concepts
+            - Something that doesn't require Stevens-specific information
+            - A question that can be answered with general knowledge
+            
+            Examples of simple queries:
+            - "How are you?" → Simple greeting
+            - "What is machine learning?" → Simple concept explanation
+            - "Hello" → Simple greeting
+            - "Thank you" → Simple acknowledgment
+            
+            Examples of complex queries:
+            - "Tell me about Professor Dehnad" → Requires Stevens-specific data
+            - "What courses are available in computer science?" → Requires course database
+            - "How do I apply for admission?" → Requires Stevens-specific information
+            
+            Return ONLY a valid JSON object:
+            {{
+                "is_simple": true/false,
+                "reasoning": "brief explanation of why this is simple or complex"
+            }}
+            """
+            
             print(f"🤖 ROUTER: Checking if query is simple...")
             response = await llm.ainvoke([{"role": "user", "content": simple_check_prompt}])
             
-            # Parse JSON response
+            print(f"📝 ROUTER: Simple check response: {response.content[:200]}...")
+            
             try:
                 import json
                 import re
@@ -136,35 +171,6 @@ class LangGraphOrchestrator:
         except Exception as e:
             print(f"❌ ROUTER: Error in simple query check: {str(e)}")
             # Continue with normal ReAct flow if simple check fails
-        
-        # Generate chat name for complex queries
-        try:
-            chat_name_prompt = f"""
-            Generate a short, descriptive name for this chat session based on the user's query.
-            
-            User Query: "{query}"
-            
-            Create a concise name (3-8 words) that captures the main topic or intent of this conversation.
-            
-            Examples:
-            - "Tell me about Professor Dehnad" → "Professor Dehnad Information"
-            - "What courses are available in computer science?" → "CS Course Recommendations"
-            - "How do I apply for admission?" → "Admission Application Guide"
-            - "What is machine learning?" → "Machine Learning Explanation"
-            - "Can you help me with course selection?" → "Course Selection Help"
-            
-            Return ONLY the chat name, no quotes or extra text.
-            """
-            
-            print(f"🤖 ROUTER: Generating chat name...")
-            name_response = await llm.ainvoke([{"role": "user", "content": chat_name_prompt}])
-            chat_name = name_response.content.strip().replace('"', '').replace("'", "")
-            print(f"📝 ROUTER: Generated chat name: {chat_name}")
-            state["chat_name"] = chat_name
-            
-        except Exception as e:
-            print(f"❌ ROUTER: Error generating chat name: {str(e)}")
-            state["chat_name"] = "New Chat"
         
         # ReAct-style prompt for one-shot tool selection
         router_prompt = f"""
@@ -775,9 +781,15 @@ class LangGraphOrchestrator:
                     "collections_searched": final_state.get("collections_searched", []),
                     "web_search_performed": "web_results" in final_state,
                     "used_general_tool": final_state.get("used_general_tool", False),
-                    "reasoning_result": final_state.get("reasoning_result", {})
+                    "reasoning_result": final_state.get("reasoning_result", {}),
+                    "chat_name": final_state.get("chat_name", "New Chat")  # Include chat_name in metadata
                 }
             }
+            
+            print(f"📝 LangGraph: Final state keys: {list(final_state.keys())}")
+            print(f"📝 LangGraph: chat_name in final_state: '{final_state.get('chat_name', 'NOT_FOUND')}'")
+            print(f"📝 LangGraph: chat_name in result metadata: '{result['metadata']['chat_name']}'")
+            print(f"📝 LangGraph: Returning result with chat_name: '{result['metadata']['chat_name']}'")
             
             print(f"✅ PROCESS: Returning result with answer length: {len(answer)}")
             return result

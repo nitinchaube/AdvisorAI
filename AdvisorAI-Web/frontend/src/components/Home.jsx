@@ -41,36 +41,12 @@ const Home = () => {
   return (
     <div className="home-container">
       {/* Header Section */}
-      {currentUser ? (
-        <header className="header-section">
-          <nav className="nav-bar">
-            <div className="nav-logo">
-              <div className="logo-container">
-                <div className="logo-icon-wrapper">
-                  <Brain className="logo-icon" />
-                </div>
-                <span className="logo-text">Advisor<span className="logo-highlight">AI</span></span>
-              </div>
-            </div>
-            <div className="nav-actions">
-              <NavLink to="/dashboard" className="nav-link">
-                <LayoutDashboard className="nav-icon" />
-                Dashboard
-              </NavLink>
-              <NavLink to="/profile" className="nav-link">
-                <User className="nav-icon" />
-                Profile
-              </NavLink>
-              <button onClick={logout} className="nav-link">
-                <LogOut className="nav-icon" />
-                Log Out
-              </button>
-            </div>
-          </nav>
-        </header>
-      ) : (
-        <StaticHeader showSignIn={true} showSignUp={true} />
-      )}
+      <StaticHeader 
+        showSignIn={!currentUser} 
+        showSignUp={!currentUser} 
+        currentUser={currentUser}
+        onLogout={logout}
+      />
 
       {/* Hero Section */}
       <section className="hero-section">
