@@ -13,7 +13,7 @@ import {
   Zap,
   ArrowLeft,
   ArrowRight,
-  Settings,
+
   Eye,
   ChevronLeft,
   ChevronRight,
@@ -56,7 +56,7 @@ const ProfileCompletion = () => {
   const [success, setSuccess] = useState("");
   const [dragActive, setDragActive] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [extractionDebug, setExtractionDebug] = useState(null);
+
   const [showFeatures, setShowFeatures] = useState(false);
   const [editingField, setEditingField] = useState(null);
   const [formData, setFormData] = useState({});
@@ -269,28 +269,7 @@ const ProfileCompletion = () => {
     }
   };
 
-  const debugExtraction = async () => {
-    if (!file) {
-      setError("Please select a file first");
-      return;
-    }
-
-    try {
-      setUploading(true);
-      setError("");
-
-      const debugFormData = new FormData();
-      debugFormData.append("resume", file);
-      debugFormData.append("userId", currentUser.uid);
-
-      const response = await apiService.debugTextExtraction(debugFormData);
-      setExtractionDebug(response);
-    } catch (error) {
-      setError(`Debug failed: ${error.message}`);
-    } finally {
-      setUploading(false);
-    }
-  };
+  
 
   const features = [
     {
@@ -471,57 +450,12 @@ const ProfileCompletion = () => {
 
   const renderUploadView = () => (
     <div className="view-container upload-view">
-      {/* Enhanced Animated Background */}
-      <div className="animated-background">
-        <div className="floating-particles">
-          {[...Array(30)].map((_, i) => (
-            <div
-              key={i}
-              className="particle"
-              style={{
-                "--delay": `${Math.random() * 4}s`,
-                "--duration": `${3 + Math.random() * 4}s`,
-                "--x": `${Math.random() * 100}%`,
-                "--y": `${Math.random() * 100}%`,
-                "--size": `${2 + Math.random() * 4}px`,
-              }}
-            />
-          ))}
-        </div>
-        <div className="gradient-overlay" />
-      </div>
-
       <div className="content-wrapper">
-        {/* Enhanced Header */}
-        <div className="header-section">
-          <div className="logo-container">
-            <div className="logo-glow">
-              <Brain className="logo-icon" />
-            </div>
-            <div className="logo-text">
-              <h1>
-                Advisor<span className="logo-highlight">AI</span>
-              </h1>
-              <div className="logo-badge">
-                <Sparkles className="badge-icon" />
-                <span>AI-Powered Resume Parser</span>
-              </div>
-            </div>
-          </div>
-          <p className="subtitle">
-            Transform your resume into a comprehensive digital profile with
-            advanced AI
-          </p>
-        </div>
-
+        
         {/* Stats Section */}
-        <div className={`stats-section ${showFeatures ? "show" : ""}`}>
+        <div className="stats-section">
           {stats.map((stat, index) => (
-            <div
-              key={index}
-              className="stat-card"
-              style={{ animationDelay: `${index * 0.1}s` }}
-            >
+            <div key={index} className="stat-card">
               <div className="stat-icon">{stat.icon}</div>
               <div className="stat-number">{stat.number}</div>
               <div className="stat-label">{stat.label}</div>
@@ -530,20 +464,15 @@ const ProfileCompletion = () => {
         </div>
 
         <div className="upload-container">
-          {/* Enhanced Upload Card */}
+          {/* Upload Card */}
           <div className="upload-card">
-            <div className="card-header">
-              <div className="header-icon">
-                <div className="icon-glow">
-                  <Sparkles className="sparkle-icon" />
-                </div>
-              </div>
-              <h2>
+            <div className="upload-header">
+              <h2 className="upload-title">
                 {userProfile?.profileCompleted
                   ? "Update Your Resume"
                   : "Upload Your Resume"}
               </h2>
-              <p>
+              <p className="upload-description">
                 {userProfile?.profileCompleted
                   ? "Upload a new resume to update your profile information with the latest data"
                   : "Drop your resume and let our advanced AI extract everything automatically"}
@@ -620,7 +549,7 @@ const ProfileCompletion = () => {
                   </div>
                   <span className="progress-text">
                     {uploading
-                      ? "Processing your resume with AI..."
+                      ? "Processing your resume..."
                       : "Ready to upload"}
                   </span>
                 </div>
@@ -636,53 +565,31 @@ const ProfileCompletion = () => {
                 {uploading ? (
                   <>
                     <Loader2 className="loading-spinner" />
-                    Processing with AI...
+                    Processing...
                   </>
                 ) : (
                   <>
                     <Rocket className="btn-icon" />
                     {userProfile?.profileCompleted
-                      ? "Update Resume with AI"
-                      : "Parse Resume with AI"}
+                      ? "Update Resume"
+                      : "Parse Resume"}
                   </>
                 )}
               </button>
 
-              <button
-                className="debug-btn secondary-btn"
-                onClick={debugExtraction}
-                disabled={!file || uploading}
-              >
-                <Settings className="btn-icon" />
-                Debug Extraction
-              </button>
+
             </div>
 
-            {extractionDebug && (
-              <div className="debug-panel">
-                <h4>
-                  <Eye className="debug-icon" />
-                  Debug Information
-                </h4>
-                <details>
-                  <summary>Extraction Results</summary>
-                  <pre>{JSON.stringify(extractionDebug, null, 2)}</pre>
-                </details>
-              </div>
-            )}
+
           </div>
         </div>
 
         {/* Features Section */}
-        <div className={`features-section ${showFeatures ? "show" : ""}`}>
+        <div className="features-section">
           <h3>Why Choose Our AI-Powered Solution?</h3>
           <div className="features-grid">
             {features.map((feature, index) => (
-              <div
-                key={index}
-                className="feature-card"
-                style={{ animationDelay: `${index * 0.1}s` }}
-              >
+              <div key={index} className="feature-card">
                 <div className="feature-icon-container">{feature.icon}</div>
                 <h4>{feature.title}</h4>
                 <p>{feature.description}</p>
@@ -697,42 +604,11 @@ const ProfileCompletion = () => {
   // In renderProfileForm, update the field rendering for better UI/UX
   const renderProfileForm = () => (
     <div className="view-container profile-form-view">
-      {/* Enhanced Animated Background */}
-      <div className="animated-background">
-        <div className="floating-particles">
-          {[...Array(20)].map((_, i) => (
-            <div
-              key={i}
-              className="particle"
-              style={{
-                "--delay": `${Math.random() * 3}s`,
-                "--duration": `${2 + Math.random() * 3}s`,
-                "--x": `${Math.random() * 100}%`,
-                "--y": `${Math.random() * 100}%`,
-                "--size": `${2 + Math.random() * 3}px`,
-              }}
-            />
-          ))}
-        </div>
-        <div className="gradient-overlay" />
-      </div>
-
       <div className="content-wrapper">
-        {/* Enhanced Header */}
-        <div className="header-section">
-          <div className="logo-container">
-            <div className="logo-glow">
-              <User className="logo-icon" />
-            </div>
-            <div className="logo-text">
-              <h1>Profile Information</h1>
-              <div className="logo-badge">
-                <CheckSquare className="badge-icon" />
-                <span>Review & Edit Your Data</span>
-              </div>
-            </div>
-          </div>
-          <p className="subtitle">
+        {/* Upload Container */}
+        <div className="upload-container">
+          <h1 className="page-title">Profile Information</h1>
+          <p className="page-subtitle">
             Review and edit the information extracted from your resume by our AI
           </p>
         </div>
@@ -808,8 +684,8 @@ const ProfileCompletion = () => {
               />
             </div>
 
-            {/* --- GitHub and LinkedIn fields (already styled as cards) --- */}
-            <div className="form-field">
+            {/* --- GitHub and LinkedIn fields --- */}
+            <div className="form-field profile-card-field">
               <div className="field-header">
                 <div className="field-icon">
                   <Star />
@@ -835,7 +711,7 @@ const ProfileCompletion = () => {
                         handleFormChange("github", e.target.value)
                       }
                       placeholder="Enter your GitHub profile URL"
-                      style={{ width: "100%" }}
+                      className="field-input"
                     />
                   </div>
                 ) : (
@@ -845,10 +721,7 @@ const ProfileCompletion = () => {
                         href={formData.github}
                         target="_blank"
                         rel="noopener noreferrer"
-                        style={{
-                          color: "#06b6d4",
-                          textDecoration: "underline",
-                        }}
+                        className="field-link"
                       >
                         {formData.github}
                       </a>
@@ -859,7 +732,7 @@ const ProfileCompletion = () => {
                 )}
               </div>
             </div>
-            <div className="form-field">
+            <div className="form-field profile-card-field">
               <div className="field-header">
                 <div className="field-icon">
                   <Linkedin />
@@ -887,7 +760,7 @@ const ProfileCompletion = () => {
                         handleFormChange("linkedin", e.target.value)
                       }
                       placeholder="Enter your LinkedIn profile URL"
-                      style={{ width: "100%" }}
+                      className="field-input"
                     />
                   </div>
                 ) : (
@@ -897,10 +770,7 @@ const ProfileCompletion = () => {
                         href={formData.linkedin}
                         target="_blank"
                         rel="noopener noreferrer"
-                        style={{
-                          color: "#0a66c2",
-                          textDecoration: "underline",
-                        }}
+                        className="field-link"
                       >
                         {formData.linkedin}
                       </a>
@@ -927,81 +797,44 @@ const ProfileCompletion = () => {
               .map(([fieldName, fieldValue]) => (
                 <div
                   key={fieldName}
-                  className="form-field profile-card-field"
-                  style={{
-                    background: "rgba(255,255,255,0.95)",
-                    border: "1.5px solid #e0e7ef",
-                    borderRadius: 16,
-                    boxShadow: "0 2px 12px rgba(102,126,234,0.07)",
-                    marginBottom: 24,
-                    padding: "1.5rem 1.2rem 1.2rem 1.2rem",
-                    position: "relative",
-                    transition: "box-shadow 0.18s, border-color 0.18s",
-                    minWidth: 0,
-                  }}
+                  className={`form-field profile-card-field ${
+                    fieldName === "skills" ? "skills-field" : ""
+                  }`}
                   tabIndex={0}
-                  onFocus={(e) =>
-                    (e.currentTarget.style.boxShadow =
-                      "0 4px 24px rgba(6,182,212,0.13)")
-                  }
-                  onBlur={(e) =>
-                    (e.currentTarget.style.boxShadow =
-                      "0 2px 12px rgba(102,126,234,0.07)")
-                  }
-                  onMouseOver={(e) =>
-                    (e.currentTarget.style.borderColor = "#38bdf8")
-                  }
-                  onMouseOut={(e) =>
-                    (e.currentTarget.style.borderColor = "#e0e7ef")
-                  }
                 >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      marginBottom: 10,
-                    }}
-                  >
-                    <div
-                      style={{ display: "flex", alignItems: "center", gap: 12 }}
-                    >
-                      <div className="field-icon">
-                        {getFieldIcon(fieldName)}
-                      </div>
-                      <h3
-                        className="field-title"
-                        style={{
-                          fontSize: "1.18rem",
-                          fontWeight: 700,
-                          color: "#232946",
-                          margin: 0,
-                        }}
-                      >
-                        {formatFieldName(fieldName)}
-                      </h3>
+                  <div className="field-header">
+                    <div className="field-icon">
+                      {getFieldIcon(fieldName)}
                     </div>
-                    <button
-                      className="edit-btn"
-                      style={{
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        color: "#06b6d4",
-                        fontSize: 18,
-                        padding: 4,
-                        borderRadius: 6,
-                        transition: "background 0.15s",
-                      }}
-                      onClick={() =>
-                        setEditingField(
-                          editingField === fieldName ? null : fieldName
-                        )
-                      }
-                      title="Edit field"
-                    >
-                      {editingField === fieldName ? <EyeOff /> : <Edit />}
-                    </button>
+                    <h3 className="field-title">
+                      {formatFieldName(fieldName)}
+                    </h3>
+                    <div className="field-actions">
+                      <button
+                        className="edit-btn"
+                        onClick={() =>
+                          setEditingField(
+                            editingField === fieldName ? null : fieldName
+                          )
+                        }
+                        title="Edit field"
+                      >
+                        {editingField === fieldName ? <EyeOff /> : <Edit />}
+                      </button>
+                      {editingField === fieldName && (
+                        <button
+                          className="delete-btn"
+                          onClick={() => {
+                            // Clear the field value
+                            handleFormChange(fieldName, "");
+                            setEditingField(null);
+                          }}
+                          title="Clear field"
+                        >
+                          <Trash2 />
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="field-content">
                     {editingField === fieldName ? (
@@ -1251,81 +1084,128 @@ const ProfileCompletion = () => {
                             </button>
                           </div>
                         ) : Array.isArray(fieldValue) ? (
-                          <div className="array-edit">
+                          <div className={`array-edit ${
+                            fieldName === "skills" ? "skills-array" : ""
+                          }`}>
                             {fieldValue.map((item, index) => (
                               <div
                                 key={index}
-                                className="array-item-edit"
+                                className={`array-item-edit ${
+                                  fieldName === "skills" ? "skill-item" : ""
+                                }`}
                                 style={{
-                                  background: "#f3f8fd",
-                                  borderRadius: 10,
-                                  padding: 12,
-                                  marginBottom: 10,
+                                  background: fieldName === "skills" ? "#ffffff" : "#f3f8fd",
+                                  borderRadius: fieldName === "skills" ? 8 : 10,
+                                  padding: fieldName === "skills" ? "1rem" : 12,
+                                  marginBottom: fieldName === "skills" ? 0 : 10,
+                                  border: fieldName === "skills" ? "1px solid #e5e7eb" : "none",
+                                  position: fieldName === "skills" ? "relative" : "static",
                                 }}
                               >
-                                <label style={labelStyle}>Item</label>
-                                <textarea
-                                  value={
-                                    typeof item === "object"
-                                      ? JSON.stringify(item, null, 2)
-                                      : item
-                                  }
-                                  onChange={(e) => {
-                                    const newValue = [...fieldValue];
-                                    try {
-                                      newValue[index] = JSON.parse(
-                                        e.target.value
-                                      );
-                                    } catch {
+                                {fieldName === "skills" ? (
+                                  <input
+                                    type="text"
+                                    value={item}
+                                    onChange={(e) => {
+                                      const newValue = [...fieldValue];
                                       newValue[index] = e.target.value;
-                                    }
-                                    handleFormChange(fieldName, newValue);
-                                  }}
-                                  placeholder={`Enter ${formatFieldName(
-                                    fieldName
-                                  ).toLowerCase()}`}
-                                  style={{
-                                    ...inputStyle,
-                                    minHeight: 50,
-                                    resize: "vertical",
-                                    fontFamily: "inherit",
-                                  }}
-                                  onFocus={(e) =>
-                                    Object.assign(e.target.style, {
-                                      ...inputFocusStyle,
-                                      minHeight: 70,
-                                    })
-                                  }
-                                  onBlur={(e) =>
-                                    Object.assign(e.target.style, {
-                                      ...inputStyle,
-                                      minHeight: 50,
-                                    })
-                                  }
-                                />
-                                <button
-                                  className="remove-item-btn"
-                                  style={removeBtnStyle}
-                                  onClick={() => {
-                                    const newValue = fieldValue.filter(
-                                      (_, i) => i !== index
-                                    );
-                                    handleFormChange(fieldName, newValue);
-                                  }}
-                                >
-                                  <Trash2 />
-                                </button>
+                                      handleFormChange(fieldName, newValue);
+                                    }}
+                                    placeholder="Enter skill"
+                                    className="field-input"
+                                    style={{
+                                      minHeight: 40,
+                                      textAlign: "center",
+                                      fontSize: "0.875rem",
+                                    }}
+                                  />
+                                ) : (
+                                  <>
+                                    <label style={labelStyle}>Item</label>
+                                    <textarea
+                                      value={
+                                        typeof item === "object"
+                                          ? JSON.stringify(item, null, 2)
+                                          : item
+                                      }
+                                      onChange={(e) => {
+                                        const newValue = [...fieldValue];
+                                        try {
+                                          newValue[index] = JSON.parse(
+                                            e.target.value
+                                          );
+                                        } catch {
+                                          newValue[index] = e.target.value;
+                                        }
+                                        handleFormChange(fieldName, newValue);
+                                      }}
+                                      placeholder={`Enter ${formatFieldName(
+                                        fieldName
+                                      ).toLowerCase()}`}
+                                      style={{
+                                        ...inputStyle,
+                                        minHeight: 50,
+                                        resize: "vertical",
+                                        fontFamily: "inherit",
+                                      }}
+                                      onFocus={(e) =>
+                                        Object.assign(e.target.style, {
+                                          ...inputFocusStyle,
+                                          minHeight: 70,
+                                        })
+                                      }
+                                      onBlur={(e) =>
+                                        Object.assign(e.target.style, {
+                                          ...inputStyle,
+                                          minHeight: 50,
+                                        })
+                                      }
+                                    />
+                                  </>
+                                )}
+                                {fieldName === "skills" ? (
+                                  <button
+                                    className="remove-item-btn"
+                                    onClick={() => {
+                                      const newValue = fieldValue.filter(
+                                        (_, i) => i !== index
+                                      );
+                                      handleFormChange(fieldName, newValue);
+                                    }}
+                                    title="Remove skill"
+                                  >
+                                    <Trash2 />
+                                  </button>
+                                ) : (
+                                  <button
+                                    className="remove-item-btn"
+                                    style={removeBtnStyle}
+                                    onClick={() => {
+                                      const newValue = fieldValue.filter(
+                                        (_, i) => i !== index
+                                      );
+                                      handleFormChange(fieldName, newValue);
+                                    }}
+                                  >
+                                    <Trash2 />
+                                  </button>
+                                )}
                               </div>
                             ))}
                             <button
                               className="add-item-btn"
-                              style={addBtnStyle}
+                              style={{
+                                ...addBtnStyle,
+                                background: fieldName === "skills" ? "#dbeafe" : addBtnStyle.background,
+                                color: fieldName === "skills" ? "#1d4ed8" : addBtnStyle.color,
+                                border: fieldName === "skills" ? "1.5px solid #1d4ed8" : addBtnStyle.border,
+                              }}
                               onClick={() => {
                                 const newValue = [...fieldValue, ""];
                                 handleFormChange(fieldName, newValue);
                               }}
                             >
-                              <PlusCircle /> Add Item
+                              <PlusCircle /> {fieldName === "skills" ? "Add Skill" : "Add Item"}
                             </button>
                           </div>
                         ) : (
@@ -1451,13 +1331,41 @@ const ProfileCompletion = () => {
         </div>
       )}
 
-      {/* Main Content */}
+      {/* Header Section - Fixed Navigation */}
+      <div className="header-section">
+        <div className="nav-bar">
+          <div className="nav-logo">
+            <div className="logo-container">
+              <div className="logo-icon-wrapper">
+                <Brain className="logo-icon" />
+              </div>
+              <div className="logo-text">
+                Advisor<span className="logo-highlight">AI</span>
+              </div>
+            </div>
+          </div>
+          <div className="nav-actions">
+            <button className="nav-button" onClick={() => navigate('/dashboard')}>
+              <Home className="btn-icon" />
+              Dashboard
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content Area */}
       <div className="main-content">
         {loadingExistingProfile ? (
-          // Show loading while fetching existing profile
-          <div className="loading-container">
-            <div className="loading-spinner"></div>
-            <p>Loading your profile...</p>
+          <div className="view-container">
+            <div className="content-wrapper">
+              <div className="upload-container">
+                <h1 className="page-title">Loading Profile...</h1>
+                <p className="page-subtitle">
+                  Please wait while we load your profile information...
+                </p>
+              </div>
+              <div className="loading-spinner" />
+            </div>
           </div>
         ) : currentView === 0 ? (
           renderUploadView()
@@ -1465,15 +1373,6 @@ const ProfileCompletion = () => {
           renderProfileForm()
         )}
       </div>
-
-      {/* Floating Action Button */}
-      <button
-        className="fab"
-        onClick={() => navigate("/dashboard")}
-        title="Go to Dashboard"
-      >
-        <Home />
-      </button>
     </div>
   );
 };
