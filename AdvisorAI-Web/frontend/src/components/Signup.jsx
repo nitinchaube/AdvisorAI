@@ -3,20 +3,17 @@ import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { apiService } from "../services/api";
 import { 
-  User, 
   Mail, 
   Lock, 
-  CheckCircle, 
   X, 
   Eye, 
-  EyeOff, 
-  Brain,
-  Sparkles,
-  ArrowRight,
-  Shield,
-  Zap,
-  Star
+  EyeOff,
+  Brain
 } from "lucide-react";
+import StaticHeader from "./StaticHeader";
+import BenefitsSection from "./common/BenefitsSection";
+import BottomSection from "./common/BottomSection";
+
 import "./Signup.css";
 
 const Signup = () => {
@@ -31,19 +28,8 @@ const Signup = () => {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [currentStep, setCurrentStep] = useState(0);
   const { signup } = useAuth();
   const navigate = useNavigate();
-
-  useEffect(() => {
-    // Auto-advance steps for demo effect
-    if (currentStep < 2) {
-      const timer = setTimeout(() => {
-        setCurrentStep(prev => prev + 1);
-      }, 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [currentStep]);
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -123,155 +109,101 @@ const Signup = () => {
     }
   };
 
-  const benefits = [
-    {
-      icon: <Brain className="benefit-icon" />,
-      title: "AI-Powered Guidance",
-      description: "Get personalized academic advice from advanced AI"
-    },
-    {
-      icon: <Zap className="benefit-icon" />,
-      title: "Instant Answers",
-      description: "Quick responses to all your academic questions"
-    },
-    {
-      icon: <Shield className="benefit-icon" />,
-      title: "Secure & Private",
-      description: "Your data is protected with enterprise-grade security"
-    }
-  ];
+
 
   return (
     <div className="signup-container">
-      {/* Animated Background */}
-      <div className="animated-background">
-        <div className="floating-particles">
-          {[...Array(15)].map((_, i) => (
-            <div
-              key={i}
-              className="particle"
-              style={{
-                '--delay': `${Math.random() * 3}s`,
-                '--duration': `${2 + Math.random() * 3}s`,
-                '--x': `${Math.random() * 100}%`,
-                '--y': `${Math.random() * 100}%`
-              }}
-            />
-          ))}
-        </div>
-      </div>
+            {/* Header Section */}
+      <StaticHeader showSignIn={true} showSignUp={false} />
 
       {/* Main Content */}
       <div className="signup-content">
-        {/* Left Side - Form */}
-        <div className="form-section">
+        {/* Top Section - Signup Form and Why Choose Us Side by Side */}
+        <div className="top-section">
+          {/* Left Side - Form */}
+          <div className="form-section">
           <div className="form-container">
-            <div className="form-header">
-              <div className="logo-container">
-                <Brain className="logo-icon" />
-                <span className="logo-text">Advisor<span className="logo-highlight">AI</span></span>
-              </div>
-              
-              <div className="welcome-text">
-                <div className="welcome-badge">
-                  <Sparkles className="badge-icon" />
-                  <span>Join the Future of Academic Guidance</span>
-                </div>
-                
-                <h1 className="welcome-title">
-                  Create Your Account
-                </h1>
-                
-                <p className="welcome-description">
-                  Start your journey with AI-powered academic guidance. 
-                  Get personalized recommendations and expert advice.
-                </p>
-              </div>
-            </div>
+            {/* <div className="form-header">
+              <h1 className="welcome-title">
+                Create Account
+              </h1>
+            </div> */}
 
             <form className="signup-form" onSubmit={handleSubmit}>
-              <div className="form-group">
-                <label className="form-label">
-                  <User className="label-icon" />
-                  Full Name
-                </label>
-          <input
-                  className="form-input"
-            type="text"
-            name="name"
-            value={form.name}
-            onChange={handleChange}
+              <div className="form-field">
+                <label className="field-label">Full Name</label>
+                <input
+                  className="field-input"
+                  type="text"
+                  name="name"
+                  value={form.name}
+                  onChange={handleChange}
                   placeholder="Enter your full name"
-            autoComplete="off"
+                  autoComplete="off"
                   disabled={loading}
-          />
-        </div>
+                />
+              </div>
 
-              <div className="form-group">
-                <label className="form-label">
-                  <Mail className="label-icon" />
-                  Email Address
-                </label>
-          <input
-                  className="form-input"
-            type="email"
-            name="email"
-            value={form.email}
-            onChange={handleChange}
-            placeholder="Enter your email"
-            autoComplete="off"
+              <div className="form-field">
+                <label className="field-label">Email</label>
+                <input
+                  className="field-input"
+                  type="email"
+                  name="email"
+                  value={form.email}
+                  onChange={handleChange}
+                  placeholder="Enter your email"
+                  autoComplete="off"
                   disabled={loading}
-          />
-        </div>
+                />
+              </div>
 
-              <div className="form-group">
-                <label className="form-label">
-                  <Lock className="label-icon" />
+              <div className="form-field">
+                <label className="field-label">
                   Password
                 </label>
-                <div className="password-input-container">
-          <input
-                    className="form-input password-input"
+                <div className="password-field">
+                  <input
+                    className="field-input password-input"
                     type={showPassword ? "text" : "password"}
-            name="password"
-            value={form.password}
-            onChange={handleChange}
-                    placeholder="Create a strong password"
-            autoComplete="new-password"
+                    name="password"
+                    value={form.password}
+                    onChange={handleChange}
+                    placeholder="Create a password"
+                    autoComplete="new-password"
                     disabled={loading}
-          />
+                  />
                   <button
                     type="button"
-                    className="password-toggle"
+                    className="password-toggle-btn"
                     onClick={() => setShowPassword(!showPassword)}
                     disabled={loading}
+                    title={showPassword ? "Hide password" : "Show password"}
                   >
                     {showPassword ? <EyeOff className="toggle-icon" /> : <Eye className="toggle-icon" />}
                   </button>
                 </div>
-        </div>
+              </div>
 
-              <div className="form-group">
-                <label className="form-label">
-                  <Lock className="label-icon" />
-                  Confirm Password
-                </label>
-                <div className="password-input-container">
-          <input
-                    className="form-input password-input"
+              <div className="form-field">
+                <label className="field-label">Confirm Password</label>
+                <div className="password-field">
+                  <input
+                    className="field-input password-input"
                     type={showConfirmPassword ? "text" : "password"}
-            name="confirmPassword"
-            value={form.confirmPassword}
-            onChange={handleChange}
-            placeholder="Confirm your password"
-            autoComplete="new-password"
+                    name="confirmPassword"
+                    value={form.confirmPassword}
+                    onChange={handleChange}
+                    placeholder="Confirm password"
+                    autoComplete="new-password"
                     disabled={loading}
-          />
+                  />
                   <button
                     type="button"
-                    className="password-toggle"
+                    className="password-toggle-btn"
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                     disabled={loading}
+                    title={showConfirmPassword ? "Hide password" : "Show password"}
                   >
                     {showConfirmPassword ? <EyeOff className="toggle-icon" /> : <Eye className="toggle-icon" />}
                   </button>
@@ -279,33 +211,30 @@ const Signup = () => {
               </div>
 
               {error && (
-                <div className="error-message">
-                  <X className="error-icon" />
-                  <span>{error}</span>
+                <div className="message-container error">
+                  <X className="message-icon-svg" />
+                  <span className="message-text">{error}</span>
                 </div>
               )}
 
               {success && (
-                <div className="success-message">
-                  <CheckCircle className="success-icon" />
-                  <span>{success}</span>
+                <div className="message-container success">
+                  <CheckCircle className="message-icon-svg" />
+                  <span className="message-text">{success}</span>
                 </div>
               )}
 
-              <button className="signup-button" type="submit" disabled={loading}>
+              <button className="submit-button" type="submit" disabled={loading}>
                 {loading ? (
                   <>
-                    <div className="loading-spinner" />
-                    Creating Account...
+                    <div className="button-spinner" />
+                    <span>Creating Account...</span>
                   </>
                 ) : (
-                  <>
-                    <span>Create Account</span>
-                    <ArrowRight className="button-icon" />
-                  </>
+                  <span>Create Account</span>
                 )}
               </button>
-
+              
               <div className="form-footer">
                 <p className="login-prompt">
                   Already have an account? 
@@ -318,47 +247,75 @@ const Signup = () => {
           </div>
         </div>
 
-        {/* Right Side - Benefits */}
-        <div className="benefits-section">
-          <div className="benefits-container">
-            <div className="benefits-header">
-              <h2 className="benefits-title">Why Choose AdvisorAI?</h2>
-              <p className="benefits-subtitle">
-                Join thousands of students making smarter academic decisions
+        {/* Right Side - Why Choose Us */}
+        <BenefitsSection />
+        </div>
+
+        {/* Bottom Section - What You'll Get (Horizontal Layout) */}
+        <BottomSection />
+      </div>
+      
+      {/* Footer */}
+      <footer className="footer">
+        <div className="footer-content">
+          <div className="footer-main">
+            <div className="footer-brand">
+              <div className="footer-logo">
+                <div className="footer-logo-icon-wrapper">
+                  <Brain className="footer-logo-icon" />
+                </div>
+                <span>AdvisorAI</span>
+              </div>
+              <p className="footer-text">
+                Empowering students with AI-driven academic guidance for a brighter future. Make smarter decisions, achieve your goals, and unlock your potential.
               </p>
             </div>
-
-            <div className="benefits-list">
-              {benefits.map((benefit, index) => (
-                <div key={index} className={`benefit-item ${currentStep === index ? 'active' : ''}`}>
-                  <div className="benefit-icon-container">
-                    {benefit.icon}
-                  </div>
-                  <div className="benefit-content">
-                    <h3 className="benefit-title">{benefit.title}</h3>
-                    <p className="benefit-description">{benefit.description}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="stats-preview">
-              <div className="stat-item">
-                <div className="stat-number">10K+</div>
-                <div className="stat-label">Students</div>
+            
+            <div className="footer-links">
+              <div className="footer-link-group">
+                <h4>Product</h4>
+                <a href="#" className="footer-link">Features</a>
+                <a href="#" className="footer-link">Pricing</a>
+                <a href="#" className="footer-link">API</a>
+                <a href="#" className="footer-link">Documentation</a>
               </div>
-              <div className="stat-item">
-                <div className="stat-number">95%</div>
-                <div className="stat-label">Satisfaction</div>
+              
+              <div className="footer-link-group">
+                <h4>Company</h4>
+                <a href="#" className="footer-link">About</a>
+                <a href="#" className="footer-link">Blog</a>
+                <a href="#" className="footer-link">Careers</a>
+                <a href="#" className="footer-link">Press</a>
               </div>
-              <div className="stat-item">
-                <div className="stat-number">24/7</div>
-                <div className="stat-label">Support</div>
+              
+              <div className="footer-link-group">
+                <h4>Support</h4>
+                <a href="#" className="footer-link">Help Center</a>
+                <a href="#" className="footer-link">Contact</a>
+                <a href="#" className="footer-link">Status</a>
+                <a href="#" className="footer-link">Community</a>
+              </div>
+              
+              <div className="footer-link-group">
+                <h4>Legal</h4>
+                <a href="#" className="footer-link">Privacy Policy</a>
+                <a href="#" className="footer-link">Terms of Service</a>
+                <a href="#" className="footer-link">Cookie Policy</a>
+                <a href="#" className="footer-link">GDPR</a>
               </div>
             </div>
           </div>
+          
+          <div className="footer-bottom">
+            <p>&copy; {new Date().getFullYear()} AdvisorAI. All rights reserved.</p>
+            <div className="footer-social">
+              <a href="#" className="social-link">
+                <Mail className="footer-social-icon" />
+              </a>
+            </div>
+          </div>
         </div>
-      </div>
+      </footer>
     </div>
   );
 };

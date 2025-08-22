@@ -1,52 +1,81 @@
-import React from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
-import './LoadingSpinner.css';
+import React from "react";
+import { Navigate, useLocation } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
+import "./LoadingSpinner.css";
 
-const ProtectedRoute = ({ children, requireProfileCompletion = true, requireAdmin = false }) => {
-  const { currentUser, loading, userProfile, isProfileCompleted } = useAuth();
+const ProtectedRoute = ({
+  children,
+  requireProfileCompletion = true,
+  requireAdmin = false,
+}) => {
+  const { currentUser, loading, userProfile } = useAuth();
   const location = useLocation();
 
-  console.log('ProtectedRoute: Current location:', location.pathname);
-  console.log('ProtectedRoute: Loading:', loading);
-  console.log('ProtectedRoute: Current user:', currentUser);
-  console.log('ProtectedRoute: Require profile completion:', requireProfileCompletion);
+  console.log("ProtectedRoute: Current location:", location.pathname);
+  console.log("ProtectedRoute: Loading:", loading);
+  console.log("ProtectedRoute: Current user:", !!currentUser);
+  console.log("ProtectedRoute: User profile:", userProfile);
+  console.log(
+    "ProtectedRoute: Require profile completion:",
+    requireProfileCompletion
+  );
 
-  // Show loading spinner while checking auth state
+  // Show a loading spinner while auth state is being determined
   if (loading) {
-    console.log('ProtectedRoute: Showing loading spinner');
+    console.log("ProtectedRoute: Showing loading spinner (auth loading)");
     return (
       <div className="loading-container">
         <div className="loading-spinner"></div>
-        <p>Loading...</p>
+        <p>Loading user data...</p>
       </div>
     );
   }
 
   // If not authenticated, redirect to login
   if (!currentUser) {
-    console.log('ProtectedRoute: No current user, redirecting to login');
+    console.log("ProtectedRoute: No current user, redirecting to login");
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
-  // If profile completion is required and user hasn't completed profile
+  // If authenticated but profile is not yet loaded, show loading spinner
+  if (!userProfile) {
+    console.log("ProtectedRoute: Showing loading spinner (profile loading)");
+    return (
+      <div className="loading-container">
+        <div className="loading-spinner"></div>
+        <p>Loading profile data...</p>
+      </div>
+    );
+  }
+
+  // If profile completion is required, check the userProfile state
   if (requireProfileCompletion) {
-    const hasCompletedProfile = isProfileCompleted();
-    console.log('ProtectedRoute: Profile completion check (using isProfileCompleted):', hasCompletedProfile);
-    if (!hasCompletedProfile && location.pathname !== '/profile-completion') {
-      console.log('ProtectedRoute: Profile not completed, redirecting to profile-completion');
+    console.log(
+      "ProtectedRoute: Profile completion check from userProfile:",
+      userProfile.profileCompleted
+    );
+    if (
+      !userProfile.profileCompleted &&
+      location.pathname !== "/profile-completion"
+    ) {
+      console.log(
+        "ProtectedRoute: Profile not completed, redirecting to profile-completion"
+      );
       return <Navigate to="/profile-completion" replace />;
     }
   }
 
-  // After profile check
-  if (requireAdmin && userProfile?.role !== 'admin') {
+  // If admin privileges are required, check the userProfile role
+  if (requireAdmin && userProfile.role !== "admin") {
+    console.log(
+      "ProtectedRoute: Admin required, but user is not admin. Redirecting to dashboard."
+    );
     return <Navigate to="/dashboard" replace />;
   }
 
-  console.log('ProtectedRoute: All checks passed, showing protected content');
-  // If all checks pass, show the protected content
+  console.log("ProtectedRoute: All checks passed, rendering protected content");
+  // If all checks pass, render the protected content
   return children;
 };
 
-export default ProtectedRoute; 
+export default ProtectedRoute;
