@@ -2,24 +2,19 @@ import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { apiService } from "../services/api";
-import { 
-  User, 
-  Mail, 
-  Lock, 
-  CheckCircle, 
-  X, 
-  Eye, 
-  EyeOff, 
-  Brain,
-  Sparkles,
+import {
+  Mail,
+  Lock,
+  X,
+  Eye,
+  EyeOff,
   ArrowRight,
   Shield,
-  Zap,
-  Star,
-  Key,
-  Clock,
-  Users
 } from "lucide-react";
+
+import StaticHeader from "./StaticHeader";
+import BenefitsSection from "./common/BenefitsSection";
+import BottomSection from "./common/BottomSection";
 import "./Login.css";
 
 const Login = () => {
@@ -29,21 +24,21 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [currentFeature, setCurrentFeature] = useState(0);
-  const { login, isProfileCompleted } = useAuth();
+  const { login, loadUserProfile } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
     // Auto-rotate features
     const interval = setInterval(() => {
-      setCurrentFeature(prev => (prev + 1) % 3);
+      setCurrentFeature((prev) => (prev + 1) % 3);
     }, 3000);
-    
+
     return () => clearInterval(interval);
   }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!email || !password) {
       setError("Please enter both email and password.");
       return;
@@ -58,49 +53,42 @@ const Login = () => {
       console.log("🔥 Signing in with Firebase...");
       const result = await login(email, password);
       console.log("✅ Firebase login successful:", result.user.uid);
-      
+
       // Step 2: Get the ID token
       console.log("🎫 Getting ID token...");
       const idToken = await result.user.getIdToken();
       console.log("✅ ID token received");
-      
+
       // Step 3: Sign in with backend
       console.log("🔗 Signing in with backend...");
-      const backendResponse = await apiService.signinWithBackend(idToken);
-      console.log("✅ Backend login successful:", backendResponse);
-      
-      // Step 4: Store the backend token
-      localStorage.setItem('backendToken', backendResponse.access_token);
-      console.log("💾 Token stored in localStorage");
-      
-      // Step 5: Fetch user profile and set profileCompleted
-      console.log("🔍 Fetching user profile after backend token set...");
-      const profile = await apiService.getUserProfile();
-      if (profile.success && profile.profile) {
-        localStorage.setItem('profileCompleted', profile.profile.profileCompleted ? 'true' : 'false');
-        console.log("📊 Profile completed:", profile.profile.profileCompleted);
-        if (profile.profile.profileCompleted) {
-          navigate('/dashboard');
-        } else {
-          navigate('/profile-completion');
-        }
+      await apiService.signinWithBackend(idToken);
+      console.log("✅ Backend login successful");
+
+      // Step 4: Load user profile and navigate based on completion status
+      console.log("🔍 Loading user profile...");
+      const profile = await loadUserProfile();
+      console.log("✅ User profile loaded:", profile);
+
+      if (profile && profile.profileCompleted) {
+        console.log("📊 Profile complete, navigating to dashboard...");
+        navigate("/dashboard");
       } else {
-        // fallback if profile fetch fails
-        localStorage.setItem('profileCompleted', 'false');
-        navigate('/profile-completion');
+        console.log(
+          "📊 Profile not complete or failed to load, navigating to profile completion..."
+        );
+        navigate("/profile-completion");
       }
-      
     } catch (error) {
-      console.error('❌ Login error:', error);
-      
+      console.error("❌ Login error:", error);
+
       // Handle specific Firebase errors
-      if (error.code === 'auth/user-not-found') {
+      if (error.code === "auth/user-not-found") {
         setError("No account found with this email address.");
-      } else if (error.code === 'auth/wrong-password') {
+      } else if (error.code === "auth/wrong-password") {
         setError("Incorrect password.");
-      } else if (error.code === 'auth/invalid-email') {
+      } else if (error.code === "auth/invalid-email") {
         setError("Invalid email address.");
-      } else if (error.code === 'auth/too-many-requests') {
+      } else if (error.code === "auth/too-many-requests") {
         setError("Too many failed attempts. Please try again later.");
       } else if (error.message) {
         setError(`Login failed: ${error.message}`);
@@ -113,222 +101,162 @@ const Login = () => {
     }
   };
 
-  const features = [
-    {
-      icon: <Brain className="feature-icon" />,
-      title: "AI-Powered Insights",
-      description: "Get personalized academic guidance from advanced AI algorithms"
-    },
-    {
-      icon: <Zap className="feature-icon" />,
-      title: "Instant Access",
-      description: "Quick and secure access to your academic dashboard"
-    },
-    {
-      icon: <Shield className="feature-icon" />,
-      title: "Secure & Private",
-      description: "Your data is protected with enterprise-grade security"
-    }
-  ];
 
-  const testimonials = [
-    {
-      text: "AdvisorAI helped me choose the perfect courses for my career goals!",
-      author: "Sarah M.",
-      role: "Computer Science Student"
-    },
-    {
-      text: "The AI recommendations are incredibly accurate and personalized.",
-      author: "Michael R.",
-      role: "Engineering Student"
-    },
-    {
-      text: "Finally, an AI that understands academic planning!",
-      author: "Emma L.",
-      role: "Business Student"
-    }
-  ];
 
   return (
     <div className="login-container">
-      {/* Animated Background */}
-      <div className="animated-background">
-        <div className="floating-particles">
-          {[...Array(15)].map((_, i) => (
-            <div
-              key={i}
-              className="particle"
-              style={{
-                '--delay': `${Math.random() * 3}s`,
-                '--duration': `${2 + Math.random() * 3}s`,
-                '--x': `${Math.random() * 100}%`,
-                '--y': `${Math.random() * 100}%`
-              }}
-            />
-          ))}
-        </div>
-      </div>
-
+      {/* Header Section */}
+      <StaticHeader showSignIn={false} showSignUp={true} />
+      
       {/* Main Content */}
       <div className="login-content">
-        {/* Left Side - Form */}
-        <div className="form-section">
-          <div className="form-container">
-            <div className="form-header">
-              <div className="logo-container">
-                <Brain className="logo-icon" />
-                <span className="logo-text">Advisor<span className="logo-highlight">AI</span></span>
-              </div>
-              
-              <div className="welcome-text">
-                <div className="welcome-badge">
-                  <Sparkles className="badge-icon" />
-                  <span>Welcome Back!</span>
-                </div>
-                
-                <h1 className="welcome-title">
-                  Sign In to Your Account
-                </h1>
-                
-                <p className="welcome-description">
-                  Continue your academic journey with AI-powered guidance. 
-                  Access your personalized dashboard and recommendations.
-                </p>
-              </div>
-            </div>
-
-            <form className="login-form" onSubmit={handleSubmit}>
-              <div className="form-group">
-                <label className="form-label">
-                  <Mail className="label-icon" />
-                  Email Address
-                </label>
-                <input
-                  className="form-input"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Enter your email"
-                  autoComplete="email"
-                  disabled={loading}
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">
-                  <Lock className="label-icon" />
-                  Password
-                </label>
-                <div className="password-input-container">
+        {/* Top Section - Login Form and Features Side by Side */}
+        <div className="top-section">
+          {/* Left Side - Form */}
+          <div className="form-section">
+            <div className="form-container">
+              <form className="signup-form" onSubmit={handleSubmit}>
+                <div className="form-field">
+                  <label className="field-label">Email</label>
                   <input
-                    className="form-input password-input"
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter your password"
-                    autoComplete="current-password"
+                    className="field-input"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Enter your email"
+                    autoComplete="email"
                     disabled={loading}
                   />
-                  <button
-                    type="button"
-                    className="password-toggle"
-                    onClick={() => setShowPassword(!showPassword)}
-                    disabled={loading}
-                  >
-                    {showPassword ? <EyeOff className="toggle-icon" /> : <Eye className="toggle-icon" />}
-                  </button>
                 </div>
-              </div>
 
-              {error && (
-                <div className="error-message">
-                  <X className="error-icon" />
-                  <span>{error}</span>
+                <div className="form-field">
+                  <label className="field-label">
+                    Password
+                  </label>
+                  <div className="password-field">
+                    <input
+                      className="field-input password-input"
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter your password"
+                      autoComplete="current-password"
+                      disabled={loading}
+                    />
+                    <button
+                      type="button"
+                      className="password-toggle-btn"
+                      onClick={() => setShowPassword(!showPassword)}
+                      disabled={loading}
+                      title={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? <EyeOff className="toggle-icon" /> : <Eye className="toggle-icon" />}
+                    </button>
+                  </div>
                 </div>
-              )}
 
-              <button className="login-button" type="submit" disabled={loading}>
-                {loading ? (
-                  <>
-                    <div className="loading-spinner" />
-                    Signing In...
-                  </>
-                ) : (
-                  <>
-                    <span>Sign In</span>
-                    <ArrowRight className="button-icon" />
-                  </>
+                {error && (
+                  <div className="error-message">
+                    <X className="error-icon" />
+                    <span>{error}</span>
+                  </div>
                 )}
-              </button>
 
-              <div className="form-footer">
-                <p className="signup-prompt">
-                  Don't have an account? 
-                  <Link to="/signup" className="signup-link">
-                    Create Account
-                  </Link>
-                </p>
-              </div>
-            </form>
+                <button className="submit-button" type="submit" disabled={loading}>
+                  {loading ? (
+                    <>
+                      <div className="button-spinner" />
+                      Signing In...
+                    </>
+                  ) : (
+                    <>
+                      <span>Sign In</span>
+                      <ArrowRight className="button-icon" />
+                    </>
+                  )}
+                </button>
+
+                <div className="form-footer">
+                  <p className="signup-prompt">
+                    Don't have an account?
+                    <Link to="/signup" className="signup-link">
+                      Create Account
+                    </Link>
+                  </p>
+                </div>
+              </form>
+            </div>
           </div>
+
+          {/* Right Side - Why Choose Us */}
+          <BenefitsSection />
         </div>
 
-        {/* Right Side - Features & Testimonials */}
-        <div className="features-section">
-          <div className="features-container">
-            <div className="features-header">
-              <h2 className="features-title">Why Students Love AdvisorAI</h2>
-              <p className="features-subtitle">
-                Join thousands of students making smarter academic decisions
+        {/* Bottom Section - What You'll Get (Horizontal Layout) */}
+        <BottomSection />
+      </div>
+      
+      {/* Footer */}
+      <footer className="footer">
+        <div className="footer-content">
+          <div className="footer-main">
+            <div className="footer-brand">
+              <div className="footer-logo">
+                <div className="footer-logo-icon-wrapper">
+                  <Shield className="footer-logo-icon" />
+                </div>
+                <span>AdvisorAI</span>
+              </div>
+              <p className="footer-text">
+                Empowering students with AI-driven academic guidance for a brighter future. Make smarter decisions, achieve your goals, and unlock your potential.
               </p>
             </div>
-
-            <div className="features-showcase">
-              {features.map((feature, index) => (
-                <div key={index} className={`feature-card ${currentFeature === index ? 'active' : ''}`}>
-                  <div className="feature-icon-container">
-                    {feature.icon}
-                  </div>
-                  <h3 className="feature-title">{feature.title}</h3>
-                  <p className="feature-description">{feature.description}</p>
-                </div>
-              ))}
-            </div>
-
-            <div className="testimonials-section">
-              <h3 className="testimonials-title">What Our Users Say</h3>
-              <div className="testimonials-list">
-                {testimonials.map((testimonial, index) => (
-                  <div key={index} className="testimonial-item">
-                    <div className="testimonial-content">
-                      <p className="testimonial-text">"{testimonial.text}"</p>
-                      <div className="testimonial-author">
-                        <span className="author-name">{testimonial.author}</span>
-                        <span className="author-role">{testimonial.role}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+            
+            <div className="footer-links">
+              <div className="footer-link-group">
+                <h4>Product</h4>
+                <a href="#" className="footer-link">Features</a>
+                <a href="#" className="footer-link">Pricing</a>
+                <a href="#" className="footer-link">API</a>
+                <a href="#" className="footer-link">Documentation</a>
               </div>
-            </div>
-
-            <div className="stats-preview">
-              <div className="stat-item">
-                <div className="stat-number">10K+</div>
-                <div className="stat-label">Active Users</div>
+              
+              <div className="footer-link-group">
+                <h4>Company</h4>
+                <a href="#" className="footer-link">About</a>
+                <a href="#" className="footer-link">Blog</a>
+                <a href="#" className="footer-link">Careers</a>
+                <a href="#" className="footer-link">Press</a>
               </div>
-              <div className="stat-item">
-                <div className="stat-number">95%</div>
-                <div className="stat-label">Satisfaction</div>
+              
+              <div className="footer-link-group">
+                <h4>Support</h4>
+                <a href="#" className="footer-link">Help Center</a>
+                <a href="#" className="footer-link">Contact</a>
+                <a href="#" className="footer-link">Status</a>
+                <a href="#" className="footer-link">Community</a>
               </div>
-              <div className="stat-item">
-                <div className="stat-number">24/7</div>
-                <div className="stat-label">AI Support</div>
+              
+              <div className="footer-link-group">
+                <h4>Legal</h4>
+                <a href="#" className="footer-link">Privacy Policy</a>
+                <a href="#" className="footer-link">Terms of Service</a>
+                <a href="#" className="footer-link">Cookie Policy</a>
+                <a href="#" className="footer-link">GDPR</a>
               </div>
             </div>
           </div>
+          
+          <div className="footer-bottom">
+            <p>&copy; {new Date().getFullYear()} AdvisorAI. All rights reserved.</p>
+            <div className="footer-social">
+              <a href="#" className="social-link">
+                <Mail className="footer-social-icon" />
+              </a>
+            </div>
+          </div>
         </div>
-      </div>
+      </footer>
     </div>
   );
 };

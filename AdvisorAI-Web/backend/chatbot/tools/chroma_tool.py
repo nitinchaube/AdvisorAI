@@ -238,6 +238,10 @@ class ChromaTool:
                 "error": str(e)
             }
 
+    def get_collection(self, collection_name: str):
+        """Get a specific collection by name"""
+        return self.collections.get(collection_name)
+
     def get_collection_names(self) -> List[str]:
         """Get list of available collection names"""
         return list(self.collections.keys())

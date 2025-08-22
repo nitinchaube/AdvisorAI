@@ -1,24 +1,57 @@
+import { auth } from "../config/firebase";
 const API_BASE_URL = "http://localhost:5002/api";
 
 class ApiService {
-  constructor() {
+  constructor(auth) {
     this.baseURL = API_BASE_URL;
+    this.auth = auth;
   }
 
   // Helper method to get auth headers
-  getAuthHeaders() {
-    const token = localStorage.getItem("backendToken");
-    return token ? { Authorization: `Bearer ${token}` } : {};
+  async getAuthHeaders() {
+    if (this.auth.currentUser) {
+      try {
+        const token = await this.auth.currentUser.getIdToken();
+        return { Authorization: `Bearer ${token}` };
+      } catch (error) {
+        console.error("Error getting ID token:", error);
+        return {};
+      }
+    }
+    return {};
+  }
+
+  // Helper method to refresh backend token
+  async refreshBackendToken() {
+    try {
+      // Get current Firebase user
+      const { auth } = await import('../config/firebase');
+      const user = auth.currentUser;
+      
+      if (user) {
+        console.log('🔄 Refreshing backend token...');
+        const idToken = await user.getIdToken();
+        const response = await this.signinWithBackend(idToken);
+        localStorage.setItem('backendToken', response.access_token);
+        console.log('✅ Backend token refreshed');
+        return response.access_token;
+      }
+    } catch (error) {
+      console.error('❌ Failed to refresh backend token:', error);
+      throw error;
+    }
+    return null;
   }
 
   // Helper method to make API calls
   async makeRequest(endpoint, options = {}) {
     const url = `${this.baseURL}${endpoint}`;
+    const authHeaders = await this.getAuthHeaders();
 
     const defaultOptions = {
       headers: {
         "Content-Type": "application/json",
-        ...this.getAuthHeaders(),
+        ...authHeaders,
         ...options.headers,
       },
     };
@@ -40,6 +73,38 @@ class ApiService {
       console.log("📥 Response data:", data);
 
       if (!response.ok) {
+        // Handle 401 Unauthorized by trying to refresh token
+        if (response.status === 401) {
+          console.log("🔐 401 Unauthorized - attempting token refresh...");
+          try {
+            await this.refreshBackendToken();
+            // Retry the request with new token
+            const newHeaders = {
+              ...config.headers,
+              ...this.getAuthHeaders(),
+            };
+            const retryConfig = { ...config, headers: newHeaders };
+            const retryResponse = await fetch(url, retryConfig);
+            const retryData = await retryResponse.json();
+            
+            if (!retryResponse.ok) {
+              const errorMessage =
+                retryData.error ||
+                retryData.message ||
+                `HTTP ${retryResponse.status}: ${retryResponse.statusText}`;
+              console.error("❌ API Error Response after token refresh:", errorMessage);
+              throw new Error(errorMessage);
+            }
+            
+            return retryData;
+          } catch (refreshError) {
+            console.error("❌ Token refresh failed:", refreshError);
+            // Clear invalid token
+            localStorage.removeItem('backendToken');
+            throw new Error("Authentication failed. Please log in again.");
+          }
+        }
+        
         const errorMessage =
           data.error ||
           data.message ||
@@ -62,20 +127,15 @@ class ApiService {
   // File upload method with auth
   async uploadFile(endpoint, formData) {
     const url = `${this.baseURL}${endpoint}`;
-    const token = localStorage.getItem("backendToken");
+    const authHeaders = await this.getAuthHeaders();
 
     try {
       console.log(` Uploading file to: ${url}`);
-      console.log("🔑 Token present:", !!token);
-
-      const headers = {};
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
-      }
+      console.log("🔑 Token present:", !!authHeaders.Authorization);
 
       const response = await fetch(url, {
         method: "POST",
-        headers: headers,
+        headers: authHeaders,
         body: formData, // Don't set Content-Type for FormData
       });
 
@@ -288,7 +348,6 @@ class ApiService {
     return this.makeRequest("/reviews/courses");
   }
 
-
   //get faculty data
   async getFaculty() {
     return this.makeRequest("/faculty");
@@ -325,8 +384,6 @@ class ApiService {
   async getAllProfessorReviews() {
     return this.makeRequest("/reviews/professors");
   }
-
-
 
   // Admin methods
   async addCourse(content, metadata) {
@@ -411,7 +468,7 @@ class ApiService {
       body: JSON.stringify({
         message_id: messageId,
         feedback: feedback, // 'positive' or 'negative'
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       }),
     });
   }
@@ -425,14 +482,15 @@ class ApiService {
   }
 }
 
-const apiService = new ApiService();
+const apiService = new ApiService(auth);
 
 apiService.getCourseReviews = async function (courseId) {
+  const authHeaders = await this.getAuthHeaders();
   const res = await fetch(`${this.baseURL}/courses/${courseId}/reviews`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${localStorage.getItem("backendToken") || ""}`,
+      ...authHeaders,
     },
     credentials: "include",
   });
@@ -440,14 +498,13 @@ apiService.getCourseReviews = async function (courseId) {
   return await res.json();
 };
 
-apiService.postCourseReview = async function (courseId, data, token) {
+apiService.postCourseReview = async function (courseId, data) {
+  const authHeaders = await this.getAuthHeaders();
   const res = await fetch(`${this.baseURL}/courses/${courseId}/reviews`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${
-        token || localStorage.getItem("backendToken") || ""
-      }`,
+      ...authHeaders,
     },
     credentials: "include",
     body: JSON.stringify(data),
@@ -457,11 +514,12 @@ apiService.postCourseReview = async function (courseId, data, token) {
 };
 
 apiService.getProfessorReviews = async function (professorId) {
+  const authHeaders = await this.getAuthHeaders();
   const res = await fetch(`${this.baseURL}/faculty/${professorId}/reviews`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${localStorage.getItem("backendToken") || ""}`,
+      ...authHeaders,
     },
     credentials: "include",
   });
@@ -469,20 +527,158 @@ apiService.getProfessorReviews = async function (professorId) {
   return await res.json();
 };
 
-apiService.postProfessorReview = async function (professorId, data, token) {
+apiService.postProfessorReview = async function (professorId, data) {
+  const authHeaders = await this.getAuthHeaders();
   const res = await fetch(`${this.baseURL}/faculty/${professorId}/reviews`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${
-        token || localStorage.getItem("backendToken") || ""
-      }`,
+      ...authHeaders,
     },
     credentials: "include",
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error("Failed to post professor review");
   return await res.json();
+};
+
+// Admin API methods
+export const adminAPI = {
+  // Courses Admin API
+  async getAllCourses() {
+    const authHeaders = await apiService.getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/admin/courses`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders,
+      },
+    });
+    if (!response.ok) throw new Error("Failed to fetch courses");
+    return await response.json();
+  },
+
+  async getCourse(id) {
+    const authHeaders = await apiService.getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/admin/courses/${id}`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders,
+      },
+    });
+    if (!response.ok) throw new Error("Failed to fetch course");
+    return await response.json();
+  },
+
+  async addCourse(courseData) {
+    const authHeaders = await apiService.getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/admin/courses`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders,
+      },
+      body: JSON.stringify(courseData),
+    });
+    if (!response.ok) throw new Error("Failed to add course");
+    return await response.json();
+  },
+
+  async updateCourse(id, courseData) {
+    const authHeaders = await apiService.getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/admin/courses/${id}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders,
+      },
+      body: JSON.stringify(courseData),
+    });
+    if (!response.ok) throw new Error("Failed to update course");
+    return await response.json();
+  },
+
+  async deleteCourse(id) {
+    const authHeaders = await apiService.getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/admin/courses/${id}`, {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders,
+      },
+    });
+    if (!response.ok) throw new Error("Failed to delete course");
+    return await response.json();
+  },
+
+  // Faculty Admin API
+  async getAllFaculty() {
+    const authHeaders = await apiService.getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/admin/faculty`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders,
+      },
+    });
+    if (!response.ok) throw new Error("Failed to fetch faculty");
+    return await response.json();
+  },
+
+  async getFaculty(id) {
+    const authHeaders = await apiService.getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/admin/faculty/${id}`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders,
+      },
+    });
+    if (!response.ok) throw new Error("Failed to fetch faculty member");
+    return await response.json();
+  },
+
+  async addFaculty(facultyData) {
+    const authHeaders = await apiService.getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/admin/faculty`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders,
+      },
+      body: JSON.stringify(facultyData),
+    });
+    if (!response.ok) throw new Error("Failed to add faculty member");
+    return await response.json();
+  },
+
+  async updateFaculty(id, facultyData) {
+    const authHeaders = await apiService.getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/admin/faculty/${id}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders,
+      },
+      body: JSON.stringify(facultyData),
+    });
+    if (!response.ok) throw new Error("Failed to update faculty member");
+    return await response.json();
+  },
+
+  async deleteFaculty(id) {
+    const authHeaders = await apiService.getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/admin/faculty/${id}`, {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders,
+      },
+    });
+    if (!response.ok) throw new Error("Failed to delete faculty member");
+    return await response.json();
+  },
 };
 
 export { apiService };
