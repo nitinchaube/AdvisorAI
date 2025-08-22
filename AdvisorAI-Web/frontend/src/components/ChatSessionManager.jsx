@@ -16,6 +16,9 @@ const ChatSessionManager = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [editingSession, setEditingSession] = useState(null);
   const [editTitle, setEditTitle] = useState('');
+  const [isCreatingSession, setIsCreatingSession] = useState(false);
+  const [isUpdatingSession, setIsUpdatingSession] = useState(false);
+  const [isDeletingSession, setIsDeletingSession] = useState(false);
 
   // Load chat sessions
   const loadSessions = async () => {
@@ -42,7 +45,10 @@ const ChatSessionManager = ({
 
   // Create new chat session
   const handleNewChat = async () => {
+    if (isCreatingSession) return; // Prevent duplicate creation
+    
     try {
+      setIsCreatingSession(true);
       const response = await apiService.createChatSession('New Chat');
       if (response.success) {
         const newSession = {
@@ -53,72 +59,114 @@ const ChatSessionManager = ({
           message_count: 0,
           messages: []
         };
+        
+        // Add to local state immediately for better UX
         setSessions(prev => [newSession, ...prev]);
+        
+        // Notify parent component
         onNewChat(response.session_id);
+        
+        console.log("📱 Created new chat session:", response.session_id);
         
         // Refresh sessions to ensure consistency
         setTimeout(() => {
           refreshSessions();
         }, 100);
+      } else {
+        throw new Error(response.error || "Failed to create session");
       }
     } catch (error) {
       console.error('Error creating new chat session:', error);
+      // Remove from local state if creation failed
+      setSessions(prev => prev.filter(s => s.id !== 'temp'));
+    } finally {
+      setIsCreatingSession(false);
     }
   };
 
   // Select a chat session
   const handleSessionSelect = (sessionId) => {
+    if (sessionId === currentSessionId) return; // No need to select same session
     onSessionSelect(sessionId);
   };
 
   // Update session title
   const handleUpdateSession = async (sessionId, newTitle) => {
+    if (isUpdatingSession || !newTitle.trim()) return;
+    
     try {
+      setIsUpdatingSession(true);
       const response = await apiService.updateChatSession(sessionId, newTitle);
       if (response.success) {
+        // Update local state
         setSessions(prev => prev.map(session => 
           session.id === sessionId 
             ? { ...session, title: newTitle, last_updated: new Date().toISOString() }
             : session
         ));
+        
         setEditingSession(null);
         setEditTitle('');
+        
+        // Notify parent component
         if (onSessionUpdate) {
           onSessionUpdate(sessionId, newTitle);
         }
+        
+        console.log("📱 Updated session title:", newTitle);
         
         // Refresh sessions to ensure consistency
         setTimeout(() => {
           refreshSessions();
         }, 100);
+      } else {
+        throw new Error(response.error || "Failed to update session");
       }
     } catch (error) {
       console.error('Error updating session:', error);
+      // Revert edit title to original
+      const originalSession = sessions.find(s => s.id === sessionId);
+      if (originalSession) {
+        setEditTitle(originalSession.title);
+      }
+    } finally {
+      setIsUpdatingSession(false);
     }
   };
 
   // Delete session
   const handleDeleteSession = async (sessionId) => {
+    if (isDeletingSession) return;
+    
     if (!window.confirm('Are you sure you want to delete this chat session? This action cannot be undone.')) {
       return;
     }
 
     try {
+      setIsDeletingSession(true);
       const response = await apiService.deleteChatSession(sessionId);
       if (response.success) {
+        // Remove from local state
         setSessions(prev => prev.filter(session => session.id !== sessionId));
+        
         // If we deleted the current session, create a new one
         if (sessionId === currentSessionId) {
           handleNewChat();
         }
         
+        console.log("📱 Deleted chat session:", sessionId);
+        
         // Refresh sessions to ensure consistency
         setTimeout(() => {
           refreshSessions();
         }, 100);
+      } else {
+        throw new Error(response.error || "Failed to delete session");
       }
     } catch (error) {
       console.error('Error deleting session:', error);
+    } finally {
+      setIsDeletingSession(false);
     }
   };
 
@@ -212,10 +260,17 @@ const ChatSessionManager = ({
         {/* New Chat Button */}
         <button
           onClick={handleNewChat}
-          className="w-full mb-4 p-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl flex items-center justify-center space-x-2"
+          disabled={isCreatingSession}
+          className="w-full mb-4 p-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:from-blue-400 disabled:to-purple-400 text-white rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl flex items-center justify-center space-x-2 disabled:cursor-not-allowed"
         >
-          <Plus className="w-4 h-4" />
-          <span className="font-medium">New Chat</span>
+          {isCreatingSession ? (
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+          ) : (
+            <Plus className="w-4 h-4" />
+          )}
+          <span className="font-medium">
+            {isCreatingSession ? 'Creating...' : 'New Chat'}
+          </span>
         </button>
 
         {/* Search */}
@@ -273,6 +328,7 @@ const ChatSessionManager = ({
                         onBlur={() => handleUpdateSession(session.id, editTitle)}
                         className="w-full px-2 py-1 text-sm border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                         autoFocus
+                        disabled={isUpdatingSession}
                       />
                     ) : (
                       <h3 className={`font-semibold text-sm truncate ${
@@ -294,6 +350,7 @@ const ChatSessionManager = ({
                           }}
                           className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
                           title="Edit title"
+                          disabled={isUpdatingSession}
                         >
                           <Edit3 className="w-3 h-3" />
                         </button>
@@ -304,6 +361,7 @@ const ChatSessionManager = ({
                           }}
                           className="p-1 text-gray-400 hover:text-red-600 transition-colors"
                           title="Delete session"
+                          disabled={isDeletingSession}
                         >
                           <Trash2 className="w-3 h-3" />
                         </button>

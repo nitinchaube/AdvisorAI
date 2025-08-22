@@ -72,6 +72,11 @@ class ChatbotIntegrationService:
                     metadata=result.get("metadata", {})
                 ))
                 
+                # Debug logging
+                print(f"📝 ChatbotIntegration: Result keys: {list(result.keys())}")
+                print(f"📝 ChatbotIntegration: Metadata keys: {list(result.get('metadata', {}).keys())}")
+                print(f"📝 ChatbotIntegration: chat_name in metadata: '{result.get('metadata', {}).get('chat_name', 'NOT_FOUND')}'")
+                
                 # Format response for AdvisorAI compatibility
                 response = {
                     "response": result["answer"],
@@ -87,6 +92,9 @@ class ChatbotIntegrationService:
                     "error": False,
                     "chat_name": result.get("metadata", {}).get("chat_name", "New Chat")
                 }
+                
+                print(f"📝 ChatbotIntegration: Final response chat_name: '{response['chat_name']}'")
+                print(f"📝 ChatbotIntegration: Full response: {response}")
                 
                 # Add metadata from LangGraph result
                 if "metadata" in result:

@@ -8,7 +8,8 @@ import {
   X, 
   Eye, 
   EyeOff,
-  Brain
+  Brain,
+  CheckCircle
 } from "lucide-react";
 import StaticHeader from "./StaticHeader";
 import BenefitsSection from "./common/BenefitsSection";
@@ -211,16 +212,16 @@ const Signup = () => {
               </div>
 
               {error && (
-                <div className="message-container error">
-                  <X className="message-icon-svg" />
-                  <span className="message-text">{error}</span>
+                <div className="error-message">
+                  <X className="error-icon" />
+                  <span>{error}</span>
                 </div>
               )}
 
               {success && (
-                <div className="message-container success">
-                  <CheckCircle className="message-icon-svg" />
-                  <span className="message-text">{success}</span>
+                <div className="success-message">
+                  <CheckCircle className="success-icon" />
+                  <span>{success}</span>
                 </div>
               )}
 

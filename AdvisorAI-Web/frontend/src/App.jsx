@@ -8,6 +8,13 @@ import Signup from "./components/Signup.jsx";
 import Home from "./components/Home.jsx";
 import Login from "./components/Login.jsx";
 import Dashboard from "./components/Dashboard.jsx";
+import ChatPage from "./components/ChatPage.jsx";
+import ChatHistoryPage from "./components/ChatHistoryPage.jsx";
+import RatingsPageComponent from "./components/RatingsPage.jsx";
+import CourseExplorerPage from "./components/CourseExplorerPage.jsx";
+import AnalyticsPage from "./components/AnalyticsPage.jsx";
+import SchedulePage from "./components/SchedulePage.jsx";
+import DocumentsPage from "./components/DocumentsPage.jsx";
 import ProfileCompletion from "./components/ProfileCompletion.jsx";
 import ProfileData from "./components/ProfileData.jsx";
 import CourseDetails from "./components/CourseDetails";
@@ -24,7 +31,7 @@ function App() {
           <Route
             path="/signup"
             element={
-              <PublicRoute redirectTo="/dashboard">
+              <PublicRoute redirectTo="/chat">
                 <Signup />
               </PublicRoute>
             }
@@ -32,7 +39,7 @@ function App() {
           <Route
             path="/login"
             element={
-              <PublicRoute redirectTo="/dashboard">
+              <PublicRoute redirectTo="/chat">
                 <Login />
               </PublicRoute>
             }
@@ -55,14 +62,75 @@ function App() {
               </ProtectedRoute>
             }
           />
+          
+          {/* Main Dashboard Routes */}
+          <Route
+            path="/chat"
+            element={
+              <ProtectedRoute requireProfileCompletion={true}>
+                <ChatPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/chat-history"
+            element={
+              <ProtectedRoute requireProfileCompletion={true}>
+                <ChatHistoryPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ratings"
+            element={
+              <ProtectedRoute requireProfileCompletion={true}>
+                <RatingsPageComponent />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/course-explorer"
+            element={
+              <ProtectedRoute requireProfileCompletion={true}>
+                <CourseExplorerPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/analytics"
+            element={
+              <ProtectedRoute requireProfileCompletion={true}>
+                <AnalyticsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/schedule"
+            element={
+              <ProtectedRoute requireProfileCompletion={true}>
+                <SchedulePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/documents"
+            element={
+              <ProtectedRoute requireProfileCompletion={true}>
+                <DocumentsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Legacy Dashboard Route - Redirect to chat */}
           <Route
             path="/dashboard"
             element={
               <ProtectedRoute requireProfileCompletion={true}>
-                <Dashboard />
+                <ChatPage />
               </ProtectedRoute>
             }
           />
+
           <Route
             path="/admin"
             element={
@@ -73,13 +141,13 @@ function App() {
           />
 
           {/* Public Portfolio Route */}
-          <Route path="/portfolio/:userId" element={<PortfolioView />} />
+          <Route path="/portfolio/:portfolioName" element={<PortfolioView />} />
 
-          {/* Catch all route - redirect to home */}
+          {/* Catch all route - redirect to chat */}
           <Route
             path="*"
             element={
-              <PublicRoute redirectTo="/dashboard">
+              <PublicRoute redirectTo="/chat">
                 <Home />
               </PublicRoute>
             }
