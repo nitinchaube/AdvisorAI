@@ -510,7 +510,7 @@ def update_user_profile():
         print(f"  Update profile error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-# Public portfolio endpoint
+# Public portfolio endpoint by user ID
 @app.route('/api/public-profile/<user_id>', methods=['GET'])
 def get_public_profile(user_id):
     """Get public/portfolio profile data for a user (view-only, no auth required)"""
@@ -544,6 +544,40 @@ def get_public_profile(user_id):
         print(f"  Get public profile error: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
+# Public portfolio endpoint by portfolio name
+@app.route('/api/portfolio/<portfolio_name>', methods=['GET'])
+def get_portfolio_by_name(portfolio_name):
+    """Get public/portfolio profile data by portfolio name (view-only, no auth required)"""
+    try:
+        if mongo_db is not None:
+            user_doc = mongo_db.users.find_one({'portfolioName': portfolio_name})
+            if user_doc:
+                profile = mongo_doc_to_json(user_doc)
+                # Only include public/important fields
+                public_fields = [
+                    'fullName', 'email', 'location', 'summary',
+                    'github', 'linkedin',
+                    'experience', 'education', 'skills', 'certifications', 'projects',
+                    'portfolioTheme'
+                ]
+                public_profile = {k: profile.get(k) for k in public_fields if k in profile}
+                # For each project, only include github if present
+                if 'projects' in public_profile and isinstance(public_profile['projects'], list):
+                    for proj in public_profile['projects']:
+                        if 'github' not in proj:
+                            proj['github'] = None
+                return jsonify({
+                    "success": True,
+                    "profile": public_profile
+                }), 200
+            else:
+                return jsonify({"success": False, "error": "Portfolio not found"}), 404
+        else:
+            return jsonify({"success": False, "error": "Database not available"}), 500
+    except Exception as e:
+        print(f"  Get portfolio by name error: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
 # Chat endpoints
 @app.route('/api/chat/query', methods=['POST'])
 @verify_token
@@ -573,6 +607,22 @@ def chat_query():
         
         # Extract chat name from the result if available
         chat_name = result.get('chat_name', 'New Chat')
+        print(f"📝 Backend: Extracted chat_name: '{chat_name}' from result")
+        print(f"📝 Backend: Full result keys: {list(result.keys())}")
+        if 'metadata' in result:
+            print(f"📝 Backend: Metadata keys: {list(result['metadata'].keys())}")
+            if 'chat_name' in result['metadata']:
+                print(f"📝 Backend: chat_name in metadata: '{result['metadata']['chat_name']}'")
+        
+        # Also check if chat_name is in metadata
+        if 'metadata' in result and 'chat_name' in result['metadata']:
+            metadata_chat_name = result['metadata']['chat_name']
+            print(f"📝 Backend: Found chat_name in metadata: '{metadata_chat_name}'")
+            if metadata_chat_name != 'New Chat':
+                chat_name = metadata_chat_name
+                print(f"📝 Backend: Using metadata chat_name: '{chat_name}'")
+        
+        print(f"📝 Backend: Final chat_name to be used: '{chat_name}'")
         
         # Save messages to session document if available and session_id provided
         if mongo_db is not None and result.get('response') and session_id:
@@ -621,7 +671,11 @@ def chat_query():
                     # Update chat name if it's still "New Chat" and we have a better name
                     if session_data.get('title') == 'New Chat' and chat_name != 'New Chat':
                         update_data['title'] = chat_name
-                        print(f"📝 Updating chat title to: {chat_name}")
+                        print(f"📝 Backend: Updating chat title from 'New Chat' to: '{chat_name}'")
+                        print(f"📝 Backend: Session data before update: {session_data.get('title')}")
+                        print(f"📝 Backend: New chat_name: '{chat_name}'")
+                    else:
+                        print(f"📝 Backend: Not updating title. Current: '{session_data.get('title')}', New: '{chat_name}'")
                     
                     mongo_db.chat_sessions.replace_one({'_id': ObjectId(session_id)}, update_data)
                     
@@ -652,13 +706,20 @@ def chat_query():
             except Exception as e:
                 print(f"  Error saving to legacy chat_history: {e}")
         
-        return jsonify({
+        # Prepare response
+        response_data = {
             "success": True,
             "response": result['response'],
             "sources": result.get('sources', {}),
             "processing_time": result.get('processing_time', 0),
-            "error": result.get('error', False)
-        }), 200
+            "error": result.get('error', False),
+            "chat_name": chat_name
+        }
+        
+        print(f"📝 Backend: Sending response with chat_name: '{chat_name}'")
+        print(f"📝 Backend: Full response data: {response_data}")
+        
+        return jsonify(response_data), 200
         
     except Exception as e:
         print(f"  Chat query error: {str(e)}")

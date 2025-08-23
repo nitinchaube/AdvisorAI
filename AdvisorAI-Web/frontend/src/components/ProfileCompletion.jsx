@@ -9,7 +9,6 @@ import {
   X,
   CheckCircle,
   Sparkles,
-  Brain,
   Zap,
   ArrowLeft,
   ArrowRight,
@@ -45,6 +44,7 @@ import {
 } from "lucide-react";
 import "./ProfileCompletion.css";
 import ThemeSelector from "./ThemeSelector";
+import StaticHeader from "./StaticHeader";
 
 const ProfileCompletion = () => {
   const [currentView, setCurrentView] = useState(0); // 0: Upload, 1: Profile Form
@@ -82,10 +82,12 @@ const ProfileCompletion = () => {
         console.log(
           "ProfileCompletion: Profile is complete, loading existing data..."
         );
-        setFormData({
+        const initialFormData = {
           ...userProfile,
+          portfolioName: userProfile.portfolioName || userProfile.fullName?.toLowerCase().replace(/\s+/g, '-') || currentUser.uid,
           portfolioTheme: userProfile.portfolioTheme || "slate",
-        });
+        };
+        setFormData(initialFormData);
         setCurrentView(1); // Go directly to form view for editing
         setSuccess(
           "Profile loaded. You can now edit your information or upload a new resume to update it."
@@ -108,10 +110,12 @@ const ProfileCompletion = () => {
   // Update form data when parsed data changes
   useEffect(() => {
     if (parsedData && parsedData.data) {
-      setFormData({
+      const parsedFormData = {
         ...parsedData.data,
+        portfolioName: parsedData.data.portfolioName || parsedData.data.fullName?.toLowerCase().replace(/\s+/g, '-') || currentUser.uid,
         portfolioTheme: parsedData.data.portfolioTheme || "slate",
-      });
+      };
+      setFormData(parsedFormData);
       // After parsing a resume, always go to the form view
       setCurrentView(1);
     }
@@ -233,10 +237,25 @@ const ProfileCompletion = () => {
   };
 
   const handleFormChange = (fieldName, value) => {
-    setFormData((prev) => ({
-      ...prev,
-      [fieldName]: value,
-    }));
+    // Special handling for portfolio name
+    if (fieldName === "portfolioName") {
+      // Sanitize the portfolio name to be URL-friendly
+      const sanitizedValue = value
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, '-') // Only allow letters, numbers, and hyphens
+        .replace(/-+/g, '-') // Replace multiple hyphens with single hyphen
+        .replace(/^-|-$/g, ''); // Remove leading/trailing hyphens
+      
+      setFormData((prev) => ({
+        ...prev,
+        [fieldName]: sanitizedValue,
+      }));
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        [fieldName]: value,
+      }));
+    }
   };
 
   // This function handles both saving a new profile and updating an existing one.
@@ -273,7 +292,7 @@ const ProfileCompletion = () => {
 
   const features = [
     {
-      icon: <Brain className="feature-icon" />,
+      icon: <Sparkles className="feature-icon" />,
       title: "AI-Powered Extraction",
       description:
         "Advanced LLM technology extracts all your information with 95% accuracy",
@@ -315,6 +334,7 @@ const ProfileCompletion = () => {
   // Helper function to get field icon
   const getFieldIcon = (fieldName) => {
     const iconMap = {
+      portfolioName: <User />,
       fullName: <User />,
       email: <Mail />,
       phone: <Phone />,
@@ -648,28 +668,6 @@ const ProfileCompletion = () => {
                   Back to Upload
                 </button>
               )}
-
-              <button
-                className="save-btn primary-btn"
-                onClick={handleSaveOrUpdateProfile}
-                disabled={parsing}
-              >
-                {parsing ? (
-                  <>
-                    <Loader2 className="loading-spinner" />
-                    {userProfile?.profileCompleted
-                      ? "Updating..."
-                      : "Saving..."}
-                  </>
-                ) : (
-                  <>
-                    <Save className="btn-icon" />
-                    {userProfile?.profileCompleted
-                      ? "Update Profile"
-                      : "Save & Complete Profile"}
-                  </>
-                )}
-              </button>
             </div>
           </div>
 
@@ -682,6 +680,56 @@ const ProfileCompletion = () => {
                   handleFormChange("portfolioTheme", theme)
                 }
               />
+            </div>
+
+            {/* --- Portfolio Name Field --- */}
+            <div className="form-field profile-card-field">
+              <div className="field-header">
+                <div className="field-icon">
+                  <User />
+                </div>
+                <h3 className="field-title">Portfolio Name</h3>
+                <button
+                  className="edit-btn"
+                  onClick={() =>
+                    setEditingField(editingField === "portfolioName" ? null : "portfolioName")
+                  }
+                  title="Edit portfolio name"
+                >
+                  {editingField === "portfolioName" ? <EyeOff /> : <Edit />}
+                </button>
+              </div>
+              <div className="field-content">
+                {editingField === "portfolioName" ? (
+                  <div className="edit-mode">
+                    <input
+                      type="text"
+                      value={formData.portfolioName || ""}
+                      onChange={(e) =>
+                        handleFormChange("portfolioName", e.target.value)
+                      }
+                      placeholder="Enter your portfolio name (e.g., john-doe)"
+                      className="field-input"
+                    />
+                    <div className="field-help">
+                      This will be your portfolio URL: <span className="portfolio-url">localhost:3000/portfolio/{formData.portfolioName || 'your-name'}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="view-mode">
+                    {formData.portfolioName ? (
+                      <div>
+                        <span className="field-value">{formData.portfolioName}</span>
+                        <div className="portfolio-link">
+                          <span className="portfolio-url">localhost:3000/portfolio/{formData.portfolioName}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="field-value">Not specified</span>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* --- GitHub and LinkedIn fields --- */}
@@ -788,10 +836,12 @@ const ProfileCompletion = () => {
               .filter(
                 ([fieldName]) =>
                   ![
-                    "resume-data",
-                    "resume-text",
+                    "resumeData",
+                    "resumeText",
                     "github",
                     "linkedin",
+                    "profileCompleted",
+                    "portfolioName",
                   ].includes(fieldName)
               )
               .map(([fieldName, fieldValue]) => (
@@ -1306,6 +1356,8 @@ const ProfileCompletion = () => {
                   </div>
                 </div>
               ))}
+
+
           </div>
         </div>
       </div>
@@ -1331,27 +1383,8 @@ const ProfileCompletion = () => {
         </div>
       )}
 
-      {/* Header Section - Fixed Navigation */}
-      <div className="header-section">
-        <div className="nav-bar">
-          <div className="nav-logo">
-            <div className="logo-container">
-              <div className="logo-icon-wrapper">
-                <Brain className="logo-icon" />
-              </div>
-              <div className="logo-text">
-                Advisor<span className="logo-highlight">AI</span>
-              </div>
-            </div>
-          </div>
-          <div className="nav-actions">
-            <button className="nav-button" onClick={() => navigate('/dashboard')}>
-              <Home className="btn-icon" />
-              Dashboard
-            </button>
-          </div>
-        </div>
-      </div>
+      {/* Header Section - Using StaticHeader */}
+      <StaticHeader showSignIn={false} showSignUp={false} />
 
       {/* Main Content Area */}
       <div className="main-content">
@@ -1371,6 +1404,34 @@ const ProfileCompletion = () => {
           renderUploadView()
         ) : (
           renderProfileForm()
+        )}
+
+        {/* Floating Save Button */}
+        {currentView === 1 && (
+          <div className="floating-save-button">
+            <button
+              className="save-btn primary-btn floating"
+              onClick={handleSaveOrUpdateProfile}
+              disabled={parsing}
+              title={userProfile?.profileCompleted ? "Update Profile" : "Save & Complete Profile"}
+            >
+              {parsing ? (
+                <>
+                  <Loader2 className="loading-spinner" />
+                  {userProfile?.profileCompleted
+                    ? "Updating..."
+                    : "Saving..."}
+                </>
+              ) : (
+                <>
+                  <Save className="btn-icon" />
+                  {userProfile?.profileCompleted
+                    ? "Update Profile"
+                    : "Save & Complete Profile"}
+                </>
+              )}
+            </button>
+          </div>
         )}
       </div>
     </div>

@@ -222,7 +222,8 @@ class ApiService {
 
   // Chat methods
   async sendChatMessage(query, chatHistory = [], sessionId = null) {
-    return this.makeRequest("/chat/query", {
+    console.log("📱 API: sendChatMessage called with:", { query, chatHistory, sessionId });
+    const response = await this.makeRequest("/chat/query", {
       method: "POST",
       body: JSON.stringify({
         query,
@@ -230,6 +231,8 @@ class ApiService {
         session_id: sessionId,
       }),
     });
+    console.log("📱 API: sendChatMessage response:", response);
+    return response;
   }
 
   async getChatHistory(limit = 50) {
@@ -253,10 +256,13 @@ class ApiService {
   }
 
   async updateChatSession(sessionId, title) {
-    return this.makeRequest(`/chat/sessions/${sessionId}`, {
+    console.log("📱 API: updateChatSession called with:", { sessionId, title });
+    const response = await this.makeRequest(`/chat/sessions/${sessionId}`, {
       method: "PUT",
       body: JSON.stringify({ title }),
     });
+    console.log("📱 API: updateChatSession response:", response);
+    return response;
   }
 
   async deleteChatSession(sessionId) {
@@ -473,9 +479,17 @@ class ApiService {
     });
   }
 
-  // Get public profile for portfolio
+  // Get public profile for portfolio by user ID
   async getPublicProfile(userId) {
     return this.makeRequest(`/public-profile/${userId}`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // Get public profile for portfolio by portfolio name
+  async getPortfolioByName(portfolioName) {
+    return this.makeRequest(`/portfolio/${portfolioName}`, {
       method: "GET",
       headers: { "Content-Type": "application/json" },
     });
