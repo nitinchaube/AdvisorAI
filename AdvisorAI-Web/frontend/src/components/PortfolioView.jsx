@@ -89,7 +89,7 @@ const cardHover = {
 };
 
 const PortfolioView = () => {
-  const { userId } = useParams();
+  const { portfolioName } = useParams();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -99,7 +99,7 @@ const PortfolioView = () => {
       setLoading(true);
       setError("");
       try {
-        const res = await apiService.getPublicProfile(userId);
+        const res = await apiService.getPortfolioByName(portfolioName);
         if (res.success && res.profile) {
           setProfile(res.profile);
         } else {
@@ -112,7 +112,7 @@ const PortfolioView = () => {
       }
     };
     fetchProfile();
-  }, [userId]);
+  }, [portfolioName]);
 
   // Theme system - with fallback loading state
   const userTheme = profile?.portfolioTheme || "slate";

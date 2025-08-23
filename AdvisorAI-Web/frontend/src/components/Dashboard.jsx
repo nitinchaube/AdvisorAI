@@ -227,34 +227,34 @@ const Dashboard = () => {
         );
       case "analytics":
         return (
-          <div className="h-full w-full bg-gradient-to-br from-violet-50 via-purple-50 to-indigo-50 overflow-y-auto">
+          <div className="h-full w-full bg-white overflow-y-auto">
             <div className="max-w-4xl mx-auto p-8">
               <div className="text-center mb-12">
-                <h1 className="text-4xl font-bold bg-gradient-to-r from-violet-600 to-purple-600 bg-clip-text text-transparent mb-4">
+                <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-4">
                   Analytics Dashboard
                 </h1>
-                <p className="text-lg text-gray-700">
+                <p className="text-lg text-slate-700">
                   Track your academic progress and insights
                 </p>
               </div>
 
               {/* Profile Management Links */}
-              <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl border border-white/20 p-6 mb-8">
+              <div className="bg-white rounded-3xl shadow-lg border border-slate-200/60 p-6 mb-8">
                 <div className="grid md:grid-cols-2 gap-6">
                   {/* Profile Data Link */}
                   <div className="flex items-center justify-between">
                     <div>
-                      <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                      <h3 className="text-xl font-semibold text-slate-900 mb-2">
                         Profile Data
                       </h3>
-                      <p className="text-gray-600">
+                      <p className="text-slate-600">
                         View and edit all your profile information from the
                         database
                       </p>
                     </div>
                     <Link
                       to="/profile-data"
-                      className="bg-gradient-to-r from-violet-500 to-purple-600 text-white px-6 py-3 rounded-lg font-medium hover:from-violet-600 hover:to-purple-700 transition-all duration-200 transform hover:scale-105 shadow-lg"
+                      className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-6 py-3 rounded-xl font-medium hover:from-blue-600 hover:to-purple-700 transition-all duration-200 transform hover:scale-105 shadow-md hover:shadow-lg border border-blue-300/30"
                     >
                       View Profile Data
                     </Link>
@@ -263,16 +263,16 @@ const Dashboard = () => {
                   {/* Edit Profile Link */}
                   <div className="flex items-center justify-between">
                     <div>
-                      <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                      <h3 className="text-xl font-semibold text-slate-900 mb-2">
                         Edit Profile
                       </h3>
-                      <p className="text-gray-600">
+                      <p className="text-slate-600">
                         Update your resume and profile information
                       </p>
                     </div>
                     <Link
                       to="/profile-completion"
-                      className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-6 py-3 rounded-lg font-medium hover:from-emerald-600 hover:to-teal-700 transition-all duration-200 transform hover:scale-105 shadow-lg"
+                      className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-6 py-3 rounded-xl font-medium hover:from-blue-600 hover:to-purple-700 transition-all duration-200 transform hover:scale-105 shadow-md hover:shadow-lg border border-blue-300/30"
                     >
                       Edit Profile
                     </Link>
@@ -280,9 +280,9 @@ const Dashboard = () => {
                 </div>
               </div>
 
-              <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl border border-white/20 p-8">
+              <div className="bg-white rounded-3xl shadow-lg border border-slate-200/60 p-8">
                 <div className="text-center py-12">
-                  <div className="w-24 h-24 bg-gradient-to-r from-violet-500 via-purple-500 to-indigo-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg">
+                  <div className="w-24 h-24 bg-gradient-to-r from-blue-500 via-purple-500 to-indigo-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-md border border-blue-300/30">
                     <svg
                       className="w-12 h-12 text-white"
                       fill="none"
@@ -297,10 +297,10 @@ const Dashboard = () => {
                       />
                     </svg>
                   </div>
-                  <h3 className="text-2xl font-semibold text-gray-900 mb-2">
+                  <h3 className="text-2xl font-semibold text-slate-900 mb-2">
                     Coming Soon
                   </h3>
-                  <p className="text-gray-600">
+                  <p className="text-slate-600">
                     We're building amazing analytics features for you!
                   </p>
                 </div>
@@ -310,19 +310,19 @@ const Dashboard = () => {
         );
       case "schedule":
         return (
-          <div className="h-full w-full bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 overflow-y-auto">
+          <div className="h-full w-full bg-white overflow-y-auto">
             <div className="max-w-4xl mx-auto p-8">
               <div className="text-center mb-12">
-                <h1 className="text-4xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent mb-4">
+                <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-4">
                   Schedule Planner
                 </h1>
-                <p className="text-lg text-gray-700">
+                <p className="text-lg text-slate-700">
                   Plan your academic calendar efficiently
                 </p>
               </div>
-              <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl border border-white/20 p-8">
+              <div className="bg-white rounded-3xl shadow-lg border border-slate-200/60 p-8">
                 <div className="text-center py-12">
-                  <div className="w-24 h-24 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg">
+                  <div className="w-24 h-24 bg-gradient-to-r from-blue-500 via-purple-500 to-indigo-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-md border border-blue-300/30">
                     <svg
                       className="w-12 h-12 text-white"
                       fill="none"
@@ -337,10 +337,10 @@ const Dashboard = () => {
                       />
                     </svg>
                   </div>
-                  <h3 className="text-2xl font-semibold text-gray-900 mb-2">
+                  <h3 className="text-2xl font-semibold text-slate-900 mb-2">
                     Coming Soon
                   </h3>
-                  <p className="text-gray-600">
+                  <p className="text-slate-600">
                     Smart scheduling features are on the way!
                   </p>
                 </div>
@@ -350,19 +350,19 @@ const Dashboard = () => {
         );
       case "documents":
         return (
-          <div className="h-full w-full bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50 overflow-y-auto">
+          <div className="h-full w-full bg-white overflow-y-auto">
             <div className="max-w-4xl mx-auto p-8">
               <div className="text-center mb-12">
-                <h1 className="text-4xl font-bold bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent mb-4">
+                <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-4">
                   Document Manager
                 </h1>
-                <p className="text-lg text-gray-700">
+                <p className="text-lg text-slate-700">
                   Organize and manage your academic files
                 </p>
               </div>
-              <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl border border-white/20 p-8">
+              <div className="bg-white rounded-3xl shadow-lg border border-slate-200/60 p-8">
                 <div className="text-center py-12">
-                  <div className="w-24 h-24 bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg">
+                  <div className="w-24 h-24 bg-gradient-to-r from-blue-500 via-purple-500 to-indigo-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-md border border-blue-300/30">
                     <svg
                       className="w-12 h-12 text-white"
                       fill="none"
@@ -377,10 +377,10 @@ const Dashboard = () => {
                       />
                     </svg>
                   </div>
-                  <h3 className="text-2xl font-semibold text-gray-900 mb-2">
+                  <h3 className="text-2xl font-semibold text-slate-900 mb-2">
                     Coming Soon
                   </h3>
-                  <p className="text-gray-600">
+                  <p className="text-slate-600">
                     Document management features coming soon!
                   </p>
                 </div>
@@ -394,23 +394,23 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-gradient-to-br from-slate-900 via-purple-900 to-indigo-900 relative overflow-hidden">
+    <div className="h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 relative overflow-hidden">
       {/* Enhanced Background decoration */}
-      <div className="absolute inset-0 bg-gradient-to-br from-purple-900/40 via-indigo-900/30 to-blue-900/40"></div>
+      <div className="absolute inset-0 bg-gradient-to-br from-blue-100/30 via-purple-100/20 to-indigo-100/30"></div>
 
       {/* Animated gradient orbs */}
-      <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-br from-purple-500/20 via-pink-500/20 to-rose-500/20 rounded-full blur-3xl animate-pulse"></div>
+      <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-br from-blue-200/20 via-purple-200/20 to-indigo-200/20 rounded-full blur-3xl animate-pulse"></div>
       <div
-        className="absolute bottom-0 left-0 w-96 h-96 bg-gradient-to-br from-blue-500/20 via-cyan-500/20 to-teal-500/20 rounded-full blur-3xl animate-pulse"
+        className="absolute bottom-0 left-0 w-96 h-96 bg-gradient-to-br from-indigo-200/20 via-blue-200/20 to-cyan-200/20 rounded-full blur-3xl animate-pulse"
         style={{ animationDelay: "2s" }}
       ></div>
       <div
-        className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-violet-500/10 rounded-full blur-3xl animate-pulse"
+        className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-gradient-to-br from-purple-200/15 via-blue-200/15 to-indigo-200/15 rounded-full blur-3xl animate-pulse"
         style={{ animationDelay: "4s" }}
       ></div>
 
       {/* Subtle grid pattern */}
-      <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:50px_50px]"></div>
+      <div className="absolute inset-0 bg-[linear-gradient(rgba(59,130,246,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(59,130,246,0.03)_1px,transparent_1px)] bg-[size:50px_50px]"></div>
 
       {/* Fixed Header */}
       <div className="flex-shrink-0 z-50 relative">
