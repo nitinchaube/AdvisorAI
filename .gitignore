@@ -61,3 +61,10 @@ Desktop.ini
 **/Data/
 **/VectorDB/
 *firebase.js
+
+start_dev_servers_vscode.ps1
+start_dev_servers_vscode.bat
+start_dev_servers.bat
+start_integrated_terminals.bat
+start_dev_servers.ps1
+start_dev_servers.sh
