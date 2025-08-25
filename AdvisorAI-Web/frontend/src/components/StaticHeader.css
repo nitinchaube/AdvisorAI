@@ -17,9 +17,8 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1rem 2rem;
-  max-width: 1200px;
-  margin: 0 auto;
+  padding: 1rem 1.25rem;
+  width: 100%;
 }
 
 .static-nav-logo {
@@ -54,7 +53,16 @@
 .static-logo-icon {
   width: 1.5rem;
   height: 1.5rem;
-  color: #ffffff;
+  object-fit: contain;
+}
+
+/* Specific styling for logo image */
+.static-logo-image {
+  width: 1.5rem;
+  height: 1.5rem;
+  object-fit: contain;
+  filter: brightness(0) invert(1); /* Makes the logo white */
+  display: block;
 }
 
 .static-logo-text {
@@ -126,6 +134,12 @@
 }
 
 .static-button-icon {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+/* Navigation icons for authenticated users */
+.static-nav-icon {
   width: 1.125rem;
   height: 1.125rem;
 }
