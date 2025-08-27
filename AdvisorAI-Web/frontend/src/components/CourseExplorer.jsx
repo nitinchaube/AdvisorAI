@@ -18,31 +18,30 @@ const ProfessorCard = ({ professor, renderStars, onSelectCourse }) => (
       <div className="flex items-start justify-between mb-2">
         <div className="flex-1">
           <h3 className="font-bold text-gray-900 text-lg group-hover:text-blue-600 transition-colors duration-200">
-            {professor.name}
+            {professor["Full Name"] || professor.name}
           </h3>
           <div className="flex items-center space-x-2 mt-2">
             <span className="px-3 py-1 bg-gradient-to-r from-orange-100 to-red-100 text-orange-700 text-xs font-semibold rounded-full">
-              Professor
+              {professor["Title"] || "Professor"}
             </span>
             <span className="px-3 py-1 bg-gray-100 text-gray-600 text-xs font-medium rounded-full">
-              {professor.department}
+              {professor["Department"] || professor.department || "School of Business"}
             </span>
           </div>
         </div>
         <div className="flex items-center space-x-1">
           {renderStars(professor.rating)}
-          <span className="text-sm font-semibold text-gray-900">{professor.rating.toFixed(1)}</span>
+          <span className="text-sm font-semibold text-gray-900">{professor.rating?.toFixed ? professor.rating.toFixed(1) : (professor.rating || 0)}</span>
         </div>
       </div>
-      
       <div className="mt-4 space-y-3 text-sm text-gray-700">
         <div className="flex items-start">
           <Info className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0 text-gray-400" />
-          <p className="line-clamp-2">{professor.generalInfo}</p>
+          <p className="line-clamp-2">{professor["Bio"] || professor.generalInfo || "No general information available."}</p>
         </div>
         <div className="flex items-start">
           <FlaskConical className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0 text-gray-400" />
-          <p className="line-clamp-3">{professor.researchInfo}</p>
+          <p className="line-clamp-3">{professor["Research Interests"] || professor.researchInfo || "No research information available."}</p>
         </div>
       </div>
     </div>
@@ -165,18 +164,18 @@ const CourseExplorer = ({ onSelectCourse }) => {
         }
 
         const faculty = (facultyResponse?.faculty || []).map(prof => {
-            const ratingInfo = professorRatings[prof.id];
-            return {
-              id: prof.id,
-              name: prof.name || "",
-              generalInfo: prof.general_info || "No general information available.",
-              researchInfo: prof.research_info || "No research information available.",
-              department: "School of Business",
-              rating: ratingInfo ? ratingInfo.total / ratingInfo.count : 0,
-              reviews: ratingInfo ? ratingInfo.count : 0,
-              coursesTaught: [],
-              category: 'professor',
-            };
+          const ratingInfo = professorRatings[prof.id];
+          return {
+            id: prof.id,
+            name: prof["Full Name"] || "",
+            generalInfo: prof["Bio"] || "No general information available.",
+            researchInfo: prof["Research Interests"] || "No research information available.",
+            department: prof["Department"] || "School of Business",
+            rating: ratingInfo ? ratingInfo.total / ratingInfo.count : 0,
+            reviews: ratingInfo ? ratingInfo.count : 0,
+            coursesTaught: [],
+            category: 'professor',
+          };
         });
 
         setAllItems([...courses, ...faculty]);
