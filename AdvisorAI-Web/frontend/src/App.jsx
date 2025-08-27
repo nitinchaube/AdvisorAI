@@ -98,6 +98,22 @@ function App() {
             }
           />
           <Route
+            path="/professor/:professorId"
+            element={
+              <ProtectedRoute requireProfileCompletion={true}>
+                <CourseExplorerPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/course/:courseId"
+            element={
+              <ProtectedRoute requireProfileCompletion={true}>
+                <CourseExplorerPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/analytics"
             element={
               <ProtectedRoute requireProfileCompletion={true}>

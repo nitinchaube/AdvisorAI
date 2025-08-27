@@ -73,8 +73,18 @@ const Sidebar = () => {
 
   const getActiveTab = () => {
     const currentPath = location.pathname;
-    const menuItem = menuItems.find(item => item.path === currentPath);
-    return menuItem ? menuItem.id : 'chat';
+    
+    // Check for exact matches first
+    const exactMatch = menuItems.find(item => item.path === currentPath);
+    if (exactMatch) return exactMatch.id;
+    
+    // Check if we're on a professor or course detail page (part of course explorer)
+    if (currentPath.startsWith('/professor/') || currentPath.startsWith('/course/')) {
+      return 'courses';
+    }
+    
+    // Default to chat if no match found
+    return 'chat';
   };
 
   const handleNavigation = (path) => {
