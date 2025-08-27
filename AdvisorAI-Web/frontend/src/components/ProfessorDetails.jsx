@@ -30,26 +30,35 @@ const ProfessorDetails = ({ professorId, onBack }) => {
       ).toFixed(1)
     : "N/A";
 
+
   useEffect(() => {
-    const fetchProfessorDetails = async () => {
+    const fetchProfessorDetailsAndReviews = async () => {
       if (!professorId) return;
       try {
         setLoading(true);
         setError(null);
-        const response = await apiService.getSingleFaculty(professorId);
-        if (response.success) {
-          setProfessor(response.professor);
+        const [profResponse, reviewRes] = await Promise.all([
+          apiService.getSingleFaculty(professorId),
+          apiService.getProfessorReviews(professorId)
+        ]);
+        if (profResponse.success) {
+          setProfessor(profResponse.professor);
         } else {
-          setError(response.error || "Professor not found");
+          setError(profResponse.error || "Professor not found");
         }
+        setReviews(
+          Array.isArray(reviewRes.reviews)
+            ? reviewRes.reviews.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+            : []
+        );
       } catch (err) {
         setError(err.message);
-        console.error("Error fetching professor details:", err);
+        console.error("Error fetching professor details or reviews:", err);
       } finally {
         setLoading(false);
       }
     };
-    fetchProfessorDetails();
+    fetchProfessorDetailsAndReviews();
   }, [professorId]);
 
 //   
@@ -142,8 +151,8 @@ const ProfessorDetails = ({ professorId, onBack }) => {
                 <User className="w-8 h-8 text-white" />
               </div>
               <div>
-                <h1 className="text-3xl font-bold text-gray-900">{professor.name}</h1>
-                <p className="text-gray-600">{professor.department || "School of Business"}</p>
+                <h1 className="text-3xl font-bold text-gray-900">{professor["Full Name"] || professor.name}</h1>
+                <p className="text-gray-600">{professor["Department"] || professor.department || "School of Business"}</p>
               </div>
             </div>
 
@@ -153,14 +162,14 @@ const ProfessorDetails = ({ professorId, onBack }) => {
                   <Info className="w-5 h-5 text-orange-600" />
                   <span>General Information</span>
                 </h2>
-                <p className="text-gray-700 leading-relaxed">{professor.general_info}</p>
+                <p className="text-gray-700 leading-relaxed">{professor["Bio"] || professor.general_info}</p>
               </div>
               <div>
                 <h2 className="text-xl font-semibold mb-3 flex items-center space-x-2">
                   <FlaskConical className="w-5 h-5 text-red-600" />
                   <span>Research Information</span>
                 </h2>
-                <p className="text-gray-700 leading-relaxed">{professor.research_info}</p>
+                <p className="text-gray-700 leading-relaxed">{professor["Research Interests"] || professor.research_info}</p>
               </div>
             </div>
           </div>
