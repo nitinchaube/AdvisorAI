@@ -22,6 +22,7 @@ import AdminDashboard from "./components/AdminDashboard";
 import PortfolioView from "./components/PortfolioView";
 import JobSearchPage from "./components/JobSearchPage.jsx";
 import InternshipSearchPage from "./components/InternshipSearchPage.jsx";
+import PlannerPage from "./components/PlannerPage.jsx";
 
 function App() {
   return (
@@ -99,6 +100,22 @@ function App() {
             }
           />
           <Route
+            path="/professor/:professorId"
+            element={
+              <ProtectedRoute requireProfileCompletion={true}>
+                <CourseExplorerPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/course/:courseId"
+            element={
+              <ProtectedRoute requireProfileCompletion={true}>
+                <CourseExplorerPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/analytics"
             element={
               <ProtectedRoute requireProfileCompletion={true}>
@@ -107,10 +124,10 @@ function App() {
             }
           />
           <Route
-            path="/schedule"
+            path="/planner"
             element={
               <ProtectedRoute requireProfileCompletion={true}>
-                <SchedulePage />
+                <PlannerPage />
               </ProtectedRoute>
             }
           />

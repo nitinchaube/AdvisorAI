@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import PageLayout from "./PageLayout";
 import CourseExplorer from "./CourseExplorer";
 import CourseDetails from "./CourseDetails";
@@ -6,8 +7,9 @@ import ProfessorDetails from "./ProfessorDetails";
 
 const CourseExplorerPage = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [selectedCourseId, setSelectedCourseId] = useState(null);
-  const [selectedProfessorId, setSelectedProfessorId] = useState(null);
+  const { professorId, courseId } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const handleMenuToggle = () => {
     setSidebarOpen(!sidebarOpen);
@@ -15,25 +17,28 @@ const CourseExplorerPage = () => {
 
   const handleSelect = (itemId, category) => {
     if (category === "course") {
-      setSelectedCourseId(itemId);
-      setSelectedProfessorId(null);
+      navigate(`/course/${itemId}${location.search}`);
     } else if (category === "professor") {
-      setSelectedProfessorId(itemId);
-      setSelectedCourseId(null);
+      navigate(`/professor/${itemId}${location.search}`);
     }
+  };
+
+  const handleBack = () => {
+    // Navigate back to course explorer with preserved search state
+    navigate(`/course-explorer${location.search}`);
   };
 
   return (
     <PageLayout sidebarOpen={sidebarOpen} onMenuToggle={handleMenuToggle}>
-      {selectedProfessorId ? (
+      {professorId ? (
         <ProfessorDetails
-          professorId={selectedProfessorId}
-          onBack={() => setSelectedProfessorId(null)}
+          professorId={professorId}
+          onBack={handleBack}
         />
-      ) : selectedCourseId ? (
+      ) : courseId ? (
         <CourseDetails
-          courseId={selectedCourseId}
-          onBack={() => setSelectedCourseId(null)}
+          courseId={courseId}
+          onBack={handleBack}
         />
       ) : (
         <div className="h-full w-full overflow-hidden">
