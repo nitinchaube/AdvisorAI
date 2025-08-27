@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   BookOpen,
   Search,
@@ -13,38 +14,47 @@ import { apiService } from "../services/api";
 
 // --- Card Components ---
 const ProfessorCard = ({ professor, renderStars, onSelectCourse }) => (
-  <div className="bg-white/90 backdrop-blur-sm p-6 rounded-2xl border border-gray-200/50 hover:shadow-xl transition-all duration-300 group flex flex-col">
-    <div className="flex-1">
-      <div className="flex items-start justify-between mb-2">
-        <div className="flex-1">
-          <h3 className="font-bold text-gray-900 text-lg group-hover:text-blue-600 transition-colors duration-200">
-            {professor["Full Name"] || professor.name}
-          </h3>
-          <div className="flex items-center space-x-2 mt-2">
-            <span className="px-3 py-1 bg-gradient-to-r from-orange-100 to-red-100 text-orange-700 text-xs font-semibold rounded-full">
-              {professor["Title"] || "Professor"}
-            </span>
-            <span className="px-3 py-1 bg-gray-100 text-gray-600 text-xs font-medium rounded-full">
-              {professor["Department"] || professor.department || "School of Business"}
-            </span>
-          </div>
-        </div>
-        <div className="flex items-center space-x-1">
-          {renderStars(professor.rating)}
-          <span className="text-sm font-semibold text-gray-900">{professor.rating?.toFixed ? professor.rating.toFixed(1) : (professor.rating || 0)}</span>
+  <div className="bg-white/90 backdrop-blur-sm p-6 rounded-2xl border border-gray-200/50 hover:shadow-xl transition-all duration-300 group flex flex-col h-full">
+    {/* Header Section */}
+    <div className="flex items-start justify-between mb-4">
+      <div className="flex-1 min-w-0">
+        <h3 className="font-bold text-gray-900 text-xl group-hover:text-blue-600 transition-colors duration-200 mb-3 leading-tight">
+          {professor["Full Name"] || professor.name}
+        </h3>
+        
+        {/* Badges Section */}
+        <div className="flex flex-wrap gap-2 mb-4">
+          <span className="px-3 py-1.5 bg-gradient-to-r from-orange-100 to-red-100 text-orange-700 text-sm font-semibold rounded-full border border-orange-200">
+            {professor["Title"] || "Professor"}
+          </span>
         </div>
       </div>
-      <div className="mt-4 space-y-3 text-sm text-gray-700">
-        <div className="flex items-start">
-          <Info className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0 text-gray-400" />
-          <p className="line-clamp-2">{professor["Bio"] || professor.generalInfo || "No general information available."}</p>
+      
+      {/* Rating Section */}
+      <div className="flex flex-col items-end ml-4">
+        <div className="flex items-center space-x-1 mb-2">
+          {renderStars(professor.rating)}
         </div>
-        <div className="flex items-start">
-          <FlaskConical className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0 text-gray-400" />
-          <p className="line-clamp-3">{professor["Research Interests"] || professor.researchInfo || "No research information available."}</p>
-        </div>
+        <span className="text-lg font-bold text-gray-900">
+          {professor.rating?.toFixed ? professor.rating.toFixed(1) : (professor.rating || 0)}
+        </span>
+        <span className="text-xs text-gray-500">
+          {professor.reviews || 0} reviews
+        </span>
       </div>
     </div>
+
+    {/* Brief Preview Section */}
+    <div className="flex-1 mb-4">
+      <div className="flex items-start">
+        <FlaskConical className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0 text-gray-400" />
+        <p className="text-gray-600 text-sm leading-relaxed">
+          {((professor["Research Interests"] || professor.researchInfo || professor["Bio"] || "No additional information available.").substring(0, 100))}...
+        </p>
+      </div>
+    </div>
+
+    {/* Action Section */}
     <div className="mt-auto pt-4 flex justify-end">
       <button
         onClick={() => onSelectCourse(professor.id, 'professor')}
@@ -100,14 +110,42 @@ const CourseCard = ({ course, renderStars, getDifficultyColor, onSelectCourse })
 
 // --- Main Explorer Component ---
 const CourseExplorer = ({ onSelectCourse }) => {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedDepartment, setSelectedDepartment] = useState("all");
+  const [searchParams, setSearchParams] = useSearchParams();
+  
+  // Initialize state from URL parameters
+  const [searchTerm, setSearchTerm] = useState(searchParams.get("search") || "");
+  const [selectedDepartment, setSelectedDepartment] = useState(searchParams.get("department") || "all");
+  const [currentPage, setCurrentPage] = useState(parseInt(searchParams.get("page")) || 1);
+  const [activeCategory, setActiveCategory] = useState(searchParams.get("category") || "all");
+  
   const [allItems, setAllItems] = useState([]);
-  const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [activeCategory, setActiveCategory] = useState('all');
+
+  // Update URL when state changes
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (searchTerm) params.set("search", searchTerm);
+    if (selectedDepartment !== "all") params.set("department", selectedDepartment);
+    if (currentPage > 1) params.set("page", currentPage.toString());
+    if (activeCategory !== "all") params.set("category", activeCategory);
+    
+    setSearchParams(params, { replace: true });
+  }, [searchTerm, selectedDepartment, currentPage, activeCategory, setSearchParams]);
+
+  // Update local state when URL changes (for browser back/forward)
+  useEffect(() => {
+    const search = searchParams.get("search") || "";
+    const department = searchParams.get("department") || "all";
+    const page = parseInt(searchParams.get("page")) || 1;
+    const category = searchParams.get("category") || "all";
+    
+    setSearchTerm(search);
+    setSelectedDepartment(department);
+    setCurrentPage(page);
+    setActiveCategory(category);
+  }, [searchParams]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -170,7 +208,7 @@ const CourseExplorer = ({ onSelectCourse }) => {
             name: prof["Full Name"] || "",
             generalInfo: prof["Bio"] || "No general information available.",
             researchInfo: prof["Research Interests"] || "No research information available.",
-            department: prof["Department"] || "School of Business",
+            department: prof["Department"] || "NA",
             rating: ratingInfo ? ratingInfo.total / ratingInfo.count : 0,
             reviews: ratingInfo ? ratingInfo.count : 0,
             coursesTaught: [],
@@ -304,17 +342,45 @@ const CourseExplorer = ({ onSelectCourse }) => {
           <div className="mb-8">
             <div className="flex flex-col lg:flex-row gap-4">
               <div className="flex-1 relative">
-                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <input type="text" placeholder="Search by name, description, or course code..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-4 py-4 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm" />
+                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-6 h-6" />
+                <input 
+                  type="text" 
+                  placeholder="Search by name, description, or course code..." 
+                  value={searchTerm} 
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setCurrentPage(1); // Reset to first page when searching
+                  }} 
+                  className="w-full pl-14 pr-6 py-4 text-lg border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm" 
+                />
               </div>
-              <select value={selectedDepartment} onChange={(e) => setSelectedDepartment(e.target.value)} className="bg-white/80 backdrop-blur-sm border border-gray-200 text-gray-700 font-semibold py-4 px-6 rounded-2xl transition-all duration-200 shadow-sm hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+              <select 
+                value={selectedDepartment} 
+                onChange={(e) => {
+                  setSelectedDepartment(e.target.value);
+                  setCurrentPage(1); // Reset to first page when changing department
+                }} 
+                className="lg:w-64 bg-white/80 backdrop-blur-sm border border-gray-200 text-gray-700 font-semibold py-4 px-6 rounded-2xl transition-all duration-200 shadow-sm hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+              >
                 {departments.map((dept) => <option key={dept.id} value={dept.id}>{dept.name}</option>)}
               </select>
             </div>
           </div>
           <div className="mb-8">
-            <div className="flex space-x-2">
-              {filters.map((filter) => (<button key={filter.id} onClick={() => { setActiveCategory(filter.id); setCurrentPage(1); }} className={`px-6 py-3 rounded-2xl font-semibold transition-all duration-200 ${activeCategory === filter.id ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg' : 'bg-white/80 backdrop-blur-sm text-gray-600 hover:bg-white hover:shadow-md'}`}>{filter.label} ({filter.count})</button>))}
+            <div className="flex flex-wrap gap-3">
+              {filters.map((filter) => (
+                <button 
+                  key={filter.id} 
+                  onClick={() => { setActiveCategory(filter.id); setCurrentPage(1); }} 
+                  className={`px-5 py-3 rounded-xl font-semibold transition-all duration-200 text-sm whitespace-nowrap ${
+                    activeCategory === filter.id 
+                      ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg' 
+                      : 'bg-white/80 backdrop-blur-sm text-gray-600 hover:bg-white hover:shadow-md'
+                  }`}
+                >
+                  {filter.label} ({filter.count})
+                </button>
+              ))}
             </div>
           </div>
           {currentItems.length > 0 ? (
