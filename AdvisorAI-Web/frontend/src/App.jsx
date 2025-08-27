@@ -20,6 +20,7 @@ import ProfileData from "./components/ProfileData.jsx";
 import CourseDetails from "./components/CourseDetails";
 import AdminDashboard from "./components/AdminDashboard";
 import PortfolioView from "./components/PortfolioView";
+import PlannerPage from "./components/PlannerPage.jsx";
 
 function App() {
   return (
@@ -105,10 +106,10 @@ function App() {
             }
           />
           <Route
-            path="/schedule"
+            path="/planner"
             element={
               <ProtectedRoute requireProfileCompletion={true}>
-                <SchedulePage />
+                <PlannerPage />
               </ProtectedRoute>
             }
           />

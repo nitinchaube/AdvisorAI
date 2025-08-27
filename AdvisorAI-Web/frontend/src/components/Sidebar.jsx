@@ -33,11 +33,11 @@ const Sidebar = () => {
       path: '/chat-history'
     },
     {
-      id: 'ratings',
-      label: 'Ratings & Reviews',
-      icon: Star,
-      description: 'Rate professors and courses',
-      path: '/ratings'
+      id: 'planner',
+      label: 'Planner',
+      icon: Calendar,
+      description: 'Plan your academic calendar',
+      path: '/planner'
     },
     {
       id: 'courses',
@@ -47,19 +47,21 @@ const Sidebar = () => {
       path: '/course-explorer'
     },
     {
+      id: 'ratings',
+      label: 'Ratings & Reviews',
+      icon: Star,
+      description: 'Rate professors and courses',
+      path: '/ratings'
+    },
+    
+    {
       id: 'analytics',
       label: 'Analytics',
       icon: TrendingUp,
       description: 'View your academic insights',
       path: '/analytics'
     },
-    {
-      id: 'schedule',
-      label: 'Schedule',
-      icon: Calendar,
-      description: 'Plan your academic calendar',
-      path: '/schedule'
-    },
+    
     {
       id: 'documents',
       label: 'Documents',
