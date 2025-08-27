@@ -30,6 +30,20 @@ const ProfessorDetails = ({ professorId, onBack }) => {
       ).toFixed(1)
     : "N/A";
 
+  // Function to format pipe-separated data with bullet points
+  const formatPipeSeparatedData = (data) => {
+    if (!data) return "";
+    if (data.includes("|")) {
+      return data.split("|")
+        .map(part => part.trim())
+        .filter(part => part.length > 0)
+        .filter(part => !part.includes("@")) // Filter out email addresses
+        .map(part => `• ${part}`)
+        .join("\n");
+    }
+    return data;
+  };
+
 
   useEffect(() => {
     const fetchProfessorDetailsAndReviews = async () => {
@@ -152,25 +166,48 @@ const ProfessorDetails = ({ professorId, onBack }) => {
               </div>
               <div>
                 <h1 className="text-3xl font-bold text-gray-900">{professor["Full Name"] || professor.name}</h1>
-                <p className="text-gray-600">{professor["Department"] || professor.department || "School of Business"}</p>
               </div>
             </div>
 
             <div className="space-y-6">
-              <div>
-                <h2 className="text-xl font-semibold mb-3 flex items-center space-x-2">
-                  <Info className="w-5 h-5 text-orange-600" />
-                  <span>General Information</span>
-                </h2>
-                <p className="text-gray-700 leading-relaxed">{professor["Bio"] || professor.general_info}</p>
-              </div>
-              <div>
-                <h2 className="text-xl font-semibold mb-3 flex items-center space-x-2">
-                  <FlaskConical className="w-5 h-5 text-red-600" />
-                  <span>Research Information</span>
-                </h2>
-                <p className="text-gray-700 leading-relaxed">{professor["Research Interests"] || professor.research_info}</p>
-              </div>
+              {/* General Information */}
+              {professor["Department"] && (
+                <div>
+                  <h2 className="text-xl font-semibold mb-3 flex items-center space-x-2">
+                    <Info className="w-5 h-5 text-orange-600" />
+                    <span>General Information</span>
+                  </h2>
+                  <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                    <pre className="text-gray-700 leading-relaxed whitespace-pre-line font-sans">
+                      {formatPipeSeparatedData(professor["Department"])}
+                    </pre>
+                  </div>
+                </div>
+              )}
+
+              {/* Research Information */}
+              {professor["Research Interests"] && (
+                <div>
+                  <h2 className="text-xl font-semibold mb-3 flex items-center space-x-2">
+                    <FlaskConical className="w-5 h-5 text-red-600" />
+                    <span>Research Information</span>
+                  </h2>
+                  <div className="bg-red-50 rounded-xl p-4 border border-red-100">
+                    <div className="space-y-2">
+                      {professor["Research Interests"]
+                        .split(/(?<=[.!?])\s+/)
+                        .map((sentence, index) => sentence.trim())
+                        .filter(sentence => sentence.length > 10)
+                        .map((sentence, index) => (
+                          <div key={index} className="flex items-start">
+                            <span className="text-red-500 mr-2 mt-1">•</span>
+                            <span className="text-gray-700 leading-relaxed">{sentence}</span>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           
