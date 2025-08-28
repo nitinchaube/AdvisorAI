@@ -1102,18 +1102,73 @@ def get_course(id):
 @app.route('/api/faculty', methods=['GET'])
 @verify_token
 def get_faculty():
-    """Fetches all documents from the faculty collection."""
+    """Fetches all documents from the faculty_new collection."""
     try:
         faculty_list = []
-        # This line correctly points to your 'faculty' collection.
-        docs = mongo_db.faculty.find()
+        # Fetch from faculty_new collection
+        docs = mongo_db.faculty_new.find()
         for doc in docs:
             # Convert MongoDB document to JSON
-            mongo_faculty = mongo_doc_to_json(doc)
-            # Convert to admin dashboard format for consistency
-            admin_faculty = mongo_faculty_to_admin_format(mongo_faculty)
-            faculty_list.append(admin_faculty)
-        # The key 'faculty' matches the frontend code's expectation.
+            faculty_data = mongo_doc_to_json(doc)
+            
+            # Extract department from generalInformation or research if possible
+            department = None
+            general_info = faculty_data.get('generalInformation', '')
+            research_info = faculty_data.get('research', '')
+            
+            # Try to extract department from general info or research
+            if general_info:
+                # Look for department patterns
+                import re
+                dept_patterns = [
+                    r'Department of ([^,\n]*)',
+                    r'School of ([^,\n]*)',
+                    r'College of ([^,\n]*)',
+                    r'([A-Z][a-z]+ Engineering)',
+                    r'([A-Z][a-z]+ Science)',
+                    r'([A-Z][a-z]+ Studies)'
+                ]
+                
+                for pattern in dept_patterns:
+                    match = re.search(pattern, general_info, re.IGNORECASE)
+                    if match:
+                        department = match.group(1).strip()
+                        break
+            
+            # If no department found in general info, try research
+            if not department and research_info:
+                for pattern in dept_patterns:
+                    match = re.search(pattern, research_info, re.IGNORECASE)
+                    if match:
+                        department = match.group(1).strip()
+                        break
+            
+            # Create faculty object with new structure
+            faculty_obj = {
+                'id': faculty_data.get('_id', faculty_data.get('id', '')),
+                'name': faculty_data.get('name', ''),
+                'title': faculty_data.get('title', ''),
+                'department': department,
+                'generalInfo': faculty_data.get('generalInformation', ''),
+                'researchInfo': faculty_data.get('research', ''),
+                'education': faculty_data.get('education', []),
+                'publications': faculty_data.get('publications', {}),
+                'honorsAndAwards': faculty_data.get('honorsAndAwards', []),
+                'grantsAndContracts': faculty_data.get('grantsAndContracts', []),
+                'courses': faculty_data.get('courses', []),
+                'experience': faculty_data.get('experience', []),
+                'institutionalService': faculty_data.get('institutionalService', []),
+                'professionalService': faculty_data.get('professionalService', []),
+                'professionalSocieties': faculty_data.get('professionalSocieties', []),
+                'appointments': faculty_data.get('appointments', []),
+                'profileURL': faculty_data.get('profileURL', ''),
+                'address': faculty_data.get('address', ''),
+                'phone': faculty_data.get('phone', ''),
+                'website': faculty_data.get('website', '')
+            }
+            
+            faculty_list.append(faculty_obj)
+        
         return jsonify({'success': True, 'faculty': faculty_list})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -1121,17 +1176,72 @@ def get_faculty():
 @app.route('/api/faculty/<id>', methods=['GET'])
 @verify_token
 def get_single_faculty(id):
-    """Fetches a single faculty member by their MongoDB document ID."""
+    """Fetches a single faculty member by their MongoDB document ID from faculty_new collection."""
     try:
-        # Find the document in the 'faculty' collection by its ObjectId
-        doc = mongo_db.faculty.find_one({'_id': ObjectId(id)})
+        # Find the document in the 'faculty_new' collection by its ObjectId
+        doc = mongo_db.faculty_new.find_one({'_id': ObjectId(id)})
 
         if doc:
             # Convert MongoDB document to JSON
-            mongo_faculty = mongo_doc_to_json(doc)
-            # Convert to admin dashboard format for consistency
-            admin_faculty = mongo_faculty_to_admin_format(mongo_faculty)
-            return jsonify({'success': True, 'professor': admin_faculty})
+            faculty_data = mongo_doc_to_json(doc)
+            
+            # Extract department from generalInformation or research if possible
+            department = None
+            general_info = faculty_data.get('generalInformation', '')
+            research_info = faculty_data.get('research', '')
+            
+            # Try to extract department from general info or research
+            if general_info:
+                # Look for department patterns
+                import re
+                dept_patterns = [
+                    r'Department of ([^,\n]*)',
+                    r'School of ([^,\n]*)',
+                    r'College of ([^,\n]*)',
+                    r'([A-Z][a-z]+ Engineering)',
+                    r'([A-Z][a-z]+ Science)',
+                    r'([A-Z][a-z]+ Studies)'
+                ]
+                
+                for pattern in dept_patterns:
+                    match = re.search(pattern, general_info, re.IGNORECASE)
+                    if match:
+                        department = match.group(1).strip()
+                        break
+            
+            # If no department found in general info, try research
+            if not department and research_info:
+                for pattern in dept_patterns:
+                    match = re.search(pattern, research_info, re.IGNORECASE)
+                    if match:
+                        department = match.group(1).strip()
+                        break
+            
+            # Create faculty object with new structure
+            faculty_obj = {
+                'id': faculty_data.get('_id', faculty_data.get('id', '')),
+                'name': faculty_data.get('name', ''),
+                'title': faculty_data.get('title', ''),
+                'department': department,
+                'generalInfo': faculty_data.get('generalInformation', ''),
+                'researchInfo': faculty_data.get('research', ''),
+                'education': faculty_data.get('education', []),
+                'publications': faculty_data.get('publications', {}),
+                'honorsAndAwards': faculty_data.get('honorsAndAwards', []),
+                'grantsAndContracts': faculty_data.get('grantsAndContracts', []),
+                'courses': faculty_data.get('courses', []),
+                'experience': faculty_data.get('experience', []),
+                'institutionalService': faculty_data.get('institutionalService', []),
+                'professionalService': faculty_data.get('professionalService', []),
+                'professionalSocieties': faculty_data.get('professionalSocieties', []),
+                'appointments': faculty_data.get('appointments', []),
+                'profileURL': faculty_data.get('profileURL', ''),
+                'address': faculty_data.get('address', ''),
+                'phone': faculty_data.get('phone', ''),
+                'website': faculty_data.get('website', '')
+            }
+            
+            return jsonify({'success': True, 'professor': faculty_obj})
         else:
             return jsonify({'success': False, 'error': 'Faculty not found'}), 404
     except Exception as e:
