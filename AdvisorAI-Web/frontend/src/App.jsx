@@ -20,6 +20,9 @@ import ProfileData from "./components/ProfileData.jsx";
 import CourseDetails from "./components/CourseDetails";
 import AdminDashboard from "./components/AdminDashboard";
 import PortfolioView from "./components/PortfolioView";
+import JobSearchPage from "./components/JobSearchPage.jsx";
+import InternshipSearchPage from "./components/InternshipSearchPage.jsx";
+import PlannerPage from "./components/PlannerPage.jsx";
 
 function App() {
   return (
@@ -62,7 +65,7 @@ function App() {
               </ProtectedRoute>
             }
           />
-          
+
           {/* Main Dashboard Routes */}
           <Route
             path="/chat"
@@ -97,6 +100,22 @@ function App() {
             }
           />
           <Route
+            path="/professor/:professorId"
+            element={
+              <ProtectedRoute requireProfileCompletion={true}>
+                <CourseExplorerPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/course/:courseId"
+            element={
+              <ProtectedRoute requireProfileCompletion={true}>
+                <CourseExplorerPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/analytics"
             element={
               <ProtectedRoute requireProfileCompletion={true}>
@@ -105,10 +124,10 @@ function App() {
             }
           />
           <Route
-            path="/schedule"
+            path="/planner"
             element={
               <ProtectedRoute requireProfileCompletion={true}>
-                <SchedulePage />
+                <PlannerPage />
               </ProtectedRoute>
             }
           />
@@ -117,6 +136,22 @@ function App() {
             element={
               <ProtectedRoute requireProfileCompletion={true}>
                 <DocumentsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/job-search"
+            element={
+              <ProtectedRoute requireProfileCompletion={true}>
+                <JobSearchPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/internship-search"
+            element={
+              <ProtectedRoute requireProfileCompletion={true}>
+                <InternshipSearchPage />
               </ProtectedRoute>
             }
           />

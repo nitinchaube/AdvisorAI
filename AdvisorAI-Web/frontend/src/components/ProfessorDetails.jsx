@@ -30,6 +30,20 @@ const ProfessorDetails = ({ professorId, onBack }) => {
       ).toFixed(1)
     : "N/A";
 
+  // Function to format pipe-separated data with bullet points
+  const formatPipeSeparatedData = (data) => {
+    if (!data) return "";
+    if (data.includes("|")) {
+      return data.split("|")
+        .map(part => part.trim())
+        .filter(part => part.length > 0)
+        .filter(part => !part.includes("@")) // Filter out email addresses
+        .map(part => `• ${part}`)
+        .join("\n");
+    }
+    return data;
+  };
+
 
   useEffect(() => {
     const fetchProfessorDetailsAndReviews = async () => {

@@ -44,18 +44,22 @@ app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
 JWTManager(app)
 
 # Enable CORS for all routes and allow credentials (cookies)
-CORS(app, supports_credentials=True, origins=[
-    "http://localhost:3000",  # React dev server
-    "http://127.0.0.1:3000",  # React dev server (alternative)
-    "http://localhost:3002",  # Vite dev server (port 3002)
-    "http://127.0.0.1:3002",  # Vite dev server (port 3002 alternative)
-    "http://localhost:5173",  # Vite dev server
-    "http://127.0.0.1:5173",  # Vite dev server (alternative)
-    "http://localhost:4173",  # Vite preview server
-    "http://127.0.0.1:4173",  # Vite preview server (alternative)
-    "http://localhost:5003",  # Backend server (new port)
-    "http://127.0.0.1:5003",  # Backend server (new port alternative)
-])  # Make sure all frontend dev ports are included for CORS
+CORS(app, 
+     supports_credentials=True, 
+     origins=[
+         "http://localhost:3000",  # React dev server
+         "http://localhost:3002",  # Vite dev server (port 3002)
+         "http://127.0.0.1:3002",  # Vite dev server (port 3002 alternative)
+         "http://localhost:5173",  # Vite dev server
+         "http://127.0.0.1:5173",  # Vite dev server (alternative)
+         "http://localhost:4173",  # Vite preview server
+         "http://127.0.0.1:4173",  # Vite preview server (alternative)
+         "http://localhost:5003",  # Backend server (new port)
+         "http://127.0.0.1:5003",  # Backend server (new port alternative)
+     ],
+     allow_headers=['Content-Type', 'Authorization'],
+     methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+)  # Make sure all frontend dev ports are included for CORS
 
 # Initialize Resume Processor
 try:
@@ -1665,6 +1669,394 @@ def submit_feedback():
         print(f"❌ Feedback submission error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+# Job and Internship Search API Endpoints
+import csv
+import math
+from typing import List, Dict, Any
+
+def read_csv_data(file_path: str) -> List[Dict[str, Any]]:
+    """Read CSV file and return list of dictionaries"""
+    try:
+        data = []
+        # Use utf-8-sig to handle BOM (Byte Order Mark) properly
+        with open(file_path, 'r', encoding='utf-8-sig') as file:
+            reader = csv.DictReader(file)
+            for row in reader:
+                # Clean up any remaining BOM characters in keys or values
+                clean_row = {}
+                for key, value in row.items():
+                    # Remove BOM character if present in keys
+                    clean_key = key.replace('\ufeff', '') if key else key
+                    # Remove BOM character if present in values
+                    clean_value = value.replace('\ufeff', '') if isinstance(value, str) else value
+                    clean_row[clean_key] = clean_value
+                data.append(clean_row)
+        logger.info(f"Successfully read {len(data)} rows from {file_path}")
+        return data
+    except Exception as e:
+        logger.error(f"Error reading CSV file {file_path}: {str(e)}")
+        return []
+
+def filter_jobs(jobs: List[Dict], filters: Dict) -> List[Dict]:
+    """Apply filters to job listings"""
+    filtered_jobs = jobs
+    
+    # Search filter (searches in title, company, location, qualifications)
+    search_term = filters.get('search', '').lower()
+    if search_term:
+        filtered_jobs = [
+            job for job in filtered_jobs
+            if (search_term in job.get('Position Title', '').lower() or
+                search_term in job.get('Company', '').lower() or
+                search_term in job.get('Location', '').lower() or
+                search_term in job.get('Qualifications', '').lower())
+        ]
+    
+    # Work model filter
+    work_model = filters.get('workModel')
+    if work_model and work_model != 'all':
+        filtered_jobs = [
+            job for job in filtered_jobs
+            if job.get('Work Model', '').lower() == work_model.lower()
+        ]
+    
+    # Location filter
+    location = filters.get('location', '').lower()
+    if location:
+        filtered_jobs = [
+            job for job in filtered_jobs
+            if location in job.get('Location', '').lower()
+        ]
+    
+    # Company size filter
+    company_size = filters.get('companySize')
+    if company_size and company_size != 'all':
+        filtered_jobs = [
+            job for job in filtered_jobs
+            if job.get('Company Size', '') == company_size
+        ]
+    
+    # H1B sponsorship filter
+    h1b_sponsored = filters.get('h1bSponsored')
+    if h1b_sponsored and h1b_sponsored != 'all':
+        filtered_jobs = [
+            job for job in filtered_jobs
+            if job.get('H1b Sponsored', '').lower() == h1b_sponsored.lower()
+        ]
+    
+    # Industry filter
+    industry = filters.get('industry', '').lower()
+    if industry:
+        filtered_jobs = [
+            job for job in filtered_jobs
+            if industry in job.get('Company Industry', '').lower()
+        ]
+    
+    return filtered_jobs
+
+def paginate_results(data: List[Dict], page: int, per_page: int) -> Dict:
+    """Paginate results and return with metadata"""
+    total_items = len(data)
+    total_pages = math.ceil(total_items / per_page) if per_page > 0 else 1
+    start_idx = (page - 1) * per_page
+    end_idx = start_idx + per_page
+    
+    return {
+        'data': data[start_idx:end_idx],
+        'pagination': {
+            'current_page': page,
+            'per_page': per_page,
+            'total_items': total_items,
+            'total_pages': total_pages,
+            'has_next': page < total_pages,
+            'has_prev': page > 1
+        }
+    }
+
+def verify_token_with_options(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if request.method == 'OPTIONS':
+            # Handle preflight request
+            return '', 200
+        
+        # Apply token verification for other methods
+        id_token = None
+        if 'Authorization' in request.headers and request.headers['Authorization'].startswith('Bearer '):
+            id_token = request.headers['Authorization'].split('Bearer ')[1]
+
+        if not id_token:
+            return jsonify({"error": "Authorization token is missing"}), 401
+
+        try:
+            decoded_token = auth.verify_id_token(id_token)
+            g.user = decoded_token
+        except auth.InvalidIdTokenError:
+            return jsonify({"error": "Invalid token"}), 401
+        except Exception as e:
+            return jsonify({"error": f"Token verification failed: {e}"}), 401
+
+        return f(*args, **kwargs)
+    return decorated_function
+
+@app.route('/api/jobs', methods=['GET', 'OPTIONS'])
+@verify_token_with_options
+def get_jobs():
+    """Get job listings with filtering and pagination"""
+    try:
+        # Read jobs CSV
+        jobs_data = read_csv_data('Jobs.csv')
+        if not jobs_data:
+            return jsonify({'success': False, 'error': 'Unable to load jobs data'}), 500
+        
+        # Get query parameters
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 20))
+        
+        # Get filters
+        filters = {
+            'search': request.args.get('search', ''),
+            'workModel': request.args.get('workModel', 'all'),
+            'location': request.args.get('location', ''),
+            'companySize': request.args.get('companySize', 'all'),
+            'h1bSponsored': request.args.get('h1bSponsored', 'all'),
+            'industry': request.args.get('industry', '')
+        }
+        
+        # Apply filters
+        filtered_jobs = filter_jobs(jobs_data, filters)
+        
+        # Paginate results
+        result = paginate_results(filtered_jobs, page, per_page)
+        
+        return jsonify({
+            'success': True,
+            'jobs': result['data'],
+            'pagination': result['pagination'],
+            'total_filtered': len(filtered_jobs),
+            'total_jobs': len(jobs_data)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fetching jobs: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/internships', methods=['GET', 'OPTIONS'])
+@verify_token_with_options
+def get_internships():
+    """Get internship listings with filtering and pagination"""
+    try:
+        # Read internships CSV
+        internships_data = read_csv_data('Intern.csv')
+        if not internships_data:
+            return jsonify({'success': False, 'error': 'Unable to load internships data'}), 500
+        
+        # Get query parameters
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 20))
+        
+        # Get filters (adjusted for internship-specific fields)
+        filters = {
+            'search': request.args.get('search', ''),
+            'workModel': request.args.get('workModel', 'all'),
+            'location': request.args.get('location', ''),
+            'companySize': request.args.get('companySize', 'all'),
+            'industry': request.args.get('industry', ''),
+            'hireTime': request.args.get('hireTime', '')
+        }
+        
+        # Apply filters (using similar logic but for internship fields)
+        filtered_internships = filter_internships(internships_data, filters)
+        
+        # Paginate results
+        result = paginate_results(filtered_internships, page, per_page)
+        
+        return jsonify({
+            'success': True,
+            'internships': result['data'],
+            'pagination': result['pagination'],
+            'total_filtered': len(filtered_internships),
+            'total_internships': len(internships_data)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fetching internships: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+def filter_internships(internships: List[Dict], filters: Dict) -> List[Dict]:
+    """Apply filters to internship listings"""
+    filtered_internships = internships
+    
+    # Search filter
+    search_term = filters.get('search', '').lower()
+    if search_term:
+        filtered_internships = [
+            internship for internship in filtered_internships
+            if (search_term in internship.get('Position Title', '').lower() or
+                search_term in internship.get('Company', '').lower() or
+                search_term in internship.get('Location', '').lower() or
+                search_term in internship.get('Qualifications', '').lower())
+        ]
+    
+    # Work model filter
+    work_model = filters.get('workModel')
+    if work_model and work_model != 'all':
+        filtered_internships = [
+            internship for internship in filtered_internships
+            if internship.get('Work Model', '').lower() == work_model.lower()
+        ]
+    
+    # Location filter
+    location = filters.get('location', '').lower()
+    if location:
+        filtered_internships = [
+            internship for internship in filtered_internships
+            if location in internship.get('Location', '').lower()
+        ]
+    
+    # Company size filter
+    company_size = filters.get('companySize')
+    if company_size and company_size != 'all':
+        filtered_internships = [
+            internship for internship in filtered_internships
+            if internship.get('Company Size', '') == company_size
+        ]
+    
+    # Industry filter
+    industry = filters.get('industry', '').lower()
+    if industry:
+        filtered_internships = [
+            internship for internship in filtered_internships
+            if industry in internship.get('Company Industry', '').lower()
+        ]
+    
+    # Hire time filter (specific to internships)
+    hire_time = filters.get('hireTime', '').lower()
+    if hire_time:
+        filtered_internships = [
+            internship for internship in filtered_internships
+            if hire_time in internship.get('Hire Time', '').lower()
+        ]
+    
+    return filtered_internships
+
+@app.route('/api/jobs/stats', methods=['GET', 'OPTIONS'])
+@verify_token_with_options
+def get_job_stats():
+    """Get job statistics for filters"""
+    try:
+        jobs_data = read_csv_data('Jobs.csv')
+        if not jobs_data:
+            return jsonify({'success': False, 'error': 'Unable to load jobs data'}), 500
+        
+        # Calculate statistics
+        work_models = {}
+        company_sizes = {}
+        industries = {}
+        h1b_stats = {}
+        
+        for job in jobs_data:
+            # Work model stats
+            work_model = job.get('Work Model', 'Unknown')
+            work_models[work_model] = work_models.get(work_model, 0) + 1
+            
+            # Company size stats
+            company_size = job.get('Company Size', 'Unknown')
+            company_sizes[company_size] = company_sizes.get(company_size, 0) + 1
+            
+            # Industry stats
+            industry = job.get('Company Industry', 'Unknown')
+            industries[industry] = industries.get(industry, 0) + 1
+            
+            # H1B stats
+            h1b = job.get('H1b Sponsored', 'Unknown')
+            h1b_stats[h1b] = h1b_stats.get(h1b, 0) + 1
+        
+        return jsonify({
+            'success': True,
+            'stats': {
+                'total_jobs': len(jobs_data),
+                'work_models': work_models,
+                'company_sizes': company_sizes,
+                'industries': industries,
+                'h1b_sponsorship': h1b_stats
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fetching job stats: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/internships/stats', methods=['GET', 'OPTIONS'])
+@verify_token_with_options
+def get_internship_stats():
+    """Get internship statistics for filters"""
+    try:
+        internships_data = read_csv_data('Intern.csv')
+        if not internships_data:
+            return jsonify({'success': False, 'error': 'Unable to load internships data'}), 500
+        
+        # Calculate statistics
+        work_models = {}
+        company_sizes = {}
+        industries = {}
+        hire_times = {}
+        
+        for internship in internships_data:
+            # Work model stats
+            work_model = internship.get('Work Model', 'Unknown')
+            work_models[work_model] = work_models.get(work_model, 0) + 1
+            
+            # Company size stats
+            company_size = internship.get('Company Size', 'Unknown')
+            company_sizes[company_size] = company_sizes.get(company_size, 0) + 1
+            
+            # Industry stats
+            industry = internship.get('Company Industry', 'Unknown')
+            industries[industry] = industries.get(industry, 0) + 1
+            
+            # Hire time stats
+            hire_time = internship.get('Hire Time', 'Unknown')
+            hire_times[hire_time] = hire_times.get(hire_time, 0) + 1
+        
+        return jsonify({
+            'success': True,
+            'stats': {
+                'total_internships': len(internships_data),
+                'work_models': work_models,
+                'company_sizes': company_sizes,
+                'industries': industries,
+                'hire_times': hire_times
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fetching internship stats: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# Test endpoint to verify CORS is working
+@app.route('/api/test-cors', methods=['GET', 'OPTIONS'])
+def test_cors():
+    """Test endpoint to verify CORS configuration"""
+    if request.method == 'OPTIONS':
+        return '', 200
+    return jsonify({
+        'success': True,
+        'message': 'CORS is working correctly!',
+        'origin': request.headers.get('Origin', 'No origin header'),
+        'method': request.method
+    })
+
+
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5002))
+    print(f"🚀 Starting AdvisorAI backend server on port {port}")
+    print(f"📡 API Base URL: http://localhost:{port}/api")
+    print(f"🔍 Job search endpoints:")
+    print(f"   - GET /api/jobs")
+    print(f"   - GET /api/internships") 
+    print(f"   - GET /api/jobs/stats")
+    print(f"   - GET /api/internships/stats")
+    print(f"🧪 Test CORS: http://localhost:{port}/api/test-cors")
     app.run(debug=True, host='0.0.0.0', port=port) 
