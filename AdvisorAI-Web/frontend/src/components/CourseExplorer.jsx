@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   BookOpen,
   Search,
@@ -33,8 +34,13 @@ const ProfessorCard = ({ professor, renderStars, onSelectCourse }) => (
         </div>
         <div className="flex items-center space-x-1 ml-4">
           {renderStars(professor.rating)}
-          <span className="text-sm font-semibold text-gray-900">{professor.rating?.toFixed ? professor.rating.toFixed(1) : (professor.rating || 0)}</span>
         </div>
+        <span className="text-lg font-bold text-gray-900">
+          {professor.rating?.toFixed ? professor.rating.toFixed(1) : (professor.rating || 0)}
+        </span>
+        <span className="text-xs text-gray-500">
+          {professor.reviews || 0} reviews
+        </span>
       </div>
       <div className="flex-1 mt-4 space-y-4 text-sm text-gray-700">
         <div className="flex items-start">
@@ -110,14 +116,42 @@ const CourseCard = ({ course, renderStars, getDifficultyColor, onSelectCourse })
 
 // --- Main Explorer Component ---
 const CourseExplorer = ({ onSelectCourse }) => {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedDepartment, setSelectedDepartment] = useState("all");
+  const [searchParams, setSearchParams] = useSearchParams();
+  
+  // Initialize state from URL parameters
+  const [searchTerm, setSearchTerm] = useState(searchParams.get("search") || "");
+  const [selectedDepartment, setSelectedDepartment] = useState(searchParams.get("department") || "all");
+  const [currentPage, setCurrentPage] = useState(parseInt(searchParams.get("page")) || 1);
+  const [activeCategory, setActiveCategory] = useState(searchParams.get("category") || "all");
+  
   const [allItems, setAllItems] = useState([]);
-  const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [activeCategory, setActiveCategory] = useState('all');
+
+  // Update URL when state changes
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (searchTerm) params.set("search", searchTerm);
+    if (selectedDepartment !== "all") params.set("department", selectedDepartment);
+    if (currentPage > 1) params.set("page", currentPage.toString());
+    if (activeCategory !== "all") params.set("category", activeCategory);
+    
+    setSearchParams(params, { replace: true });
+  }, [searchTerm, selectedDepartment, currentPage, activeCategory, setSearchParams]);
+
+  // Update local state when URL changes (for browser back/forward)
+  useEffect(() => {
+    const search = searchParams.get("search") || "";
+    const department = searchParams.get("department") || "all";
+    const page = parseInt(searchParams.get("page")) || 1;
+    const category = searchParams.get("category") || "all";
+    
+    setSearchTerm(search);
+    setSelectedDepartment(department);
+    setCurrentPage(page);
+    setActiveCategory(category);
+  }, [searchParams]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -413,17 +447,45 @@ const CourseExplorer = ({ onSelectCourse }) => {
           <div className="mb-8">
             <div className="flex flex-col lg:flex-row gap-4">
               <div className="flex-1 relative">
-                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <input type="text" placeholder="Search by name, description, or course code..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-4 py-4 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm" />
+                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-6 h-6" />
+                <input 
+                  type="text" 
+                  placeholder="Search by name, description, or course code..." 
+                  value={searchTerm} 
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setCurrentPage(1); // Reset to first page when searching
+                  }} 
+                  className="w-full pl-14 pr-6 py-4 text-lg border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm" 
+                />
               </div>
-              <select value={selectedDepartment} onChange={(e) => setSelectedDepartment(e.target.value)} className="bg-white/80 backdrop-blur-sm border border-gray-200 text-gray-700 font-semibold py-4 px-6 rounded-2xl transition-all duration-200 shadow-sm hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+              <select 
+                value={selectedDepartment} 
+                onChange={(e) => {
+                  setSelectedDepartment(e.target.value);
+                  setCurrentPage(1); // Reset to first page when changing department
+                }} 
+                className="lg:w-64 bg-white/80 backdrop-blur-sm border border-gray-200 text-gray-700 font-semibold py-4 px-6 rounded-2xl transition-all duration-200 shadow-sm hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+              >
                 {departments.map((dept) => <option key={dept.id} value={dept.id}>{dept.name}</option>)}
               </select>
             </div>
           </div>
           <div className="mb-8">
-            <div className="flex space-x-2">
-              {filters.map((filter) => (<button key={filter.id} onClick={() => { setActiveCategory(filter.id); setCurrentPage(1); }} className={`px-6 py-3 rounded-2xl font-semibold transition-all duration-200 ${activeCategory === filter.id ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg' : 'bg-white/80 backdrop-blur-sm text-gray-600 hover:bg-white hover:shadow-md'}`}>{filter.label} ({filter.count})</button>))}
+            <div className="flex flex-wrap gap-3">
+              {filters.map((filter) => (
+                <button 
+                  key={filter.id} 
+                  onClick={() => { setActiveCategory(filter.id); setCurrentPage(1); }} 
+                  className={`px-5 py-3 rounded-xl font-semibold transition-all duration-200 text-sm whitespace-nowrap ${
+                    activeCategory === filter.id 
+                      ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg' 
+                      : 'bg-white/80 backdrop-blur-sm text-gray-600 hover:bg-white hover:shadow-md'
+                  }`}
+                >
+                  {filter.label} ({filter.count})
+                </button>
+              ))}
             </div>
           </div>
           {currentItems.length > 0 ? (

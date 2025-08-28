@@ -128,7 +128,7 @@ const Dashboard = () => {
         // Don't create a new session automatically - let user choose when to start chatting
         setSessionInitialized(true);
         console.log(
-          "📱 No session restored, waiting for user to start chatting"
+          "No session restored, waiting for user to start chatting"
         );
       } catch (error) {
         console.error("Error initializing session:", error);
@@ -308,7 +308,7 @@ const Dashboard = () => {
             </div>
           </div>
         );
-      case "schedule":
+      case "planner":
         return (
           <div className="h-full w-full bg-white overflow-y-auto">
             <div className="max-w-4xl mx-auto p-8">
