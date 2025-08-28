@@ -1805,7 +1805,7 @@ def get_jobs():
     """Get job listings with filtering and pagination"""
     try:
         # Read jobs CSV
-        jobs_data = read_csv_data('Jobs.csv')
+        jobs_data = read_csv_data('jobs.csv')
         if not jobs_data:
             return jsonify({'success': False, 'error': 'Unable to load jobs data'}), 500
         
@@ -1847,7 +1847,7 @@ def get_internships():
     """Get internship listings with filtering and pagination"""
     try:
         # Read internships CSV
-        internships_data = read_csv_data('Intern.csv')
+        internships_data = read_csv_data('internships.csv')
         if not internships_data:
             return jsonify({'success': False, 'error': 'Unable to load internships data'}), 500
         
@@ -1945,7 +1945,7 @@ def filter_internships(internships: List[Dict], filters: Dict) -> List[Dict]:
 def get_job_stats():
     """Get job statistics for filters"""
     try:
-        jobs_data = read_csv_data('Jobs.csv')
+        jobs_data = read_csv_data('jobs.csv')
         if not jobs_data:
             return jsonify({'success': False, 'error': 'Unable to load jobs data'}), 500
         
@@ -1992,7 +1992,7 @@ def get_job_stats():
 def get_internship_stats():
     """Get internship statistics for filters"""
     try:
-        internships_data = read_csv_data('Intern.csv')
+        internships_data = read_csv_data('internships.csv')
         if not internships_data:
             return jsonify({'success': False, 'error': 'Unable to load internships data'}), 500
         
