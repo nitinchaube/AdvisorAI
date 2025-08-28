@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   MessageCircle,
@@ -18,6 +18,25 @@ import {
 const Sidebar = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const sidebarRef = useRef(null);
+
+  // Preserve scroll position when navigating
+  useEffect(() => {
+    if (sidebarRef.current) {
+      const savedScrollTop = sessionStorage.getItem('sidebarScrollTop');
+      if (savedScrollTop) {
+        sidebarRef.current.scrollTop = parseInt(savedScrollTop);
+      }
+    }
+  }, [location.pathname]);
+
+  // Save scroll position before navigation
+  const handleNavigation = (path) => {
+    if (sidebarRef.current) {
+      sessionStorage.setItem('sidebarScrollTop', sidebarRef.current.scrollTop.toString());
+    }
+    navigate(path);
+  };
 
   const menuItems = [
     {
@@ -47,13 +66,6 @@ const Sidebar = () => {
       icon: History,
       description: "View your previous conversations",
       path: "/chat-history",
-    },
-    {
-      id: 'ratings',
-      label: 'Ratings & Reviews',
-      icon: Star,
-      description: 'Rate professors and courses',
-      path: '/ratings'
     },
     {
       id: "courses",
@@ -99,16 +111,12 @@ const Sidebar = () => {
     return menuItem ? menuItem.id : 'chat';
   };
 
-  const handleNavigation = (path) => {
-    navigate(path);
-  };
-
   const activeTab = getActiveTab();
 
   return (
     <div className="h-full w-80 bg-gradient-to-br from-white via-slate-50 to-blue-50/30 backdrop-blur-xl border-r border-slate-200/60 shadow-xl flex flex-col">
       {/* Navigation */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto" ref={sidebarRef}>
         <nav className="p-6">
           <div className="space-y-4">
             {/* Main Chat with AI Feature */}

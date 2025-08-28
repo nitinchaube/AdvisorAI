@@ -28,12 +28,15 @@ const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState("courses");
   const [courses, setCourses] = useState([]);
   const [faculty, setFaculty] = useState([]);
+  const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState("add"); // 'add' or 'edit'
   const [selectedItem, setSelectedItem] = useState(null);
   const [formData, setFormData] = useState({});
+  const [showRoleModal, setShowRoleModal] = useState(false);
+  const [selectedUserForRole, setSelectedUserForRole] = useState(null);
   const [notification, setNotification] = useState({
     show: false,
     message: "",
@@ -60,9 +63,12 @@ const AdminDashboard = () => {
       if (activeTab === "courses") {
         const response = await adminAPI.getAllCourses();
         setCourses(response.courses || []);
-      } else {
+      } else if (activeTab === "faculty") {
         const response = await adminAPI.getAllFaculty();
         setFaculty(response.faculty || []);
+      } else if (activeTab === "users") {
+        const response = await adminAPI.getAllUsers();
+        setUsers(response.users || []);
       }
     } catch (error) {
       showNotification("Failed to load data: " + error.message, "error");
@@ -93,7 +99,8 @@ const AdminDashboard = () => {
             Department: "",
             Level: "",
           }
-        : {
+        : activeTab === "faculty"
+        ? {
             "Full Name": "",
             Email: "",
             Department: "",
@@ -102,6 +109,11 @@ const AdminDashboard = () => {
             Phone: "",
             "Research Interests": "",
             Bio: "",
+          }
+        : {
+            fullName: "",
+            email: "",
+            role: "user", // Default role for new users
           }
     );
     setShowModal(true);
@@ -121,13 +133,52 @@ const AdminDashboard = () => {
       if (activeTab === "courses") {
         await adminAPI.deleteCourse(id);
         setCourses(courses.filter((c) => c.id !== id));
-      } else {
+      } else if (activeTab === "faculty") {
         await adminAPI.deleteFaculty(id);
         setFaculty(faculty.filter((f) => f.id !== id));
+      } else if (activeTab === "users") {
+        await adminAPI.deleteUser(id);
+        setUsers(users.filter((u) => u.uid !== id));
       }
       showNotification("Item deleted successfully", "success");
     } catch (error) {
       showNotification("Failed to delete item: " + error.message, "error");
+    }
+  };
+
+  const handleRoleToggle = async (userUid, currentRole) => {
+    const newRole = currentRole === 'admin' ? 'user' : 'admin';
+    const confirmMessage = `Are you sure you want to change this user's role from ${currentRole} to ${newRole}?`;
+    
+    if (!window.confirm(confirmMessage)) return;
+
+    try {
+      await adminAPI.updateUserRole(userUid, newRole);
+      await loadData();
+      showNotification(`User role updated to ${newRole} successfully`, "success");
+    } catch (error) {
+      showNotification("Failed to update user role: " + error.message, "error");
+    }
+  };
+
+  const openRoleModal = (user) => {
+    setSelectedUserForRole(user);
+    setShowRoleModal(true);
+  };
+
+  const handleRoleChange = async () => {
+    if (!selectedUserForRole) return;
+    
+    const newRole = selectedUserForRole.role === 'admin' ? 'user' : 'admin';
+    
+    try {
+      await adminAPI.updateUserRole(selectedUserForRole.uid, newRole);
+      await loadData();
+      setShowRoleModal(false);
+      setSelectedUserForRole(null);
+      showNotification(`User role updated to ${newRole} successfully`, "success");
+    } catch (error) {
+      showNotification("Failed to update user role: " + error.message, "error");
     }
   };
 
@@ -141,12 +192,27 @@ const AdminDashboard = () => {
           await adminAPI.updateCourse(selectedItem.id, formData);
           await loadData();
         }
-      } else {
+      } else if (activeTab === "faculty") {
         if (modalType === "add") {
           const response = await adminAPI.addFaculty(formData);
           await loadData();
         } else {
           await adminAPI.updateFaculty(selectedItem.id, formData);
+          await loadData();
+        }
+      } else if (activeTab === "users") {
+        if (modalType === "add") {
+          // For users, we can only edit existing users, not create new ones
+          showNotification("Cannot create new users from admin panel. Users must register through the application.", "error");
+          return;
+        } else {
+          // Update user information
+          const updateData = {
+            fullName: formData["Full Name"],
+            email: formData["Email"],
+            role: formData["Role"]
+          };
+          await adminAPI.updateUser(selectedItem.uid, updateData);
           await loadData();
         }
       }
@@ -175,7 +241,8 @@ const AdminDashboard = () => {
               .toLowerCase()
               .includes(searchTerm.toLowerCase())
         )
-      : faculty.filter(
+      : activeTab === "faculty"
+      ? faculty.filter(
           (member) =>
             (member["Full Name"] || "")
               .toLowerCase()
@@ -184,6 +251,18 @@ const AdminDashboard = () => {
               .toLowerCase()
               .includes(searchTerm.toLowerCase()) ||
             (member["Email"] || "")
+              .toLowerCase()
+              .includes(searchTerm.toLowerCase())
+        )
+      : users.filter(
+          (user) =>
+            (user["fullName"] || "")
+              .toLowerCase()
+              .includes(searchTerm.toLowerCase()) ||
+            (user["email"] || "")
+              .toLowerCase()
+              .includes(searchTerm.toLowerCase()) ||
+            (user["role"] || "")
               .toLowerCase()
               .includes(searchTerm.toLowerCase())
         );
@@ -450,6 +529,56 @@ const AdminDashboard = () => {
     </div>
   );
 
+  const renderUserForm = () => (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 gap-6">
+        <div>
+          <label className="block text-sm font-semibold text-slate-700 mb-2">
+            Full Name
+          </label>
+          <input
+            type="text"
+            value={formData["fullName"] || ""}
+            onChange={(e) =>
+              setFormData({ ...formData, fullName: e.target.value })
+            }
+            className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-300 bg-white shadow-sm hover:shadow-md"
+            placeholder="e.g., John Doe"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-semibold text-slate-700 mb-2">
+            Email
+          </label>
+          <input
+            type="email"
+            value={formData["email"] || ""}
+            onChange={(e) =>
+              setFormData({ ...formData, email: e.target.value })
+            }
+            className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-300 bg-white shadow-sm hover:shadow-md"
+            placeholder="user@example.com"
+          />
+        </div>
+      </div>
+      <div>
+        <label className="block text-sm font-semibold text-slate-700 mb-2">
+          Role
+        </label>
+        <select
+          value={formData["role"] || "user"}
+          onChange={(e) =>
+            setFormData({ ...formData, role: e.target.value })
+          }
+          className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-300 bg-white shadow-sm hover:shadow-md"
+        >
+          <option value="user">User</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+    </div>
+  );
+
   // Render admin content similar to Dashboard's renderContent
   const renderAdminContent = () => {
     return (
@@ -500,6 +629,26 @@ const AdminDashboard = () => {
                     {faculty.length}
                   </span>
                 </button>
+                <button
+                  onClick={() => setActiveTab("users")}
+                  className={`flex-1 flex items-center justify-center px-6 py-4 rounded-2xl font-medium text-sm transition-all duration-300 transform hover:scale-105 ${
+                    activeTab === "users"
+                      ? "bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg"
+                      : "text-slate-300 hover:text-white hover:bg-white/10"
+                  }`}
+                >
+                  <Users className="w-5 h-5 mr-3" />
+                  <span className="font-semibold">Users</span>
+                  <span
+                    className={`ml-3 py-1 px-3 rounded-full text-xs font-bold ${
+                      activeTab === "users"
+                        ? "bg-white/20 text-white"
+                        : "bg-slate-600/50 text-slate-300"
+                    }`}
+                  >
+                    {users.length}
+                  </span>
+                </button>
               </nav>
             </div>
 
@@ -515,17 +664,69 @@ const AdminDashboard = () => {
                   className="pl-12 pr-6 py-4 bg-white/90 backdrop-blur-sm border border-slate-200/60 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 w-full sm:w-96 shadow-lg hover:shadow-xl transition-all duration-300 text-slate-700 placeholder-slate-400"
                 />
               </div>
-              <button
-                onClick={handleAdd}
-                className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-8 py-4 rounded-2xl hover:from-blue-600 hover:to-purple-700 flex items-center justify-center whitespace-nowrap font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 border border-blue-300/30"
-              >
-                <Plus className="w-5 h-5 mr-3" />
-                Add {activeTab === "courses" ? "Course" : "Faculty"}
-              </button>
+              {activeTab === "users" ? (
+                <div className="flex items-center space-x-3">
+                  <div className="text-sm text-slate-600 bg-slate-100 px-4 py-2 rounded-xl">
+                    <span className="font-medium">Total Users:</span> {users.length} | 
+                    <span className="font-medium ml-2">Admins:</span> {users.filter(u => u.role === 'admin').length} | 
+                    <span className="font-medium ml-2">Regular:</span> {users.filter(u => u.role === 'user').length}
+                  </div>
+                  <button
+                    onClick={async () => {
+                      try {
+                        setLoading(true);
+                        const result = await adminAPI.syncFirebaseClaims();
+                        showNotification(`Firebase claims synced: ${result.synced_count} users updated`, "success");
+                        await loadData(); // Refresh user data
+                      } catch (error) {
+                        showNotification("Failed to sync Firebase claims: " + error.message, "error");
+                      } finally {
+                        setLoading(false);
+                      }
+                    }}
+                    className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-6 py-4 rounded-2xl hover:from-green-600 hover:to-emerald-700 flex items-center justify-center whitespace-nowrap font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 border border-green-300/30"
+                    title="Sync Firebase custom claims with MongoDB roles"
+                  >
+                    <CheckCircle className="w-5 h-5 mr-3" />
+                    Sync Firebase
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("courses")}
+                    className="bg-gradient-to-r from-slate-500 to-slate-600 text-white px-6 py-4 rounded-2xl hover:from-slate-600 hover:to-slate-700 flex items-center justify-center whitespace-nowrap font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 border border-slate-300/30"
+                  >
+                    <BookOpen className="w-5 h-5 mr-3" />
+                    Manage Courses
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={handleAdd}
+                  className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-8 py-4 rounded-2xl hover:from-blue-600 hover:to-purple-700 flex items-center justify-center whitespace-nowrap font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 border border-blue-300/30"
+                >
+                  <Plus className="w-5 h-5 mr-3" />
+                  Add {activeTab === "courses" ? "Course" : activeTab === "faculty" ? "Faculty" : "User"}
+                </button>
+              )}
             </div>
 
             {/* Data Table */}
             <div className="mt-8 bg-white/90 backdrop-blur-sm shadow-2xl overflow-hidden rounded-3xl border border-slate-200/60">
+              {activeTab === "users" && (
+                <div className="bg-blue-50 border-b border-blue-200 px-6 py-4">
+                  <div className="flex items-start">
+                    <AlertTriangle className="w-5 h-5 text-blue-600 mr-3 mt-0.5 flex-shrink-0" />
+                    <div className="text-sm text-blue-800">
+                      <div className="font-semibold mb-2">Admin Notice:</div>
+                      <div className="space-y-1">
+                        <div>• User management is a sensitive operation. Be careful when changing user roles or deleting accounts.</div>
+                        <div>• Users cannot be created from this panel - they must register through the application.</div>
+                        <div>• <strong>Firebase Sync:</strong> When you change user roles, Firebase custom claims are automatically updated for proper authentication.</div>
+                        <div>• Use the "Sync Firebase" button to manually sync all users' Firebase claims with their MongoDB roles if needed.</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
               {loading ? (
                 <div className="flex items-center justify-center py-16">
                   <div className="relative">
@@ -560,7 +761,7 @@ const AdminDashboard = () => {
                                 Actions
                               </th>
                             </>
-                          ) : (
+                          ) : activeTab === "faculty" ? (
                             <>
                               <th className="px-6 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider w-48">
                                 Name
@@ -576,6 +777,30 @@ const AdminDashboard = () => {
                               </th>
                               <th className="px-6 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider w-24">
                                 Office
+                              </th>
+                              <th className="px-6 py-4 text-right text-xs font-bold text-slate-600 uppercase tracking-wider w-24">
+                                Actions
+                              </th>
+                            </>
+                          ) : (
+                            <>
+                              <th className="px-6 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider w-48">
+                                Name
+                              </th>
+                              <th className="px-6 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider w-40">
+                                Email
+                              </th>
+                              <th className="px-6 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider w-32">
+                                Role
+                              </th>
+                              <th className="px-6 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider w-32">
+                                Profile
+                              </th>
+                              <th className="px-6 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider w-40">
+                                Last Login
+                              </th>
+                              <th className="px-6 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider w-32">
+                                Firebase
                               </th>
                               <th className="px-6 py-4 text-right text-xs font-bold text-slate-600 uppercase tracking-wider w-24">
                                 Actions
@@ -623,7 +848,7 @@ const AdminDashboard = () => {
                                   </span>
                                 </td>
                               </>
-                            ) : (
+                            ) : activeTab === "faculty" ? (
                               <>
                                 <td className="px-6 py-4 text-sm font-medium text-gray-900">
                                   <div
@@ -661,9 +886,97 @@ const AdminDashboard = () => {
                                   </div>
                                 </td>
                               </>
+                            ) : (
+                              <>
+                                <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                                  <div
+                                    className="max-w-48 truncate"
+                                    title={item["fullName"] || "N/A"}
+                                  >
+                                    {item["fullName"] || "N/A"}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-500">
+                                  <div
+                                    className="max-w-40 truncate"
+                                    title={item["email"] || "N/A"}
+                                  >
+                                    {item["email"] || "N/A"}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-500">
+                                  <div
+                                    className="max-w-32 truncate"
+                                    title={item["role"] || "N/A"}
+                                  >
+                                    <span
+                                      className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                        item.role === 'admin'
+                                          ? 'bg-purple-100 text-purple-800'
+                                          : 'bg-green-100 text-green-800'
+                                      }`}
+                                    >
+                                      {item["role"] || "N/A"}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-500">
+                                  <div
+                                    className="max-w-32 truncate"
+                                    title={item["profileCompleted"] ? "Profile Complete" : "Profile Incomplete"}
+                                  >
+                                    <span
+                                      className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                        item.profileCompleted
+                                          ? 'bg-green-100 text-green-800'
+                                          : 'bg-yellow-100 text-yellow-800'
+                                      }`}
+                                    >
+                                      {item["profileCompleted"] ? "Complete" : "Incomplete"}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-500">
+                                  <div
+                                    className="max-w-40 truncate"
+                                    title={item["lastLoginAt"] ? new Date(item["lastLoginAt"]).toLocaleString() : "Never"}
+                                  >
+                                    {item["lastLoginAt"] ? new Date(item["lastLoginAt"]).toLocaleDateString() : "Never"}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-500">
+                                  <div
+                                    className="max-w-32 truncate"
+                                    title={item["firebaseSynced"] ? "Synced" : "Not Synced"}
+                                  >
+                                    <span
+                                      className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                        item.firebaseSynced
+                                          ? 'bg-green-100 text-green-800'
+                                          : 'bg-red-100 text-red-800'
+                                      }`}
+                                    >
+                                      {item.firebaseSynced ? "Synced" : "Not Synced"}
+                                    </span>
+                                  </div>
+                                </td>
+                              </>
                             )}
                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                               <div className="flex items-center justify-end space-x-2">
+                                {activeTab === "users" && (
+                                  <button
+                                    onClick={() => openRoleModal(item)}
+                                    className={`p-2 rounded-xl transition-all duration-300 transform hover:scale-110 ${
+                                      item.role === 'admin' 
+                                        ? 'text-purple-600 hover:text-purple-700 hover:bg-purple-50' 
+                                        : 'text-blue-600 hover:text-blue-700 hover:bg-blue-50'
+                                    }`}
+                                    title={`Toggle role (current: ${item.role})`}
+                                  >
+                                    <Users className="w-4 h-4" />
+                                  </button>
+                                )}
                                 <button
                                   onClick={() => handleEdit(item)}
                                   className="p-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-xl transition-all duration-300 transform hover:scale-110"
@@ -672,7 +985,7 @@ const AdminDashboard = () => {
                                   <Edit2 className="w-4 h-4" />
                                 </button>
                                 <button
-                                  onClick={() => handleDelete(item.id)}
+                                  onClick={() => handleDelete(activeTab === "users" ? item.uid : item.id)}
                                   className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-xl transition-all duration-300 transform hover:scale-110"
                                   title="Delete"
                                 >
@@ -877,7 +1190,7 @@ const AdminDashboard = () => {
               <div className="flex items-center justify-between p-8 border-b border-slate-200/50">
                 <h3 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
                   {modalType === "add" ? "Add" : "Edit"}{" "}
-                  {activeTab === "courses" ? "Course" : "Faculty Member"}
+                  {activeTab === "courses" ? "Course" : activeTab === "faculty" ? "Faculty" : "User"}
                 </h3>
                 <button
                   onClick={() => setShowModal(false)}
@@ -890,7 +1203,9 @@ const AdminDashboard = () => {
               <div className="max-h-96 overflow-y-auto p-8">
                 {activeTab === "courses"
                   ? renderCourseForm()
-                  : renderFacultyForm()}
+                  : activeTab === "faculty"
+                  ? renderFacultyForm()
+                  : renderUserForm()}
               </div>
 
               <div className="flex justify-end space-x-4 p-8 pt-6 border-t border-slate-200/50">
@@ -908,6 +1223,45 @@ const AdminDashboard = () => {
                   {modalType === "add" ? "Add" : "Update"}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Role Confirmation Modal */}
+      {showRoleModal && selectedUserForRole && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+          <div className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-slate-200/60 p-8 max-w-md w-full">
+            <div className="flex items-center justify-between mb-6 border-b border-slate-200/50 pb-6">
+              <h3 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                Confirm Role Change
+              </h3>
+              <button
+                onClick={() => setShowRoleModal(false)}
+                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all duration-300 transform hover:scale-110"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <p className="text-slate-700 mb-6">
+              Are you sure you want to change{" "}
+              <span className="font-semibold">{selectedUserForRole.fullName || selectedUserForRole.email}</span>{" "}
+              from <span className="font-semibold">{selectedUserForRole.role}</span> to{" "}
+              <span className="font-semibold">{selectedUserForRole.role === 'admin' ? 'user' : 'admin'}</span>?
+            </p>
+            <div className="flex justify-end space-x-4">
+              <button
+                onClick={() => setShowRoleModal(false)}
+                className="px-6 py-3 border border-slate-300 rounded-2xl text-slate-700 hover:bg-slate-50 font-medium transition-all duration-300 hover:shadow-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRoleChange}
+                className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-2xl hover:from-blue-600 hover:to-purple-700 font-medium shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 border border-blue-300/30"
+              >
+                Confirm
+              </button>
             </div>
           </div>
         </div>

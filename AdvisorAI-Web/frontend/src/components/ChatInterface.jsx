@@ -90,13 +90,26 @@ const ChatInterface = ({
   // Handle feedback submission
   const handleFeedback = async (messageId, feedback) => {
     try {
+      // Submit feedback to backend
       await apiService.submitFeedback(messageId, feedback);
+      
       // Update the message to show feedback was submitted
-      setMessages(prev => prev.map(msg => 
-        msg.id === messageId 
-          ? { ...msg, feedback: feedback }
-          : msg
-      ));
+      setMessages(prev => {
+        const updated = prev.map(msg => 
+          msg.id === messageId 
+            ? { ...msg, feedback: feedback }
+            : msg
+        );
+        
+        // Update cache with feedback included
+        if (currentSessionId) {
+          chatCache.setSessionMessages(currentSessionId, updated);
+        }
+        
+        return updated;
+      });
+      
+      console.log(`📱 Feedback submitted: ${feedback} for message ${messageId}`);
     } catch (error) {
       console.error('Error submitting feedback:', error);
     }
@@ -106,35 +119,31 @@ const ChatInterface = ({
   const loadSessionMessages = async (sessionId) => {
     if (!sessionId) {
       // No session selected, show welcome message
-      setMessages([
-        {
-          id: 1,
-          type: 'ai',
-          content: "Hello! I'm your AI academic advisor. I can help you with course selection, professor recommendations, academic planning, and much more. What would you like to know?",
-          timestamp: new Date().toLocaleTimeString(),
-          sources: null
-        }
-      ]);
+      const welcomeMessage = {
+        id: 1,
+        type: 'ai',
+        content: "Hello! I'm your AI academic advisor. I can help you with course selection, professor recommendations, academic planning, and much more. What would you like to know?",
+        timestamp: new Date().toLocaleTimeString(),
+        sources: null,
+        feedback: null,
+        context: null
+      };
+      setMessages([welcomeMessage]);
       setSessionInitialized(true);
       return;
     }
 
     // Try to load from cache first
     const cached = chatCache.getSessionMessages(sessionId);
-    if (cached && Array.isArray(cached)) {
-      if (cached.length === 0) {
-        setMessages([
-          {
-            id: 1,
-            type: 'ai',
-            content: "Hello! I'm your AI academic advisor. I can help you with course selection, professor recommendations, academic planning, and much more. What would you like to know?",
-            timestamp: new Date().toLocaleTimeString(),
-            sources: null
-          }
-        ]);
-      } else {
-        setMessages(cached);
-      }
+    if (cached && Array.isArray(cached) && cached.length > 0) {
+      console.log("📱 Loaded messages from cache:", cached.length);
+      // Ensure all cached messages have feedback and context fields
+      const validatedMessages = cached.map(msg => ({
+        ...msg,
+        feedback: msg.feedback || null,
+        context: msg.context || null
+      }));
+      setMessages(validatedMessages);
       setSessionInitialized(true);
       return;
     }
@@ -148,35 +157,43 @@ const ChatInterface = ({
           type: msg.role === 'user' ? 'user' : 'ai',
           content: msg.content,
           timestamp: new Date(msg.timestamp).toLocaleTimeString(),
-          sources: msg.sources || null
+          sources: msg.sources || null,
+          feedback: msg.feedback || null, // Preserve feedback data
+          context: msg.context || null // Preserve context data
         }));
+        
         if (formattedMessages.length === 0) {
-          setMessages([
-            {
-              id: 1,
-              type: 'ai',
-              content: "Hello! I'm your AI academic advisor. I can help you with course selection, professor recommendations, academic planning, and much more. What would you like to know?",
-              timestamp: new Date().toLocaleTimeString(),
-              sources: null
-            }
-          ]);
+          // No messages in session, show welcome message
+          const welcomeMessage = {
+            id: 1,
+            type: 'ai',
+            content: "Hello! I'm your AI academic advisor. I can help you with course selection, professor recommendations, academic planning, and much more. What would you like to know?",
+            timestamp: new Date().toLocaleTimeString(),
+            sources: null,
+            feedback: null,
+            context: null
+          };
+          setMessages([welcomeMessage]);
         } else {
+          console.log("📱 Loaded messages from API:", formattedMessages.length);
           setMessages(formattedMessages);
         }
-        // Cache the messages
+        
+        // Cache the messages with feedback and context
         chatCache.setSessionMessages(sessionId, formattedMessages);
       }
     } catch (error) {
       console.error('Error loading session messages:', error);
-      setMessages([
-        {
-          id: 1,
-          type: 'system',
-          content: "Could not restore your previous chat session. Please start a new chat.",
-          timestamp: new Date().toLocaleTimeString(),
-          sources: null
-        }
-      ]);
+      const errorMessage = {
+        id: 1,
+        type: 'ai',
+        content: "Could not restore your previous chat session. Please start a new chat.",
+        timestamp: new Date().toLocaleTimeString(),
+        sources: null,
+        feedback: null,
+        context: null
+      };
+      setMessages([errorMessage]);
     } finally {
       setLoading(false);
       setSessionInitialized(true);
@@ -187,8 +204,26 @@ const ChatInterface = ({
   useEffect(() => {
     console.log("📱 ChatInterface: Session changed to:", currentSessionId);
     setSessionInitialized(false);
+    setMessages([]); // Clear messages before loading new session
     loadSessionMessages(currentSessionId);
   }, [currentSessionId]);
+
+  // Ensure chat history consistency - always maintain last 3 Q&A pairs
+  const ensureChatHistoryConsistency = (messages) => {
+    if (!messages || messages.length === 0) return messages;
+    
+    // Filter to only user and AI messages (exclude system messages)
+    const conversationMessages = messages.filter(msg => msg.type === 'user' || msg.type === 'ai');
+    
+    // If we have more than 6 messages, ensure we keep the last 6 (3 Q&A pairs)
+    if (conversationMessages.length > 6) {
+      const lastSixMessages = conversationMessages.slice(-6);
+      console.log("📱 Ensuring chat history consistency - keeping last 6 messages:", lastSixMessages.length);
+      return lastSixMessages;
+    }
+    
+    return conversationMessages;
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -205,7 +240,12 @@ const ChatInterface = ({
       id: Date.now(),
       type: 'user',
       content: inputMessage,
-      timestamp: new Date().toLocaleTimeString()
+      timestamp: new Date().toLocaleTimeString(),
+      feedback: null, // Initialize feedback as null
+      context: {
+        previousMessages: messages.filter(msg => msg.type === 'user' || msg.type === 'ai').slice(-4), // Last 4 messages for context
+        timestamp: new Date().toISOString()
+      }
     };
 
     // Store the current input message
@@ -215,13 +255,14 @@ const ChatInterface = ({
     setShowSources(false);
     setCurrentSources(null);
 
-    // Add user message immediately
-    setMessages(prev => {
-      const updated = [...prev, userMessage];
-      // Update cache
-      if (currentSessionId) chatCache.setSessionMessages(currentSessionId, updated);
-      return updated;
-    });
+    // Add user message immediately and get updated messages
+    const updatedMessages = [...messages, userMessage];
+    setMessages(updatedMessages);
+    
+    // Update cache immediately
+    if (currentSessionId) {
+      chatCache.setSessionMessages(currentSessionId, updatedMessages);
+    }
 
     try {
       // Ensure we have a valid session ID
@@ -230,14 +271,26 @@ const ChatInterface = ({
         throw new Error('No active chat session');
       }
 
-      // Get chat history for context (include the current user message)
-      const chatHistory = messages
+      // Get chat history for context - ensure we always include last 3 Q&A pairs (6 messages)
+      // This provides consistent context for the AI and prevents loss of conversation flow
+      // Note: We send clean chat history to AI, but store full context for fine-tuning
+      const chatHistory = updatedMessages
         .filter(msg => msg.type === 'user' || msg.type === 'ai')
-        .slice(-6) // Last 6 messages for context
+        .slice(-6) // Last 6 messages for context (3 Q&A pairs)
         .map(msg => ({
           role: msg.type === 'user' ? 'user' : 'assistant',
           content: msg.content
+          // Note: We don't send context, timestamp, or feedback to AI
+          // This keeps the chat history lightweight for AI processing
+          // Full context is stored separately for fine-tuning purposes
         }));
+
+      console.log("📱 Sending chat history:", {
+        totalMessages: updatedMessages.length,
+        filteredMessages: updatedMessages.filter(msg => msg.type === 'user' || msg.type === 'ai').length,
+        chatHistoryLength: chatHistory.length,
+        chatHistory: chatHistory
+      });
 
       // Send message to RAG service with session ID
       const response = await apiService.sendChatMessage(currentInput, chatHistory, currentSessionId);
@@ -250,7 +303,15 @@ const ChatInterface = ({
           type: 'ai',
           content: response.response,
           timestamp: new Date().toLocaleTimeString(),
-          sources: response.sources
+          sources: response.sources,
+          feedback: null, // Initialize feedback as null
+          context: {
+            previousMessages: chatHistory, // Save the context that was sent to AI
+            userQuestion: currentInput,
+            timestamp: new Date().toISOString(),
+            // Note: This context is stored in DB for fine-tuning but not sent to AI
+            // The AI receives clean chat history without this metadata
+          }
         };
 
         // Debug logging for response structure
@@ -270,8 +331,10 @@ const ChatInterface = ({
 
         setMessages(prev => {
           const updated = [...prev, aiMessage];
-          // Update cache
-          if (currentSessionId) chatCache.setSessionMessages(currentSessionId, updated);
+          // Ensure chat history consistency before updating cache
+          const consistentMessages = ensureChatHistoryConsistency(updated);
+          // Update cache with consistent messages
+          if (currentSessionId) chatCache.setSessionMessages(currentSessionId, consistentMessages);
           return updated;
         });
         setCurrentSources(response.sources);
@@ -306,9 +369,18 @@ const ChatInterface = ({
         type: 'ai',
         content: "I apologize, but I'm experiencing some technical difficulties. Please try again in a moment.",
         timestamp: new Date().toLocaleTimeString(),
-        error: true
+        error: true,
+        feedback: null,
+        context: null
       };
-      setMessages(prev => [...prev, errorMessage]);
+      setMessages(prev => {
+        const updated = [...prev, errorMessage];
+        // Ensure chat history consistency before updating cache
+        const consistentMessages = ensureChatHistoryConsistency(updated);
+        // Update cache with consistent messages
+        if (currentSessionId) chatCache.setSessionMessages(currentSessionId, consistentMessages);
+        return updated;
+      });
     } finally {
       setIsTyping(false);
     }
