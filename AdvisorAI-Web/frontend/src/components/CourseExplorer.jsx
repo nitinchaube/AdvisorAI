@@ -14,25 +14,25 @@ import { apiService } from "../services/api";
 
 // --- Card Components ---
 const ProfessorCard = ({ professor, renderStars, onSelectCourse }) => (
-  <div className="bg-white/90 backdrop-blur-sm p-6 rounded-2xl border border-gray-200/50 hover:shadow-xl transition-all duration-300 group flex flex-col h-full">
-    {/* Header Section */}
-    <div className="flex items-start justify-between mb-4">
-      <div className="flex-1 min-w-0">
-        <h3 className="font-bold text-gray-900 text-xl group-hover:text-blue-600 transition-colors duration-200 mb-3 leading-tight">
-          {professor["Full Name"] || professor.name}
-        </h3>
-        
-        {/* Badges Section */}
-        <div className="flex flex-wrap gap-2 mb-4">
-          <span className="px-3 py-1.5 bg-gradient-to-r from-orange-100 to-red-100 text-orange-700 text-sm font-semibold rounded-full border border-orange-200">
-            {professor["Title"] || "Professor"}
-          </span>
+  <div className="bg-white/90 backdrop-blur-sm p-6 rounded-2xl border border-gray-200/50 hover:shadow-xl transition-all duration-300 group flex flex-col min-h-[280px]">
+    <div className="flex-1 flex flex-col">
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex-1">
+          <h3 className="font-bold text-gray-900 text-lg group-hover:text-blue-600 transition-colors duration-200">
+            {professor.name}
+          </h3>
+          <div className="flex items-center space-x-2 mt-2">
+            <span className="px-3 py-1 bg-gradient-to-r from-orange-100 to-red-100 text-orange-700 text-xs font-semibold rounded-full">
+              {professor.title || "Professor"}
+            </span>
+            {professor.department && (
+              <span className="px-3 py-1 bg-gray-100 text-gray-600 text-xs font-medium rounded-full">
+                {professor.department}
+              </span>
+            )}
+          </div>
         </div>
-      </div>
-      
-      {/* Rating Section */}
-      <div className="flex flex-col items-end ml-4">
-        <div className="flex items-center space-x-1 mb-2">
+        <div className="flex items-center space-x-1 ml-4">
           {renderStars(professor.rating)}
         </div>
         <span className="text-lg font-bold text-gray-900">
@@ -42,20 +42,26 @@ const ProfessorCard = ({ professor, renderStars, onSelectCourse }) => (
           {professor.reviews || 0} reviews
         </span>
       </div>
-    </div>
-
-    {/* Brief Preview Section */}
-    <div className="flex-1 mb-4">
-      <div className="flex items-start">
-        <FlaskConical className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0 text-gray-400" />
-        <p className="text-gray-600 text-sm leading-relaxed">
-          {((professor["Research Interests"] || professor.researchInfo || professor["Bio"] || "No additional information available.").substring(0, 100))}...
-        </p>
+      <div className="flex-1 mt-4 space-y-4 text-sm text-gray-700">
+        <div className="flex items-start">
+          <Info className="w-4 h-4 mr-3 mt-0.5 flex-shrink-0 text-gray-400" />
+          <p className="text-gray-700 leading-relaxed overflow-hidden flex-1" style={{
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical'
+          }}>{professor.generalInfo}</p>
+        </div>
+        <div className="flex items-start">
+          <FlaskConical className="w-4 h-4 mr-3 mt-0.5 flex-shrink-0 text-gray-400" />
+          <p className="text-gray-700 leading-relaxed overflow-hidden flex-1" style={{
+            display: '-webkit-box',
+            WebkitLineClamp: 3,
+            WebkitBoxOrient: 'vertical'
+          }}>{professor.researchInfo}</p>
+        </div>
       </div>
     </div>
-
-    {/* Action Section */}
-    <div className="mt-auto pt-4 flex justify-end">
+    <div className="mt-6 pt-4 border-t border-gray-100 flex justify-end">
       <button
         onClick={() => onSelectCourse(professor.id, 'professor')}
         className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white font-semibold py-2 px-4 rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl"
@@ -157,6 +163,13 @@ const CourseExplorer = ({ onSelectCourse }) => {
           apiService.getAllCourseReviews(),
           apiService.getAllProfessorReviews(),
         ]);
+        
+        console.log('API Responses:', {
+          courseResponse,
+          facultyResponse,
+          courseReviewsResponse,
+          profReviewsResponse
+        });
 
         //--- Process Course Reviews ---
         const courseRatings = {};
@@ -173,20 +186,68 @@ const CourseExplorer = ({ onSelectCourse }) => {
         const courses = (courseResponse?.courses || []).map(course => {
           const id = course.id || course["Course Code"];  
           const ratingInfo = courseRatings[id];
-            return {
-              id: id,
-              name: course["Course Title"] || course["Course Name"] || "",
-              code: course["Course Code"] || "",
-              description: course["Course Description"] || "",
-              department: course["Course Code"] ? course["Course Code"].split(" ")[0] : "Unknown",
-              credits: parseInt(course["Credits"]) || 3,
-              duration: course["Offered Semester"] || "Not specified",
-              instructor: course["Course Professor"] || "Not available",
-              rating: ratingInfo ? ratingInfo.total / ratingInfo.count : 0,
-              reviews: ratingInfo ? ratingInfo.count : 0,
-              difficulty: course.difficulty || "Intermediate",
-              category: 'course',
+          
+          // Extract department from course code more intelligently
+          const extractDepartment = (courseCode) => {
+            if (!courseCode) return "Unknown";
+            
+            // Common department prefixes at Stevens
+            const deptMap = {
+              'CS': 'Computer Science',
+              'CSIT': 'Computer Science & IT',
+              'MGT': 'Management',
+              'FIN': 'Finance',
+              'MKT': 'Marketing',
+              'ECON': 'Economics',
+              'MATH': 'Mathematics',
+              'PHYS': 'Physics',
+              'CHEM': 'Chemistry',
+              'BIO': 'Biology',
+              'ENG': 'Engineering',
+              'ME': 'Mechanical Engineering',
+              'EE': 'Electrical Engineering',
+              'CE': 'Civil Engineering',
+              'CHE': 'Chemical Engineering',
+              'BME': 'Biomedical Engineering',
+              'ENV': 'Environmental Engineering',
+              'AE': 'Aerospace Engineering',
+              'HUM': 'Humanities',
+              'HIST': 'History',
+              'LIT': 'Literature',
+              'PHIL': 'Philosophy',
+              'PSY': 'Psychology',
+              'SOC': 'Sociology',
+              'ART': 'Art',
+              'MUS': 'Music',
+              'THR': 'Theater',
+              'BUS': 'Business',
+              'LAW': 'Law',
+              'MED': 'Medicine',
+              'NUR': 'Nursing'
             };
+            
+            // Extract the department code (usually first part before space)
+            const deptCode = courseCode.split(' ')[0];
+            return deptMap[deptCode] || deptCode;
+          };
+          
+          const courseObj = {
+            id: id,
+            name: course["Course Title"] || course["Course Name"] || "",
+            code: course["Course Code"] || "",
+            description: course["Course Description"] || "",
+            department: extractDepartment(course["Course Code"]),
+            credits: parseInt(course["Credits"]) || 3,
+            duration: course["Offered Semester"] || "Not specified",
+            instructor: course["Course Professor"] || "Not available",
+            rating: ratingInfo ? ratingInfo.total / ratingInfo.count : 0,
+            reviews: ratingInfo ? ratingInfo.count : 0,
+            difficulty: course.difficulty || "Intermediate",
+            category: 'course',
+          };
+          
+          console.log('Processed course object:', courseObj);
+          return courseObj;
         });
 
         //--- Process Faculty Reviews ---
@@ -203,20 +264,44 @@ const CourseExplorer = ({ onSelectCourse }) => {
 
         const faculty = (facultyResponse?.faculty || []).map(prof => {
           const ratingInfo = professorRatings[prof.id];
-          return {
-            id: prof.id,
-            name: prof["Full Name"] || "",
-            generalInfo: prof["Bio"] || "No general information available.",
-            researchInfo: prof["Research Interests"] || "No research information available.",
-            department: prof["Department"] || "NA",
+          
+          // Ensure all required fields exist with fallbacks
+          const facultyObj = {
+            id: prof.id || `prof_${Math.random()}`, // Ensure ID exists
+            name: prof.name || "Unknown Professor",
+            title: prof.title || "Professor",
+            generalInfo: prof.generalInfo || "No general information available.",
+            researchInfo: prof.researchInfo || "No research information available.",
+            department: prof.department || null, // Will be null if not extractable
             rating: ratingInfo ? ratingInfo.total / ratingInfo.count : 0,
             reviews: ratingInfo ? ratingInfo.count : 0,
-            coursesTaught: [],
+            coursesTaught: prof.courses || [],
             category: 'professor',
+            // Additional fields for details view
+            education: prof.education || [],
+            publications: prof.publications || {},
+            honorsAndAwards: prof.honorsAndAwards || [],
+            grantsAndContracts: prof.grantsAndContracts || [],
+            experience: prof.experience || [],
+            institutionalService: prof.institutionalService || [],
+            professionalService: prof.professionalService || [],
+            professionalSocieties: prof.professionalSocieties || [],
+            appointments: prof.appointments || [],
+            profileURL: prof.profileURL || "",
+            address: prof.address || "",
+            phone: prof.phone || "",
+            website: prof.profileURL || ""
           };
+          
+          console.log('Processed faculty object:', facultyObj);
+          return facultyObj;
         });
 
-        setAllItems([...courses, ...faculty]);
+        const combinedItems = [...courses, ...faculty];
+        console.log('Combined items:', combinedItems);
+        console.log('Courses count:', courses.length);
+        console.log('Faculty count:', faculty.length);
+        setAllItems(combinedItems);
       } catch (error) {
         setError(error.message);
       } finally {
@@ -233,10 +318,19 @@ const CourseExplorer = ({ onSelectCourse }) => {
   ], [allItems]);
 
   const departments = useMemo(() => {
-    const uniqueDepts = [...new Set(allItems.map((c) => c.department.toLowerCase()))];
+    const uniqueDepts = [...new Set(allItems.map((c) => c.department?.toLowerCase()).filter(Boolean))];
+    
+    // Sort departments alphabetically and filter out empty/unknown ones
+    const sortedDepts = uniqueDepts
+      .filter(dept => dept && dept !== 'unknown' && dept !== 'stevens institute of technology')
+      .sort();
+    
     return [
       { id: "all", name: "All Departments" },
-      ...uniqueDepts.map((d) => ({ id: d, name: d.charAt(0).toUpperCase() + d.slice(1) })),
+      ...sortedDepts.map((d) => ({ 
+        id: d, 
+        name: d.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+      })),
     ];
   }, [allItems]);
 
@@ -246,7 +340,17 @@ const CourseExplorer = ({ onSelectCourse }) => {
 
     return allItems.filter(item => {
       const categoryMatch = activeCategory === 'all' || item.category === activeCategory;
-      const departmentMatch = selectedDepartment === 'all' || item.department.toLowerCase().includes(selectedDepartment);
+      
+      // Handle null/undefined departments
+      let departmentMatch = true;
+      if (selectedDepartment !== 'all') {
+        if (item.department) {
+          departmentMatch = item.department.toLowerCase().includes(selectedDepartment);
+        } else {
+          // If no department and we're filtering by a specific department, exclude the item
+          departmentMatch = false;
+        }
+      }
       
       if (!categoryMatch || !departmentMatch) {
         return false;
@@ -325,6 +429,7 @@ const CourseExplorer = ({ onSelectCourse }) => {
 
   if (loading) return <div className="h-full flex items-center justify-center">Loading...</div>;
   if (error) return <div className="h-full flex items-center justify-center text-red-600">Error: {error}</div>;
+  if (!allItems || allItems.length === 0) return <div className="h-full flex items-center justify-center text-gray-600">No data available.</div>;
 
   return (
     <div className="h-full w-full bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50 flex flex-col overflow-hidden">
