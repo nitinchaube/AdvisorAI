@@ -49,11 +49,11 @@ const Sidebar = () => {
       path: "/chat-history",
     },
     {
-      id: "ratings",
-      label: "Ratings & Reviews",
+      id: 'ratings',
+      label: 'Ratings & Reviews',
       icon: Star,
-      description: "Rate professors and courses",
-      path: "/ratings",
+      description: 'Rate professors and courses',
+      path: '/ratings'
     },
     {
       id: "courses",
@@ -63,6 +63,14 @@ const Sidebar = () => {
       path: "/course-explorer",
     },
     {
+      id: 'ratings',
+      label: 'Ratings & Reviews',
+      icon: Star,
+      description: 'Rate professors and courses',
+      path: '/ratings'
+    },
+    
+    {
       id: "analytics",
       label: "Analytics",
       icon: TrendingUp,
@@ -70,11 +78,11 @@ const Sidebar = () => {
       path: "/analytics",
     },
     {
-      id: "schedule",
-      label: "Schedule",
+      id: 'schedule',
+      label: 'Schedule',
       icon: Calendar,
-      description: "Plan your academic calendar",
-      path: "/schedule",
+      description: 'Plan your academic calendar',
+      path: '/schedule'
     },
     {
       id: "documents",
@@ -87,8 +95,8 @@ const Sidebar = () => {
 
   const getActiveTab = () => {
     const currentPath = location.pathname;
-    const menuItem = menuItems.find((item) => item.path === currentPath);
-    return menuItem ? menuItem.id : "chat";
+    const menuItem = menuItems.find(item => item.path === currentPath);
+    return menuItem ? menuItem.id : 'chat';
   };
 
   const handleNavigation = (path) => {
