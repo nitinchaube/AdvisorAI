@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   BookOpen,
   Search,
@@ -13,39 +14,54 @@ import { apiService } from "../services/api";
 
 // --- Card Components ---
 const ProfessorCard = ({ professor, renderStars, onSelectCourse }) => (
-  <div className="bg-white/90 backdrop-blur-sm p-6 rounded-2xl border border-gray-200/50 hover:shadow-xl transition-all duration-300 group flex flex-col">
-    <div className="flex-1">
-      <div className="flex items-start justify-between mb-2">
+  <div className="bg-white/90 backdrop-blur-sm p-6 rounded-2xl border border-gray-200/50 hover:shadow-xl transition-all duration-300 group flex flex-col min-h-[280px]">
+    <div className="flex-1 flex flex-col">
+      <div className="flex items-start justify-between mb-3">
         <div className="flex-1">
           <h3 className="font-bold text-gray-900 text-lg group-hover:text-blue-600 transition-colors duration-200">
-            {professor["Full Name"] || professor.name}
+            {professor.name}
           </h3>
           <div className="flex items-center space-x-2 mt-2">
             <span className="px-3 py-1 bg-gradient-to-r from-orange-100 to-red-100 text-orange-700 text-xs font-semibold rounded-full">
-              {professor["Title"] || "Professor"}
+              {professor.title || "Professor"}
             </span>
-            <span className="px-3 py-1 bg-gray-100 text-gray-600 text-xs font-medium rounded-full">
-              {professor["Department"] || professor.department || "School of Business"}
-            </span>
+            {professor.department && (
+              <span className="px-3 py-1 bg-gray-100 text-gray-600 text-xs font-medium rounded-full">
+                {professor.department}
+              </span>
+            )}
           </div>
         </div>
-        <div className="flex items-center space-x-1">
+        <div className="flex items-center space-x-1 ml-4">
           {renderStars(professor.rating)}
-          <span className="text-sm font-semibold text-gray-900">{professor.rating?.toFixed ? professor.rating.toFixed(1) : (professor.rating || 0)}</span>
         </div>
+        <span className="text-lg font-bold text-gray-900">
+          {professor.rating?.toFixed ? professor.rating.toFixed(1) : (professor.rating || 0)}
+        </span>
+        <span className="text-xs text-gray-500">
+          {professor.reviews || 0} reviews
+        </span>
       </div>
-      <div className="mt-4 space-y-3 text-sm text-gray-700">
+      <div className="flex-1 mt-4 space-y-4 text-sm text-gray-700">
         <div className="flex items-start">
-          <Info className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0 text-gray-400" />
-          <p className="line-clamp-2">{professor["Bio"] || professor.generalInfo || "No general information available."}</p>
+          <Info className="w-4 h-4 mr-3 mt-0.5 flex-shrink-0 text-gray-400" />
+          <p className="text-gray-700 leading-relaxed overflow-hidden flex-1" style={{
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical'
+          }}>{professor.generalInfo}</p>
         </div>
         <div className="flex items-start">
-          <FlaskConical className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0 text-gray-400" />
-          <p className="line-clamp-3">{professor["Research Interests"] || professor.researchInfo || "No research information available."}</p>
+          <FlaskConical className="w-4 h-4 mr-3 mt-0.5 flex-shrink-0 text-gray-400" />
+          <p className="text-gray-700 leading-relaxed overflow-hidden flex-1" style={{
+            display: '-webkit-box',
+            WebkitLineClamp: 3,
+            WebkitBoxOrient: 'vertical'
+          }}>{professor.researchInfo}</p>
         </div>
       </div>
     </div>
-    <div className="mt-auto pt-4 flex justify-end">
+    <div className="mt-6 pt-4 border-t border-gray-100 flex justify-end">
       <button
         onClick={() => onSelectCourse(professor.id, 'professor')}
         className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white font-semibold py-2 px-4 rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl"
@@ -100,14 +116,42 @@ const CourseCard = ({ course, renderStars, getDifficultyColor, onSelectCourse })
 
 // --- Main Explorer Component ---
 const CourseExplorer = ({ onSelectCourse }) => {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedDepartment, setSelectedDepartment] = useState("all");
+  const [searchParams, setSearchParams] = useSearchParams();
+  
+  // Initialize state from URL parameters
+  const [searchTerm, setSearchTerm] = useState(searchParams.get("search") || "");
+  const [selectedDepartment, setSelectedDepartment] = useState(searchParams.get("department") || "all");
+  const [currentPage, setCurrentPage] = useState(parseInt(searchParams.get("page")) || 1);
+  const [activeCategory, setActiveCategory] = useState(searchParams.get("category") || "all");
+  
   const [allItems, setAllItems] = useState([]);
-  const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [activeCategory, setActiveCategory] = useState('all');
+
+  // Update URL when state changes
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (searchTerm) params.set("search", searchTerm);
+    if (selectedDepartment !== "all") params.set("department", selectedDepartment);
+    if (currentPage > 1) params.set("page", currentPage.toString());
+    if (activeCategory !== "all") params.set("category", activeCategory);
+    
+    setSearchParams(params, { replace: true });
+  }, [searchTerm, selectedDepartment, currentPage, activeCategory, setSearchParams]);
+
+  // Update local state when URL changes (for browser back/forward)
+  useEffect(() => {
+    const search = searchParams.get("search") || "";
+    const department = searchParams.get("department") || "all";
+    const page = parseInt(searchParams.get("page")) || 1;
+    const category = searchParams.get("category") || "all";
+    
+    setSearchTerm(search);
+    setSelectedDepartment(department);
+    setCurrentPage(page);
+    setActiveCategory(category);
+  }, [searchParams]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -119,6 +163,13 @@ const CourseExplorer = ({ onSelectCourse }) => {
           apiService.getAllCourseReviews(),
           apiService.getAllProfessorReviews(),
         ]);
+        
+        console.log('API Responses:', {
+          courseResponse,
+          facultyResponse,
+          courseReviewsResponse,
+          profReviewsResponse
+        });
 
         //--- Process Course Reviews ---
         const courseRatings = {};
@@ -135,20 +186,68 @@ const CourseExplorer = ({ onSelectCourse }) => {
         const courses = (courseResponse?.courses || []).map(course => {
           const id = course.id || course["Course Code"];  
           const ratingInfo = courseRatings[id];
-            return {
-              id: id,
-              name: course["Course Title"] || course["Course Name"] || "",
-              code: course["Course Code"] || "",
-              description: course["Course Description"] || "",
-              department: course["Course Code"] ? course["Course Code"].split(" ")[0] : "Unknown",
-              credits: parseInt(course["Credits"]) || 3,
-              duration: course["Offered Semester"] || "Not specified",
-              instructor: course["Course Professor"] || "Not available",
-              rating: ratingInfo ? ratingInfo.total / ratingInfo.count : 0,
-              reviews: ratingInfo ? ratingInfo.count : 0,
-              difficulty: course.difficulty || "Intermediate",
-              category: 'course',
+          
+          // Extract department from course code more intelligently
+          const extractDepartment = (courseCode) => {
+            if (!courseCode) return "Unknown";
+            
+            // Common department prefixes at Stevens
+            const deptMap = {
+              'CS': 'Computer Science',
+              'CSIT': 'Computer Science & IT',
+              'MGT': 'Management',
+              'FIN': 'Finance',
+              'MKT': 'Marketing',
+              'ECON': 'Economics',
+              'MATH': 'Mathematics',
+              'PHYS': 'Physics',
+              'CHEM': 'Chemistry',
+              'BIO': 'Biology',
+              'ENG': 'Engineering',
+              'ME': 'Mechanical Engineering',
+              'EE': 'Electrical Engineering',
+              'CE': 'Civil Engineering',
+              'CHE': 'Chemical Engineering',
+              'BME': 'Biomedical Engineering',
+              'ENV': 'Environmental Engineering',
+              'AE': 'Aerospace Engineering',
+              'HUM': 'Humanities',
+              'HIST': 'History',
+              'LIT': 'Literature',
+              'PHIL': 'Philosophy',
+              'PSY': 'Psychology',
+              'SOC': 'Sociology',
+              'ART': 'Art',
+              'MUS': 'Music',
+              'THR': 'Theater',
+              'BUS': 'Business',
+              'LAW': 'Law',
+              'MED': 'Medicine',
+              'NUR': 'Nursing'
             };
+            
+            // Extract the department code (usually first part before space)
+            const deptCode = courseCode.split(' ')[0];
+            return deptMap[deptCode] || deptCode;
+          };
+          
+          const courseObj = {
+            id: id,
+            name: course["Course Title"] || course["Course Name"] || "",
+            code: course["Course Code"] || "",
+            description: course["Course Description"] || "",
+            department: extractDepartment(course["Course Code"]),
+            credits: parseInt(course["Credits"]) || 3,
+            duration: course["Offered Semester"] || "Not specified",
+            instructor: course["Course Professor"] || "Not available",
+            rating: ratingInfo ? ratingInfo.total / ratingInfo.count : 0,
+            reviews: ratingInfo ? ratingInfo.count : 0,
+            difficulty: course.difficulty || "Intermediate",
+            category: 'course',
+          };
+          
+          console.log('Processed course object:', courseObj);
+          return courseObj;
         });
 
         //--- Process Faculty Reviews ---
@@ -165,20 +264,44 @@ const CourseExplorer = ({ onSelectCourse }) => {
 
         const faculty = (facultyResponse?.faculty || []).map(prof => {
           const ratingInfo = professorRatings[prof.id];
-          return {
-            id: prof.id,
-            name: prof["Full Name"] || "",
-            generalInfo: prof["Bio"] || "No general information available.",
-            researchInfo: prof["Research Interests"] || "No research information available.",
-            department: prof["Department"] || "School of Business",
+          
+          // Ensure all required fields exist with fallbacks
+          const facultyObj = {
+            id: prof.id || `prof_${Math.random()}`, // Ensure ID exists
+            name: prof.name || "Unknown Professor",
+            title: prof.title || "Professor",
+            generalInfo: prof.generalInfo || "No general information available.",
+            researchInfo: prof.researchInfo || "No research information available.",
+            department: prof.department || null, // Will be null if not extractable
             rating: ratingInfo ? ratingInfo.total / ratingInfo.count : 0,
             reviews: ratingInfo ? ratingInfo.count : 0,
-            coursesTaught: [],
+            coursesTaught: prof.courses || [],
             category: 'professor',
+            // Additional fields for details view
+            education: prof.education || [],
+            publications: prof.publications || {},
+            honorsAndAwards: prof.honorsAndAwards || [],
+            grantsAndContracts: prof.grantsAndContracts || [],
+            experience: prof.experience || [],
+            institutionalService: prof.institutionalService || [],
+            professionalService: prof.professionalService || [],
+            professionalSocieties: prof.professionalSocieties || [],
+            appointments: prof.appointments || [],
+            profileURL: prof.profileURL || "",
+            address: prof.address || "",
+            phone: prof.phone || "",
+            website: prof.profileURL || ""
           };
+          
+          console.log('Processed faculty object:', facultyObj);
+          return facultyObj;
         });
 
-        setAllItems([...courses, ...faculty]);
+        const combinedItems = [...courses, ...faculty];
+        console.log('Combined items:', combinedItems);
+        console.log('Courses count:', courses.length);
+        console.log('Faculty count:', faculty.length);
+        setAllItems(combinedItems);
       } catch (error) {
         setError(error.message);
       } finally {
@@ -195,10 +318,19 @@ const CourseExplorer = ({ onSelectCourse }) => {
   ], [allItems]);
 
   const departments = useMemo(() => {
-    const uniqueDepts = [...new Set(allItems.map((c) => c.department.toLowerCase()))];
+    const uniqueDepts = [...new Set(allItems.map((c) => c.department?.toLowerCase()).filter(Boolean))];
+    
+    // Sort departments alphabetically and filter out empty/unknown ones
+    const sortedDepts = uniqueDepts
+      .filter(dept => dept && dept !== 'unknown' && dept !== 'stevens institute of technology')
+      .sort();
+    
     return [
       { id: "all", name: "All Departments" },
-      ...uniqueDepts.map((d) => ({ id: d, name: d.charAt(0).toUpperCase() + d.slice(1) })),
+      ...sortedDepts.map((d) => ({ 
+        id: d, 
+        name: d.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+      })),
     ];
   }, [allItems]);
 
@@ -208,7 +340,17 @@ const CourseExplorer = ({ onSelectCourse }) => {
 
     return allItems.filter(item => {
       const categoryMatch = activeCategory === 'all' || item.category === activeCategory;
-      const departmentMatch = selectedDepartment === 'all' || item.department.toLowerCase().includes(selectedDepartment);
+      
+      // Handle null/undefined departments
+      let departmentMatch = true;
+      if (selectedDepartment !== 'all') {
+        if (item.department) {
+          departmentMatch = item.department.toLowerCase().includes(selectedDepartment);
+        } else {
+          // If no department and we're filtering by a specific department, exclude the item
+          departmentMatch = false;
+        }
+      }
       
       if (!categoryMatch || !departmentMatch) {
         return false;
@@ -287,6 +429,7 @@ const CourseExplorer = ({ onSelectCourse }) => {
 
   if (loading) return <div className="h-full flex items-center justify-center">Loading...</div>;
   if (error) return <div className="h-full flex items-center justify-center text-red-600">Error: {error}</div>;
+  if (!allItems || allItems.length === 0) return <div className="h-full flex items-center justify-center text-gray-600">No data available.</div>;
 
   return (
     <div className="h-full w-full bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50 flex flex-col overflow-hidden">
@@ -304,17 +447,45 @@ const CourseExplorer = ({ onSelectCourse }) => {
           <div className="mb-8">
             <div className="flex flex-col lg:flex-row gap-4">
               <div className="flex-1 relative">
-                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <input type="text" placeholder="Search by name, description, or course code..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-4 py-4 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm" />
+                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-6 h-6" />
+                <input 
+                  type="text" 
+                  placeholder="Search by name, description, or course code..." 
+                  value={searchTerm} 
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setCurrentPage(1); // Reset to first page when searching
+                  }} 
+                  className="w-full pl-14 pr-6 py-4 text-lg border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white/80 backdrop-blur-sm transition-all duration-200 shadow-sm" 
+                />
               </div>
-              <select value={selectedDepartment} onChange={(e) => setSelectedDepartment(e.target.value)} className="bg-white/80 backdrop-blur-sm border border-gray-200 text-gray-700 font-semibold py-4 px-6 rounded-2xl transition-all duration-200 shadow-sm hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+              <select 
+                value={selectedDepartment} 
+                onChange={(e) => {
+                  setSelectedDepartment(e.target.value);
+                  setCurrentPage(1); // Reset to first page when changing department
+                }} 
+                className="lg:w-64 bg-white/80 backdrop-blur-sm border border-gray-200 text-gray-700 font-semibold py-4 px-6 rounded-2xl transition-all duration-200 shadow-sm hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+              >
                 {departments.map((dept) => <option key={dept.id} value={dept.id}>{dept.name}</option>)}
               </select>
             </div>
           </div>
           <div className="mb-8">
-            <div className="flex space-x-2">
-              {filters.map((filter) => (<button key={filter.id} onClick={() => { setActiveCategory(filter.id); setCurrentPage(1); }} className={`px-6 py-3 rounded-2xl font-semibold transition-all duration-200 ${activeCategory === filter.id ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg' : 'bg-white/80 backdrop-blur-sm text-gray-600 hover:bg-white hover:shadow-md'}`}>{filter.label} ({filter.count})</button>))}
+            <div className="flex flex-wrap gap-3">
+              {filters.map((filter) => (
+                <button 
+                  key={filter.id} 
+                  onClick={() => { setActiveCategory(filter.id); setCurrentPage(1); }} 
+                  className={`px-5 py-3 rounded-xl font-semibold transition-all duration-200 text-sm whitespace-nowrap ${
+                    activeCategory === filter.id 
+                      ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg' 
+                      : 'bg-white/80 backdrop-blur-sm text-gray-600 hover:bg-white hover:shadow-md'
+                  }`}
+                >
+                  {filter.label} ({filter.count})
+                </button>
+              ))}
             </div>
           </div>
           {currentItems.length > 0 ? (
