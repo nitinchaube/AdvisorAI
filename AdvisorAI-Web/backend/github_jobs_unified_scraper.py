@@ -14,6 +14,7 @@ from datetime import datetime
 import os
 import pandas as pd
 import schedule
+import shutil
 
 # Configure logging
 logging.basicConfig(
@@ -32,7 +33,7 @@ class UnifiedGitHubScraper:
             'new_grad': {
                 'name': 'New Grad Positions',
                 'url': 'https://raw.githubusercontent.com/SimplifyJobs/New-Grad-Positions/dev/README.md',
-                'csv_file': 'github_new_grad_jobs.csv',
+                'csv_file': 'jobs.csv',
                 'hire_time': '2026',
                 'graduate_time': '2025-2026',
                 'job_type': 'New graduate position'
@@ -40,7 +41,7 @@ class UnifiedGitHubScraper:
             'internships': {
                 'name': 'Summer 2026 Internships',
                 'url': 'https://raw.githubusercontent.com/SimplifyJobs/Summer2026-Internships/dev/README.md',
-                'csv_file': 'summer_2026_internships.csv',
+                'csv_file': 'internships.csv',
                 'hire_time': 'Summer 2026',
                 'graduate_time': '2025-2026',
                 'job_type': 'Summer 2026 internship'
@@ -56,7 +57,7 @@ class UnifiedGitHubScraper:
             self.setup_csv_headers(repo_config['csv_file'])
         
     def setup_csv_headers(self, csv_filename):
-        """Initialize CSV file with headers"""
+        """Initialize CSV file with headers (only if file doesn't exist)"""
         headers = [
             'Position Title', 'Date', 'Apply', 'Work Model', 'Location', 
             'Company', 'Hire Time', 'Graduate Time', 'Company Industry', 
@@ -487,45 +488,65 @@ class UnifiedGitHubScraper:
         return True
 
     def save_to_csv(self, jobs, csv_filename, repo_name):
-        """Save jobs to CSV file"""
+        """Save jobs to CSV file by completely replacing the file with fresh data"""
         if not jobs:
             logging.warning(f"No jobs to save for {repo_name}")
             return
         
-        # Read existing data to avoid duplicates
-        existing_jobs = set()
+        # Create backup of existing file if it exists
         if os.path.exists(csv_filename):
+            backup_filename = f"{csv_filename}.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             try:
-                df = pd.read_csv(csv_filename)
-                for _, row in df.iterrows():
-                    identifier = f"{row.get('Position Title', '')}-{row.get('Company', '')}"
-                    existing_jobs.add(identifier)
+                shutil.copy2(csv_filename, backup_filename)
+                logging.info(f"Created backup: {backup_filename}")
             except Exception as e:
-                logging.error(f"Error reading existing CSV {csv_filename}: {e}")
+                logging.warning(f"Failed to create backup: {e}")
         
-        # Filter out duplicates
-        new_jobs = []
+        # Remove duplicates within the new data set (in case source has duplicates)
+        unique_jobs = []
+        seen_jobs = set()
+        
         for job in jobs:
-            identifier = f"{job['Position Title']}-{job['Company']}"
-            if identifier not in existing_jobs:
-                new_jobs.append(job)
+            # Create identifier for deduplication within this batch
+            title = str(job['Position Title']).strip().lower()
+            company = str(job['Company']).strip().lower()
+            location = str(job['Location']).strip().lower()
+            identifier = f"{title}|{company}|{location}"
+            
+            if identifier not in seen_jobs:
+                unique_jobs.append(job)
+                seen_jobs.add(identifier)
         
-        if new_jobs:
-            # Append new jobs to CSV
-            with open(csv_filename, 'a', newline='', encoding='utf-8') as file:
+        # Completely replace the CSV file with fresh data
+        try:
+            with open(csv_filename, 'w', newline='', encoding='utf-8') as file:
                 writer = csv.DictWriter(file, fieldnames=[
                     'Position Title', 'Date', 'Apply', 'Work Model', 'Location',
                     'Company', 'Hire Time', 'Graduate Time', 'Company Industry',
                     'Company Size', 'Salary', 'Qualifications'
                 ])
-                writer.writerows(new_jobs)
+                writer.writeheader()
+                writer.writerows(unique_jobs)
             
-            logging.info(f"Saved {len(new_jobs)} new jobs to {csv_filename} from {repo_name}")
+            removed_duplicates = len(jobs) - len(unique_jobs)
+            logging.info(f"Completely replaced {csv_filename} with {len(unique_jobs)} jobs from {repo_name}")
+            if removed_duplicates > 0:
+                logging.info(f"Removed {removed_duplicates} duplicate jobs within the source data")
             
             # Log statistics
-            self.log_statistics(new_jobs, repo_name)
-        else:
-            logging.info(f"No new jobs found for {repo_name} (all were duplicates)")
+            self.log_statistics(unique_jobs, repo_name)
+            
+        except Exception as e:
+            logging.error(f"Error writing to {csv_filename}: {e}")
+            # Try to restore from backup if write failed
+            backup_files = [f for f in os.listdir('.') if f.startswith(f"{csv_filename}.backup_")]
+            if backup_files:
+                latest_backup = sorted(backup_files)[-1]
+                try:
+                    shutil.copy2(latest_backup, csv_filename)
+                    logging.info(f"Restored from backup: {latest_backup}")
+                except Exception as restore_error:
+                    logging.error(f"Failed to restore from backup: {restore_error}")
 
     def log_statistics(self, jobs, repo_name):
         """Log job statistics"""
@@ -582,6 +603,8 @@ class UnifiedGitHubScraper:
                 
             except Exception as e:
                 logging.error(f"Error fixing categories in {csv_filename}: {e}")
+
+
 
     def scrape_repository(self, repo_key):
         """Scrape a specific repository"""
