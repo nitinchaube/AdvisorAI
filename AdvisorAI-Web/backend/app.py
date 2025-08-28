@@ -324,6 +324,27 @@ def signin():
         # Verify user credentials with Firebase
         user_record = auth.get_user_by_email(email)
 
+        # Sync Firebase custom claims with MongoDB role if needed
+        if mongo_db is not None:
+            try:
+                user_doc = mongo_db.users.find_one({'uid': user_record.uid})
+                if user_doc and user_doc.get('role'):
+                    # Check if Firebase custom claims match MongoDB role
+                    current_claims = user_record.custom_claims or {}
+                    mongo_role = user_doc.get('role')
+                    
+                    if current_claims.get('role') != mongo_role:
+                        # Update Firebase custom claims to match MongoDB
+                        custom_claims = {
+                            'role': mongo_role,
+                            'admin': mongo_role == 'admin'
+                        }
+                        auth.set_custom_user_claims(user_record.uid, custom_claims)
+                        print(f"✅ Synced Firebase custom claims for user {user_record.uid}: {custom_claims}")
+            except Exception as sync_error:
+                print(f"⚠️  Firebase custom claims sync failed: {sync_error}")
+                # Continue with signin even if sync fails
+
         # Create JWT token
         access_token = create_access_token(identity=user_record.uid)
 
@@ -358,6 +379,27 @@ def signin_with_token():
         # Get user record
         user_record = auth.get_user(user_id)
 
+        # Sync Firebase custom claims with MongoDB role if needed
+        if mongo_db is not None:
+            try:
+                user_doc = mongo_db.users.find_one({'uid': user_id})
+                if user_doc and user_doc.get('role'):
+                    # Check if Firebase custom claims match MongoDB role
+                    current_claims = user_record.custom_claims or {}
+                    mongo_role = user_doc.get('role')
+                    
+                    if current_claims.get('role') != mongo_role:
+                        # Update Firebase custom claims to match MongoDB
+                        custom_claims = {
+                            'role': mongo_role,
+                            'admin': mongo_role == 'admin'
+                        }
+                        auth.set_custom_user_claims(user_id, custom_claims)
+                        print(f"✅ Synced Firebase custom claims for user {user_id}: {custom_claims}")
+            except Exception as sync_error:
+                print(f"⚠️  Firebase custom claims sync failed: {sync_error}")
+                # Continue with signin even if sync fails
+
         return jsonify({
             "message": "Signin successful",
             "user": {
@@ -368,7 +410,7 @@ def signin_with_token():
         }), 200
 
     except Exception as e:
-        print(f"  Token signin error: {str(e)}")
+        print(f"  Signin with token error: {str(e)}")
         return jsonify({"error": "Invalid token"}), 401
 
 # Resume upload and parsing endpoint
@@ -638,16 +680,22 @@ def chat_query():
                     session_data = session_ref
                     messages = session_data.get('messages', [])
                     
-                    # Add user message
+                    # Add user message with context for fine-tuning
                     user_message = {
                         'id': f"user_{int(time.time() * 1000)}",
                         'role': 'user',
                         'content': query,
-                        'timestamp': datetime.now().isoformat()
+                        'timestamp': datetime.now().isoformat(),
+                        'context': {
+                            'chat_history': chat_history,  # Full context for fine-tuning
+                            'session_id': session_id,
+                            'user_id': user_id,
+                            'timestamp': datetime.now().isoformat()
+                        }
                     }
                     messages.append(user_message)
                     
-                    # Add AI response with agent metadata
+                    # Add AI response with context and agent metadata
                     ai_message = {
                         'id': f"ai_{int(time.time() * 1000)}",
                         'role': 'assistant',
@@ -655,6 +703,13 @@ def chat_query():
                         'timestamp': datetime.now().isoformat(),
                         'sources': result.get('sources', {}),
                         'processing_time': result.get('processing_time', 0),
+                        'context': {
+                            'user_question': query,
+                            'chat_history': chat_history,  # Full context for fine-tuning
+                            'session_id': session_id,
+                            'user_id': user_id,
+                            'timestamp': datetime.now().isoformat()
+                        },
                         'agent_metadata': {
                             'tools_used': result.get('sources', {}).get('collections_used', []),
                             'web_search_performed': result.get('sources', {}).get('web_search_performed', False),
@@ -704,7 +759,13 @@ def chat_query():
                     'timestamp': datetime.now(),
                     'sources': result.get('sources', {}),
                     'processing_time': result.get('processing_time', 0),
-                    'session_id': session_id
+                    'session_id': session_id,
+                    'context': {
+                        'chat_history': chat_history,  # Full context for fine-tuning
+                        'session_id': session_id,
+                        'user_id': user_id,
+                        'timestamp': datetime.now().isoformat()
+                    }
                 }
                 mongo_db.chat_history.insert_one(chat_doc)
             except Exception as e:
@@ -1937,7 +1998,325 @@ def test_cors():
         'method': request.method
     })
 
+# User Management Admin API Endpoints
+@app.route('/api/admin/users', methods=['GET'])
+@verify_token
+def get_all_users():
+    """Get all users for admin management"""
+    try:
+        user_id = g.user['uid']
+        
+        # Check if current user is admin
+        if mongo_db is not None:
+            user_doc = mongo_db.users.find_one({'uid': user_id})
+            if not user_doc or user_doc.get('role') != 'admin':
+                return jsonify({"success": False, "error": "Admin access required"}), 403
+            
+            # Get all users with sensitive information filtered out
+            users = list(mongo_db.users.find({}, {
+                'uid': 1,
+                'email': 1,
+                'fullName': 1,
+                'role': 1,
+                'profileCompleted': 1,
+                'createdAt': 1,
+                'updatedAt': 1,
+                'lastLoginAt': 1
+            }))
+            
+            # Convert ObjectId to string for JSON serialization
+            for user in users:
+                if '_id' in user:
+                    user['_id'] = str(user['_id'])
+            
+            return jsonify({
+                "success": True,
+                "users": users
+            }), 200
+        else:
+            return jsonify({"success": False, "error": "Database not available"}), 500
+            
+    except Exception as e:
+        print(f"  Get all users error: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/api/admin/users/<user_uid>', methods=['GET'])
+@verify_token
+def get_user_details(user_uid):
+    """Get detailed user information for admin management"""
+    try:
+        admin_id = g.user['uid']
+        
+        # Check if current user is admin
+        if mongo_db is not None:
+            admin_doc = mongo_db.users.find_one({'uid': admin_id})
+            if not admin_doc or admin_doc.get('role') != 'admin':
+                return jsonify({"success": False, "error": "Admin access required"}), 403
+            
+            # Get user details
+            user_doc = mongo_db.users.find_one({'uid': user_uid})
+            if not user_doc:
+                return jsonify({"success": False, "error": "User not found"}), 404
+            
+            # Convert ObjectId to string for JSON serialization
+            if '_id' in user_doc:
+                user_doc['_id'] = str(user_doc['_id'])
+            
+            return jsonify({
+                "success": True,
+                "user": user_doc
+            }), 200
+        else:
+            return jsonify({"success": False, "error": "Database not available"}), 500
+            
+    except Exception as e:
+        print(f"  Get user details error: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/admin/users/<user_uid>', methods=['PUT'])
+@verify_token
+def update_user_admin(user_uid):
+    """Update user information (admin only)"""
+    try:
+        admin_id = g.user['uid']
+        data = request.get_json()
+        
+        # Check if current user is admin
+        if mongo_db is not None:
+            admin_doc = mongo_db.users.find_one({'uid': admin_id})
+            if not admin_doc or admin_doc.get('role') != 'admin':
+                return jsonify({"success": False, "error": "Admin access required"}), 403
+            
+            # Get user to update
+            user_doc = mongo_db.users.find_one({'uid': user_uid})
+            if not user_doc:
+                return jsonify({"success": False, "error": "User not found"}), 404
+            
+            # Update allowed fields
+            allowed_fields = ['fullName', 'email', 'role', 'profileCompleted']
+            update_data = {}
+            
+            for field in allowed_fields:
+                if field in data:
+                    update_data[field] = data[field]
+            
+            if update_data:
+                update_data['updatedAt'] = datetime.now()
+                
+                # Update user document in MongoDB
+                mongo_db.users.update_one(
+                    {'uid': user_uid},
+                    {'$set': update_data}
+                )
+                
+                # If role is being updated, sync with Firebase custom claims
+                if 'role' in update_data:
+                    try:
+                        new_role = update_data['role']
+                        custom_claims = {
+                            'role': new_role,
+                            'admin': new_role == 'admin'
+                        }
+                        auth.set_custom_user_claims(user_uid, custom_claims)
+                        print(f"✅ Firebase custom claims updated for user {user_uid}: {custom_claims}")
+                    except Exception as firebase_error:
+                        print(f"⚠️  Firebase custom claims update failed: {firebase_error}")
+                        # Continue with MongoDB update even if Firebase fails
+                
+                return jsonify({
+                    "success": True,
+                    "message": "User updated successfully",
+                    "firebase_synced": 'role' in update_data
+                }), 200
+            else:
+                return jsonify({
+                    "success": False,
+                    "error": "No valid fields to update"
+                }), 400
+        else:
+            return jsonify({"success": False, "error": "Database not available"}), 500
+            
+    except Exception as e:
+        print(f"  Update user admin error: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/admin/users/<user_uid>', methods=['DELETE'])
+@verify_token
+def delete_user_admin(user_uid):
+    """Delete user (admin only)"""
+    try:
+        admin_id = g.user['uid']
+        
+        # Check if current user is admin
+        if mongo_db is not None:
+            admin_doc = mongo_db.users.find_one({'uid': admin_id})
+            if not admin_doc or admin_doc.get('role') != 'admin':
+                return jsonify({"success": False, "error": "Admin access required"}), 403
+            
+            # Prevent admin from deleting themselves
+            if admin_id == user_uid:
+                return jsonify({
+                    "success": False,
+                    "error": "Cannot delete your own account"
+                }), 400
+            
+            # Get user to delete
+            user_doc = mongo_db.users.find_one({'uid': user_uid})
+            if not user_doc:
+                return jsonify({"success": False, "error": "User not found"}), 404
+            
+            # Prevent deletion of other admin users
+            if user_doc.get('role') == 'admin':
+                return jsonify({
+                    "success": False,
+                    "error": "Cannot delete other admin users"
+                }), 400
+            
+            # Delete user and related data
+            mongo_db.users.delete_one({'uid': user_uid})
+            
+            # Clean up related data (optional - you can add more cleanup here)
+            mongo_db.chat_sessions.delete_many({'user_id': user_uid})
+            mongo_db.chat_history.delete_many({'user_id': user_uid})
+            mongo_db.message_feedback.delete_many({'user_id': user_uid})
+            mongo_db.course_reviews.delete_many({'user_id': user_uid})
+            mongo_db.professor_reviews.delete_many({'user_id': user_uid})
+            
+            return jsonify({
+                "success": True,
+                "message": "User deleted successfully"
+            }), 200
+        else:
+            return jsonify({"success": False, "error": "Database not available"}), 500
+            
+    except Exception as e:
+        print(f"  Delete user admin error: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/admin/users/<user_uid>/role', methods=['PUT'])
+@verify_token
+def update_user_role(user_uid):
+    """Update user role (admin only)"""
+    try:
+        admin_id = g.user['uid']
+        data = request.get_json()
+        new_role = data.get('role')
+        
+        if not new_role or new_role not in ['user', 'admin']:
+            return jsonify({
+                "success": False,
+                "error": "Role must be 'user' or 'admin'"
+            }), 400
+        
+        # Check if current user is admin
+        if mongo_db is not None:
+            admin_doc = mongo_db.users.find_one({'uid': admin_id})
+            if not admin_doc or admin_doc.get('role') != 'admin':
+                return jsonify({"success": False, "error": "Admin access required"}), 403
+            
+            # Get user to update
+            user_doc = mongo_db.users.find_one({'uid': user_uid})
+            if not user_doc:
+                return jsonify({"success": False, "error": "User not found"}), 404
+            
+            # Update user role in MongoDB
+            mongo_db.users.update_one(
+                {'uid': user_uid},
+                {
+                    '$set': {
+                        'role': new_role,
+                        'updatedAt': datetime.now()
+                    }
+                }
+            )
+            
+            # Update Firebase custom claims for role-based access control
+            try:
+                # Set custom claims in Firebase
+                custom_claims = {
+                    'role': new_role,
+                    'admin': new_role == 'admin'
+                }
+                auth.set_custom_user_claims(user_uid, custom_claims)
+                print(f"✅ Firebase custom claims updated for user {user_uid}: {custom_claims}")
+            except Exception as firebase_error:
+                print(f"⚠️  Firebase custom claims update failed: {firebase_error}")
+                # Continue with MongoDB update even if Firebase fails
+                # But log the error for investigation
+            
+            return jsonify({
+                "success": True,
+                "message": f"User role updated to {new_role} successfully",
+                "firebase_synced": True
+            }), 200
+        else:
+            return jsonify({"success": False, "error": "Database not available"}), 500
+            
+    except Exception as e:
+        print(f"  Update user role error: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/admin/sync-firebase-claims', methods=['POST'])
+@verify_token
+def sync_firebase_claims():
+    """Sync all users' Firebase custom claims with MongoDB roles (admin only)"""
+    try:
+        admin_id = g.user['uid']
+        
+        # Check if current user is admin
+        if mongo_db is not None:
+            admin_doc = mongo_db.users.find_one({'uid': admin_id})
+            if not admin_doc or admin_doc.get('role') != 'admin':
+                return jsonify({"success": False, "error": "Admin access required"}), 403
+            
+            # Get all users from MongoDB
+            users = list(mongo_db.users.find({}))
+            synced_count = 0
+            failed_count = 0
+            errors = []
+            
+            for user in users:
+                try:
+                    user_uid = user.get('uid')
+                    mongo_role = user.get('role', 'user')
+                    
+                    if user_uid:
+                        # Get current Firebase custom claims
+                        firebase_user = auth.get_user(user_uid)
+                        current_claims = firebase_user.custom_claims or {}
+                        
+                        # Check if claims need updating
+                        if current_claims.get('role') != mongo_role:
+                            custom_claims = {
+                                'role': mongo_role,
+                                'admin': mongo_role == 'admin'
+                            }
+                            auth.set_custom_user_claims(user_uid, custom_claims)
+                            synced_count += 1
+                            print(f"✅ Synced Firebase claims for user {user_uid}: {custom_claims}")
+                        else:
+                            print(f"ℹ️  Firebase claims already in sync for user {user_uid}")
+                            
+                except Exception as user_error:
+                    failed_count += 1
+                    error_msg = f"Failed to sync user {user.get('uid', 'unknown')}: {str(user_error)}"
+                    errors.append(error_msg)
+                    print(f"❌ {error_msg}")
+            
+            return jsonify({
+                "success": True,
+                "message": f"Firebase claims sync completed",
+                "total_users": len(users),
+                "synced_count": synced_count,
+                "failed_count": failed_count,
+                "errors": errors
+            }), 200
+        else:
+            return jsonify({"success": False, "error": "Database not available"}), 500
+            
+    except Exception as e:
+        print(f"  Sync Firebase claims error: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5002))

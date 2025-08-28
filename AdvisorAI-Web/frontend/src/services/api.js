@@ -705,6 +705,87 @@ export const adminAPI = {
     if (!response.ok) throw new Error("Failed to delete faculty member");
     return await response.json();
   },
+
+  // User Management Admin API
+  async getAllUsers() {
+    const authHeaders = await apiService.getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/admin/users`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders,
+      },
+    });
+    if (!response.ok) throw new Error("Failed to fetch users");
+    return await response.json();
+  },
+
+  async getUserDetails(userUid) {
+    const authHeaders = await apiService.getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/admin/users/${userUid}`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders,
+      },
+    });
+    if (!response.ok) throw new Error("Failed to fetch user details");
+    return await response.json();
+  },
+
+  async updateUser(userUid, userData) {
+    const authHeaders = await apiService.getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/admin/users/${userUid}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders,
+      },
+      body: JSON.stringify(userData),
+    });
+    if (!response.ok) throw new Error("Failed to update user");
+    return await response.json();
+  },
+
+  async deleteUser(userUid) {
+    const authHeaders = await apiService.getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/admin/users/${userUid}`, {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders,
+      },
+    });
+    if (!response.ok) throw new Error("Failed to delete user");
+    return await response.json();
+  },
+
+  async updateUserRole(userUid, role) {
+    const authHeaders = await apiService.getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/admin/users/${userUid}/role`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders,
+      },
+      body: JSON.stringify({ role }),
+    });
+    if (!response.ok) throw new Error("Failed to update user role");
+    return await response.json();
+  },
+
+  async syncFirebaseClaims() {
+    const authHeaders = await apiService.getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/admin/sync-firebase-claims`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders,
+      },
+    });
+    if (!response.ok) throw new Error("Failed to sync Firebase claims");
+    return await response.json();
+  },
 };
 
 export { apiService };
