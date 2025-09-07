@@ -74,13 +74,7 @@ const Sidebar = () => {
       description: "Browse and search courses",
       path: "/course-explorer",
     },
-    {
-      id: 'ratings',
-      label: 'Ratings & Reviews',
-      icon: Star,
-      description: 'Rate professors and courses',
-      path: '/ratings'
-    },
+    
     
     {
       id: "analytics",

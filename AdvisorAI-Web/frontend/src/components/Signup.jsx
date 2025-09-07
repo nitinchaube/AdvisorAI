@@ -81,13 +81,24 @@ const Signup = () => {
       localStorage.setItem('backendToken', backendResponse.access_token);
       console.log("💾 Backend token stored");
       
-      setSuccess("Account created successfully! Redirecting to profile completion...");
-      console.log("🎉 Signup completed successfully");
-      
-      // Redirect to profile completion after a short delay
-      setTimeout(() => {
-        navigate('/profile-completion');
-      }, 2000);
+      // Step 5: Check if email verification is required
+      if (backendResponse.verification_required) {
+        setSuccess("Account created successfully! Please verify your email to continue.");
+        console.log("📧 Email verification required, redirecting to verification page...");
+        
+        // Redirect to email verification after a short delay
+        setTimeout(() => {
+          navigate('/email-verification');
+        }, 2000);
+      } else {
+        setSuccess("Account created successfully! Redirecting to profile completion...");
+        console.log("🎉 Signup completed successfully");
+        
+        // Redirect to profile completion after a short delay
+        setTimeout(() => {
+          navigate('/profile-completion');
+        }, 2000);
+      }
       
     } catch (error) {
       console.error('❌ Signup error:', error);
