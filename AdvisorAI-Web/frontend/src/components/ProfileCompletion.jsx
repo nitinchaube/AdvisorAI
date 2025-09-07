@@ -358,7 +358,11 @@ const ProfileCompletion = () => {
             <div key={index} className="array-item">
               {typeof item === "object" && item !== null ? (
                 <div className="object-item">
-                  {Object.entries(item).map(([key, val]) => (
+                  {Object.entries(item)
+                    .filter(([key]) => 
+                      !["id", "last_resume_update", "role", " role", "uid", "updated_at", "email_verified", "emailVerified", "emailVerifiedAt", "created_at", "createdAt", "updatedAt", "lastResumeUpdate", "lastLoginAt", "firebaseSynced", "verification_required", "isAdmin", "admin", "userType", "status", "active", "verified", "lastLogin", "lastLoginTime", "timestamp", "dateCreated", "dateUpdated"].includes(key)
+                    )
+                    .map(([key, val]) => (
                     <div key={key} className="object-field">
                       <span className="field-label">
                         {formatFieldName(key)}:
@@ -383,7 +387,11 @@ const ProfileCompletion = () => {
     if (typeof value === "object" && value !== null) {
       return (
         <div className="object-field">
-          {Object.entries(value).map(([key, val]) => (
+          {Object.entries(value)
+            .filter(([key]) => 
+              !["id", "last_resume_update", "role", " role", "uid", "updated_at", "email_verified", "emailVerified", "emailVerifiedAt", "created_at", "createdAt", "updatedAt", "lastResumeUpdate", "lastLoginAt", "firebaseSynced", "verification_required", "isAdmin", "admin", "userType", "status", "active", "verified", "lastLogin", "lastLoginTime", "timestamp", "dateCreated", "dateUpdated"].includes(key)
+            )
+            .map(([key, val]) => (
             <div key={key} className="nested-field">
               <span className="field-label">{formatFieldName(key)}:</span>
               <span className="field-value">
@@ -842,6 +850,33 @@ const ProfileCompletion = () => {
                     "linkedin",
                     "profileCompleted",
                     "portfolioName",
+                    "id",
+                    "last_resume_update",
+                    "role",
+                    " role", // Note: there's a space in the actual field name
+                    "uid",
+                    "updated_at",
+                    "email_verified",
+                    "emailVerified",
+                    "emailVerifiedAt",
+                    "created_at",
+                    "createdAt",
+                    "updatedAt",
+                    "lastResumeUpdate",
+                    "lastLoginAt",
+                    "firebaseSynced",
+                    "verification_required",
+                    "isAdmin",
+                    "admin",
+                    "userType",
+                    "status",
+                    "active",
+                    "verified",
+                    "lastLogin",
+                    "lastLoginTime",
+                    "timestamp",
+                    "dateCreated",
+                    "dateUpdated",
                   ].includes(fieldName)
               )
               .map(([fieldName, fieldValue]) => (
@@ -871,7 +906,7 @@ const ProfileCompletion = () => {
                       >
                         {editingField === fieldName ? <EyeOff /> : <Edit />}
                       </button>
-                      {editingField === fieldName && (
+                      {editingField === fieldName && !Array.isArray(fieldValue) && (
                         <button
                           className="delete-btn"
                           onClick={() => {
@@ -889,373 +924,125 @@ const ProfileCompletion = () => {
                   <div className="field-content">
                     {editingField === fieldName ? (
                       <div className="edit-mode" style={{ marginTop: 8 }}>
-                        {/* Special handling for projects array */}
-                        {fieldName === "projects" &&
-                        Array.isArray(fieldValue) ? (
-                          <div
-                            className="array-edit"
-                            style={{
-                              background: "transparent",
-                              borderRadius: 0,
-                              padding: 0,
-                              marginBottom: 0,
-                            }}
-                          >
+                        {Array.isArray(fieldValue) ? (
+                          <div className="array-edit">
                             {fieldValue.map((item, index) => (
                               <div
                                 key={index}
                                 className="array-item-edit"
                                 style={{
-                                  background: "#38bdf8",
-                                  borderRadius: 14,
-                                  boxShadow: "0 2px 12px rgba(56,189,248,0.10)",
-                                  padding: "2rem 1.5rem 1.5rem 1.5rem",
-                                  marginBottom: 32,
-                                  border: "2px solid #38bdf8",
+                                  background: "#f8fafc",
+                                  border: "1px solid #e5e7eb",
+                                  borderRadius: 8,
+                                  padding: "1rem",
+                                  marginBottom: "1rem",
                                   position: "relative",
-                                  minWidth: 0,
-                                  overflow: "hidden",
                                 }}
                               >
-                                {/* Card header with icon and index */}
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    marginBottom: 18,
-                                  }}
-                                >
-                                  <Target
-                                    style={{
-                                      color: "#38bdf8",
-                                      marginRight: 10,
-                                      fontSize: 22,
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+                                  <label style={{ ...labelStyle, marginBottom: 0, fontSize: "0.9rem", fontWeight: 600 }}>
+                                    {formatFieldName(fieldName)} {index + 1}
+                                  </label>
+                                  <button
+                                    className="remove-item-btn"
+                                    onClick={() => {
+                                      const newValue = fieldValue.filter((_, i) => i !== index);
+                                      handleFormChange(fieldName, newValue);
                                     }}
-                                  />
-                                  <span
                                     style={{
-                                      fontWeight: 700,
-                                      color: "#232946",
-                                      fontSize: "1.13rem",
+                                      background: "#fef2f2",
+                                      border: "1px solid #fecaca",
+                                      color: "#ef4444",
+                                      borderRadius: 4,
+                                      padding: "0.25rem 0.5rem",
+                                      cursor: "pointer",
+                                      fontSize: "0.75rem",
                                     }}
+                                    title={`Remove ${formatFieldName(fieldName)} ${index + 1}`}
                                   >
-                                    Project {index + 1}
-                                  </span>
+                                    <Trash2 size={12} />
+                                  </button>
                                 </div>
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    flexDirection: "column",
-                                    gap: 18,
-                                  }}
-                                >
-                                  <div style={{ width: "100%" }}>
-                                    <label
-                                      style={{
-                                        ...labelStyle,
-                                        fontWeight: 700,
-                                        color: "#232946",
-                                        marginBottom: 6,
-                                      }}
-                                    >
-                                      Project Name
-                                    </label>
-                                    <input
-                                      type="text"
-                                      value={item.name || ""}
-                                      onChange={(e) => {
-                                        const newValue = [...fieldValue];
-                                        newValue[index] = {
-                                          ...item,
-                                          name: e.target.value,
-                                        };
-                                        handleFormChange(fieldName, newValue);
-                                      }}
-                                      placeholder="Project Name"
-                                      style={{
-                                        ...inputStyle,
-                                        background: "#fff",
-                                        color: "#232946",
-                                        fontWeight: 500,
-                                        fontSize: "1.08rem",
-                                        width: "100%",
-                                      }}
-                                      onFocus={(e) =>
-                                        Object.assign(
-                                          e.target.style,
-                                          inputFocusStyle
-                                        )
-                                      }
-                                      onBlur={(e) =>
-                                        Object.assign(
-                                          e.target.style,
-                                          inputStyle
-                                        )
-                                      }
-                                    />
+                                
+                                {typeof item === "object" && item !== null ? (
+                                  <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                                    {Object.entries(item)
+                                      .filter(([key]) => 
+                                        !["id", "last_resume_update", "role", " role", "uid", "updated_at", "email_verified", "emailVerified", "emailVerifiedAt", "created_at", "createdAt", "updatedAt", "lastResumeUpdate", "lastLoginAt", "firebaseSynced", "verification_required", "isAdmin", "admin", "userType", "status", "active", "verified", "lastLogin", "lastLoginTime", "timestamp", "dateCreated", "dateUpdated"].includes(key)
+                                      )
+                                      .map(([key, val]) => (
+                                      <div key={key}>
+                                        <label style={{ ...labelStyle, fontSize: "0.8rem", marginBottom: "0.25rem" }}>
+                                          {formatFieldName(key)}
+                                        </label>
+                                        <input
+                                          type="text"
+                                          value={String(val || "")}
+                                          onChange={(e) => {
+                                            const newValue = [...fieldValue];
+                                            newValue[index] = {
+                                              ...item,
+                                              [key]: e.target.value,
+                                            };
+                                            handleFormChange(fieldName, newValue);
+                                          }}
+                                          placeholder={`Enter ${formatFieldName(key).toLowerCase()}`}
+                                          style={{
+                                            ...inputStyle,
+                                            fontSize: "0.875rem",
+                                            padding: "0.5rem 0.75rem",
+                                            marginBottom: 0,
+                                          }}
+                                        />
+                                      </div>
+                                    ))}
                                   </div>
-                                  <div style={{ width: "100%" }}>
-                                    <label
-                                      style={{
-                                        ...labelStyle,
-                                        fontWeight: 700,
-                                        color: "#232946",
-                                        marginBottom: 6,
-                                      }}
-                                    >
-                                      Description
-                                    </label>
-                                    <textarea
-                                      value={item.description || ""}
-                                      onChange={(e) => {
-                                        const newValue = [...fieldValue];
-                                        newValue[index] = {
-                                          ...item,
-                                          description: e.target.value,
-                                        };
-                                        handleFormChange(fieldName, newValue);
-                                      }}
-                                      placeholder="Project Description"
-                                      style={{
-                                        ...inputStyle,
-                                        minHeight: 80,
-                                        resize: "vertical",
-                                        fontFamily: "inherit",
-                                        background: "#fff",
-                                        color: "#232946 !important",
-                                        fontWeight: 500,
-                                        fontSize: "1.08rem",
-                                        width: "100%",
-                                      }}
-                                      onFocus={(e) =>
-                                        Object.assign(e.target.style, {
-                                          ...inputFocusStyle,
-                                          minHeight: 100,
-                                        })
-                                      }
-                                      onBlur={(e) =>
-                                        Object.assign(e.target.style, {
-                                          ...inputStyle,
-                                          minHeight: 80,
-                                        })
-                                      }
-                                    />
-                                  </div>
-                                  <div style={{ width: "100%" }}>
-                                    <label
-                                      style={{
-                                        ...labelStyle,
-                                        fontWeight: 700,
-                                        color: "#232946",
-                                        marginBottom: 6,
-                                      }}
-                                    >
-                                      GitHub Link
-                                    </label>
-                                    <input
-                                      type="url"
-                                      value={item.github || ""}
-                                      onChange={(e) => {
-                                        const newValue = [...fieldValue];
-                                        newValue[index] = {
-                                          ...item,
-                                          github: e.target.value,
-                                        };
-                                        handleFormChange(fieldName, newValue);
-                                      }}
-                                      placeholder="Project GitHub Link (optional)"
-                                      style={{
-                                        ...inputStyle,
-                                        background: "#fff",
-                                        color: "#232946",
-                                        fontWeight: 500,
-                                        fontSize: "1.08rem",
-                                        width: "100%",
-                                      }}
-                                      onFocus={(e) =>
-                                        Object.assign(
-                                          e.target.style,
-                                          inputFocusStyle
-                                        )
-                                      }
-                                      onBlur={(e) =>
-                                        Object.assign(
-                                          e.target.style,
-                                          inputStyle
-                                        )
-                                      }
-                                    />
-                                  </div>
-                                </div>
-                                <button
-                                  className="remove-item-btn"
-                                  style={{
-                                    ...removeBtnStyle,
-                                    top: 18,
-                                    right: 18,
-                                    background: "#fff",
-                                    border: "1.5px solid #ef4444",
-                                    color: "#ef4444",
-                                    borderRadius: 8,
-                                    padding: 6,
-                                    zIndex: 2,
-                                  }}
-                                  onClick={() => {
-                                    const newValue = fieldValue.filter(
-                                      (_, i) => i !== index
-                                    );
-                                    handleFormChange(fieldName, newValue);
-                                  }}
-                                  title="Remove Project"
-                                >
-                                  <Trash2 />
-                                </button>
-                              </div>
-                            ))}
-                            <button
-                              className="add-item-btn"
-                              style={{
-                                ...addBtnStyle,
-                                marginTop: 8,
-                                boxShadow: "0 2px 8px rgba(56,189,248,0.13)",
-                                background: "#d1fae5",
-                                color: "#059669",
-                                border: "1.5px solid #059669",
-                              }}
-                              onClick={() => {
-                                const newValue = [
-                                  ...fieldValue,
-                                  { name: "", description: "", github: "" },
-                                ];
-                                handleFormChange(fieldName, newValue);
-                              }}
-                            >
-                              <PlusCircle /> Add Project
-                            </button>
-                          </div>
-                        ) : Array.isArray(fieldValue) ? (
-                          <div className={`array-edit ${
-                            fieldName === "skills" ? "skills-array" : ""
-                          }`}>
-                            {fieldValue.map((item, index) => (
-                              <div
-                                key={index}
-                                className={`array-item-edit ${
-                                  fieldName === "skills" ? "skill-item" : ""
-                                }`}
-                                style={{
-                                  background: fieldName === "skills" ? "#ffffff" : "#f3f8fd",
-                                  borderRadius: fieldName === "skills" ? 8 : 10,
-                                  padding: fieldName === "skills" ? "1rem" : 12,
-                                  marginBottom: fieldName === "skills" ? 0 : 10,
-                                  border: fieldName === "skills" ? "1px solid #e5e7eb" : "none",
-                                  position: fieldName === "skills" ? "relative" : "static",
-                                }}
-                              >
-                                {fieldName === "skills" ? (
-                                  <input
-                                    type="text"
-                                    value={item}
+                                ) : (
+                                  <textarea
+                                    value={String(item || "")}
                                     onChange={(e) => {
                                       const newValue = [...fieldValue];
                                       newValue[index] = e.target.value;
                                       handleFormChange(fieldName, newValue);
                                     }}
-                                    placeholder="Enter skill"
-                                    className="field-input"
+                                    placeholder={`Enter ${formatFieldName(fieldName).toLowerCase()}`}
                                     style={{
-                                      minHeight: 40,
-                                      textAlign: "center",
+                                      ...inputStyle,
+                                      minHeight: 60,
+                                      resize: "vertical",
                                       fontSize: "0.875rem",
                                     }}
                                   />
-                                ) : (
-                                  <>
-                                    <label style={labelStyle}>Item</label>
-                                    <textarea
-                                      value={
-                                        typeof item === "object"
-                                          ? JSON.stringify(item, null, 2)
-                                          : item
-                                      }
-                                      onChange={(e) => {
-                                        const newValue = [...fieldValue];
-                                        try {
-                                          newValue[index] = JSON.parse(
-                                            e.target.value
-                                          );
-                                        } catch {
-                                          newValue[index] = e.target.value;
-                                        }
-                                        handleFormChange(fieldName, newValue);
-                                      }}
-                                      placeholder={`Enter ${formatFieldName(
-                                        fieldName
-                                      ).toLowerCase()}`}
-                                      style={{
-                                        ...inputStyle,
-                                        minHeight: 50,
-                                        resize: "vertical",
-                                        fontFamily: "inherit",
-                                      }}
-                                      onFocus={(e) =>
-                                        Object.assign(e.target.style, {
-                                          ...inputFocusStyle,
-                                          minHeight: 70,
-                                        })
-                                      }
-                                      onBlur={(e) =>
-                                        Object.assign(e.target.style, {
-                                          ...inputStyle,
-                                          minHeight: 50,
-                                        })
-                                      }
-                                    />
-                                  </>
-                                )}
-                                {fieldName === "skills" ? (
-                                  <button
-                                    className="remove-item-btn"
-                                    onClick={() => {
-                                      const newValue = fieldValue.filter(
-                                        (_, i) => i !== index
-                                      );
-                                      handleFormChange(fieldName, newValue);
-                                    }}
-                                    title="Remove skill"
-                                  >
-                                    <Trash2 />
-                                  </button>
-                                ) : (
-                                  <button
-                                    className="remove-item-btn"
-                                    style={removeBtnStyle}
-                                    onClick={() => {
-                                      const newValue = fieldValue.filter(
-                                        (_, i) => i !== index
-                                      );
-                                      handleFormChange(fieldName, newValue);
-                                    }}
-                                  >
-                                    <Trash2 />
-                                  </button>
                                 )}
                               </div>
                             ))}
+                            
                             <button
                               className="add-item-btn"
-                              style={{
-                                ...addBtnStyle,
-                                background: fieldName === "skills" ? "#dbeafe" : addBtnStyle.background,
-                                color: fieldName === "skills" ? "#1d4ed8" : addBtnStyle.color,
-                                border: fieldName === "skills" ? "1.5px solid #1d4ed8" : addBtnStyle.border,
-                              }}
                               onClick={() => {
-                                const newValue = [...fieldValue, ""];
+                                const newValue = [...fieldValue];
+                                // If it's an object array, add a new object with default structure
+                                if (fieldValue.length > 0 && typeof fieldValue[0] === "object" && fieldValue[0] !== null) {
+                                  // Create a new object with the same structure as the first item
+                                  const newItem = {};
+                                  Object.keys(fieldValue[0]).forEach(key => {
+                                    newItem[key] = "";
+                                  });
+                                  newValue.push(newItem);
+                                } else {
+                                  newValue.push("");
+                                }
                                 handleFormChange(fieldName, newValue);
                               }}
+                              style={{
+                                ...addBtnStyle,
+                                background: "#f0f9ff",
+                                color: "#0ea5e9",
+                                border: "1px solid #0ea5e9",
+                                marginTop: "0.5rem",
+                              }}
                             >
-                              <PlusCircle /> {fieldName === "skills" ? "Add Skill" : "Add Item"}
+                              <PlusCircle size={16} /> Add {formatFieldName(fieldName)}
                             </button>
                           </div>
                         ) : (

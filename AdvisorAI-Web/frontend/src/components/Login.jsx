@@ -61,17 +61,25 @@ const Login = () => {
 
       // Step 3: Sign in with backend
       console.log("🔗 Signing in with backend...");
-      await apiService.signinWithBackend(idToken);
+      const backendResponse = await apiService.signinWithBackend(idToken);
       console.log("✅ Backend login successful");
 
-      // Step 4: Load user profile and navigate based on completion status
+      // Step 4: Check email verification status FIRST (before loading profile)
+      console.log("📧 Checking email verification status...");
+      if (backendResponse.verification_required || !result.user.emailVerified) {
+        console.log("🔐 Email verification required, redirecting to verification page...");
+        navigate('/email-verification');
+        return; // CRITICAL: Return here, don't continue to profile loading
+      }
+
+      // Step 5: Load user profile and navigate based on completion status
       console.log("🔍 Loading user profile...");
       const profile = await loadUserProfile();
       console.log("✅ User profile loaded:", profile);
 
       if (profile && profile.profileCompleted) {
-        console.log("📊 Profile complete, navigating to dashboard...");
-        navigate("/dashboard");
+        console.log("📊 Profile complete, navigating to chat...");
+        navigate("/chat");
       } else {
         console.log(
           "📊 Profile not complete or failed to load, navigating to profile completion..."

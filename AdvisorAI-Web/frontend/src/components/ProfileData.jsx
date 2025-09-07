@@ -145,7 +145,11 @@ const ProfileData = () => {
             >
               {typeof item === "object" && item !== null ? (
                 <div>
-                  {Object.entries(item).map(([key, val]) => (
+                  {Object.entries(item)
+                    .filter(([key]) => 
+                      !["id", "last_resume_update", "role", " role", "uid", "updated_at", "email_verified", "emailVerified", "emailVerifiedAt", "created_at", "createdAt", "updatedAt", "lastResumeUpdate", "lastLoginAt", "firebaseSynced", "verification_required", "isAdmin", "admin", "userType", "status", "active", "verified", "lastLogin", "lastLoginTime", "timestamp", "dateCreated", "dateUpdated"].includes(key)
+                    )
+                    .map(([key, val]) => (
                     <div key={key} style={{ marginBottom: "0.25rem" }}>
                       <strong>{formatFieldName(key)}:</strong>{" "}
                       {String(val || "Not specified")}
@@ -164,7 +168,11 @@ const ProfileData = () => {
     if (typeof value === "object" && value !== null) {
       return (
         <div style={{ marginLeft: "1rem" }}>
-          {Object.entries(value).map(([key, val]) => (
+          {Object.entries(value)
+            .filter(([key]) => 
+              !["id", "last_resume_update", "role", " role", "uid", "updated_at", "email_verified", "emailVerified", "emailVerifiedAt", "created_at", "createdAt", "updatedAt", "lastResumeUpdate", "lastLoginAt", "firebaseSynced", "verification_required", "isAdmin", "admin", "userType", "status", "active", "verified", "lastLogin", "lastLoginTime", "timestamp", "dateCreated", "dateUpdated"].includes(key)
+            )
+            .map(([key, val]) => (
             <div key={key} style={{ marginBottom: "0.25rem" }}>
               <strong>{formatFieldName(key)}:</strong>{" "}
               {String(val || "Not specified")}
@@ -492,7 +500,11 @@ const ProfileData = () => {
                 gap: "1.5rem",
               }}
             >
-              {Object.entries(profileData).map(([fieldName, fieldValue]) => (
+              {Object.entries(profileData)
+                .filter(([fieldName]) => 
+                  !["id", "last_resume_update", "role", " role", "uid", "updated_at", "email_verified", "emailVerified", "emailVerifiedAt", "created_at", "createdAt", "updatedAt", "lastResumeUpdate", "lastLoginAt", "firebaseSynced", "verification_required", "isAdmin", "admin", "userType", "status", "active", "verified", "lastLogin", "lastLoginTime", "timestamp", "dateCreated", "dateUpdated"].includes(fieldName)
+                )
+                .map(([fieldName, fieldValue]) => (
                 <div
                   key={fieldName}
                   style={{

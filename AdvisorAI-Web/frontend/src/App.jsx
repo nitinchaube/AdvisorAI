@@ -23,6 +23,7 @@ import PortfolioView from "./components/PortfolioView";
 import JobSearchPage from "./components/JobSearchPage.jsx";
 import InternshipSearchPage from "./components/InternshipSearchPage.jsx";
 import PlannerPage from "./components/PlannerPage.jsx";
+import EmailVerification from "./components/EmailVerification.jsx";
 
 function App() {
   return (
@@ -48,15 +49,25 @@ function App() {
             }
           />
 
-          {/* Protected Routes - Require authentication */}
-          <Route
-            path="/profile-completion"
-            element={
-              <ProtectedRoute requireProfileCompletion={false}>
-                <ProfileCompletion />
-              </ProtectedRoute>
-            }
-          />
+           {/* Email verification route */}
+           <Route 
+             path="/email-verification" 
+             element={
+               <ProtectedRoute requireEmailVerification={false} requireProfileCompletion={false}>
+                 <EmailVerification />
+               </ProtectedRoute>
+             } 
+           />
+
+           {/* Protected Routes - Require authentication */}
+           <Route
+             path="/profile-completion"
+             element={
+               <ProtectedRoute requireProfileCompletion={false}>
+                 <ProfileCompletion />
+               </ProtectedRoute>
+             }
+           />
           <Route
             path="/profile-data"
             element={
