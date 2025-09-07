@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     CLAUDE_MODEL: str = os.getenv("CLAUDE_MODEL", "claude-3-sonnet-20240229")
 
     # Vector Database Configuration
-    VECTORDB_DIR: str = os.getenv("VECTORDB_DIR", "./VectorDB")
+    VECTORDB_DIR: str = os.getenv("VECTORDB_DIR", "/Users/nitinchaube/Studies/IMPS/ALLAboutAI/Project/AdvisorAI/AdvisorAI/AdvisorAI-Web/backend/VectorDB")
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
 
     # Retrieval Configuration
