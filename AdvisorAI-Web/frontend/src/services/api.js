@@ -113,6 +113,21 @@ class ApiService {
           }
         }
 
+        // Handle 403 Forbidden (Email verification required)
+        if (response.status === 403 && data.requiresEmailVerification) {
+          console.log("📧 Email verification required - redirecting to verification page...");
+          if (typeof window !== 'undefined') {
+            window.location.href = '/email-verification';
+          }
+          throw new Error("Email verification required");
+        }
+
+        // Handle 404 Not Found (Profile not found) - this is okay for new users
+        if (response.status === 404 && endpoint.includes('/user/profile')) {
+          console.log("📋 User profile not found - this is normal for new users");
+          return { success: false, profile: { profileCompleted: false } };
+        }
+
         const errorMessage =
           data.error ||
           data.message ||
@@ -174,6 +189,26 @@ class ApiService {
     return this.makeRequest("/auth/signin-with-token", {
       method: "POST",
       body: JSON.stringify({ idToken }),
+    });
+  }
+
+  // Email verification methods
+  async sendVerificationEmail() {
+    return this.makeRequest('/auth/send-verification-email', {
+      method: 'POST',
+    });
+  }
+
+  async verifyEmail(idToken) {
+    return this.makeRequest('/auth/verify-email', {
+      method: 'POST',
+      body: JSON.stringify({ idToken }),
+    });
+  }
+
+  async checkVerificationStatus() {
+    return this.makeRequest('/auth/check-verification-status', {
+      method: 'POST',
     });
   }
 
