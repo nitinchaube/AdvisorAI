@@ -2429,7 +2429,7 @@ def sync_firebase_claims():
         return jsonify({"success": False, "error": str(e)}), 500
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5002))
+    port = int(os.environ.get('PORT', 5003))
     print(f"🚀 Starting AdvisorAI backend server on port {port}")
     print(f"📡 API Base URL: http://localhost:{port}/api")
     print(f"🔍 Job search endpoints:")
