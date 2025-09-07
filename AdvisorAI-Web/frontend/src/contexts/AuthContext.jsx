@@ -11,6 +11,7 @@ import {
   signOut,
   onAuthStateChanged,
   updateProfile,
+  sendEmailVerification,
 } from "firebase/auth";
 import { auth } from "../config/firebase";
 import { apiService } from "../services/api";
@@ -27,8 +28,9 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [userProfile, setUserProfile] = useState(null);
+  const [emailVerified, setEmailVerified] = useState(false);
 
-  // Sign up function
+  // Sign up function with email verification
   async function signup(email, password, displayName) {
     try {
       setError("");
@@ -42,6 +44,9 @@ export function AuthProvider({ children }) {
       if (displayName) {
         await updateProfile(result.user, { displayName });
       }
+
+      // Send email verification
+      await sendEmailVerification(result.user);
 
       return result;
     } catch (error) {
@@ -65,11 +70,76 @@ export function AuthProvider({ children }) {
     }
   }
 
+  // Send email verification
+  async function sendVerificationEmail() {
+    try {
+      if (currentUser && !currentUser.emailVerified) {
+        await sendEmailVerification(currentUser);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error("AuthContext: Send verification email error:", error);
+      setError(error.message);
+      throw error;
+    }
+  }
+
+  // Check email verification status
+  async function checkEmailVerification() {
+    try {
+      if (currentUser) {
+        // Reload user to get latest verification status
+        await currentUser.reload();
+        const verified = currentUser.emailVerified;
+        setEmailVerified(verified);
+        return verified;
+      }
+      return false;
+    } catch (error) {
+      console.error("AuthContext: Check email verification error:", error);
+      return false;
+    }
+  }
+
+  // Verify email with backend
+  async function verifyEmailWithBackend() {
+    try {
+      if (currentUser) {
+        const idToken = await currentUser.getIdToken();
+        const response = await apiService.verifyEmail(idToken);
+        if (response.emailVerified) {
+          setEmailVerified(true);
+          // Reload user profile to get updated verification status
+          await loadUserProfile();
+        }
+        return response;
+      }
+      return { emailVerified: false };
+    } catch (error) {
+      console.error("AuthContext: Verify email with backend error:", error);
+      throw error;
+    }
+  }
+
+  // Check verification status from backend
+  async function checkVerificationStatus() {
+    try {
+      const response = await apiService.checkVerificationStatus();
+      setEmailVerified(response.emailVerified);
+      return response;
+    } catch (error) {
+      console.error("AuthContext: Check verification status error:", error);
+      return { emailVerified: false };
+    }
+  }
+
   // Logout function
   async function logout() {
     try {
       // Clear user profile state
       setUserProfile(null);
+      setEmailVerified(false);
       // Clear backend token
       localStorage.removeItem("backendToken");
       // Clear chat cache
@@ -103,6 +173,11 @@ export function AuthProvider({ children }) {
     return isCompleted;
   }
 
+  // Check if email is verified
+  function isEmailVerified() {
+    return emailVerified || currentUser?.emailVerified || false;
+  }
+
   // Load user profile from backend
   const loadUserProfile = useCallback(async () => {
     // No need to check for currentUser here, as this is checked in the useEffect
@@ -111,6 +186,7 @@ export function AuthProvider({ children }) {
       const response = await apiService.getUserProfile();
       if (response.success && response.profile) {
         setUserProfile(response.profile);
+        setEmailVerified(response.profile.emailVerified || false);
         console.log("AuthContext: User profile loaded:", response.profile);
         return response.profile;
       }
@@ -119,7 +195,13 @@ export function AuthProvider({ children }) {
       return null;
     } catch (error) {
       console.error("AuthContext: Error loading user profile:", error);
-      // Set a default state on error to avoid blocking rendering
+      // If it's a 404 (profile not found), that's okay for new users
+      if (error.message.includes("404") || error.message.includes("not found")) {
+        console.log("AuthContext: Profile not found, setting default state");
+        setUserProfile({ profileCompleted: false });
+        return null;
+      }
+      // For other errors, set a default state to avoid blocking rendering
       setUserProfile({ profileCompleted: false });
       return null;
     }
@@ -144,6 +226,7 @@ export function AuthProvider({ children }) {
 
       if (user) {
         setCurrentUser(user);
+        setEmailVerified(user.emailVerified);
         
         // Auto-get backend token if user is authenticated but no backend token exists
         const backendToken = localStorage.getItem('backendToken');
@@ -162,6 +245,7 @@ export function AuthProvider({ children }) {
         // Clear all user-related state on logout
         setCurrentUser(null);
         setUserProfile(null);
+        setEmailVerified(false);
         localStorage.removeItem("backendToken");
       }
       setLoading(false);
@@ -188,6 +272,7 @@ export function AuthProvider({ children }) {
   const value = {
     currentUser,
     userProfile,
+    emailVerified,
     signup,
     login,
     logout,
@@ -199,6 +284,11 @@ export function AuthProvider({ children }) {
     setError,
     loading,
     isAdmin,
+    sendVerificationEmail,
+    checkEmailVerification,
+    verifyEmailWithBackend,
+    checkVerificationStatus,
+    isEmailVerified,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

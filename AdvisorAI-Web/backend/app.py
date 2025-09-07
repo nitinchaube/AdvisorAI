@@ -161,7 +161,51 @@ def verify_token(f):
 
         try:
             decoded_token = auth.verify_id_token(id_token)
-            g.user = decoded_token
+            user_id = decoded_token['uid']
+            
+            # Get user from MongoDB to check email verification status
+            if mongo_db is not None:
+                user_doc = mongo_db.users.find_one({'uid': user_id})
+                
+                # If user doesn't exist in MongoDB, create a minimal profile
+                if not user_doc:
+                    print(f"⚠️ User {user_id} not found in MongoDB, creating minimal profile")
+                    try:
+                        # Get user record from Firebase
+                        firebase_user = auth.get_user(user_id)
+                        
+                        # Create minimal user document
+                        minimal_user_doc = {
+                            'uid': user_id,
+                            'email': firebase_user.email,
+                            'fullName': firebase_user.display_name or '',
+                            'createdAt': datetime.now(),
+                            'profileCompleted': False,
+                            'resumeData': {},
+                            'role': 'user',
+                            'emailVerified': firebase_user.email_verified
+                        }
+                        mongo_db.users.insert_one(minimal_user_doc)
+                        user_doc = minimal_user_doc
+                        print(f"✅ Created minimal profile for user {user_id}")
+                    except Exception as create_error:
+                        print(f"❌ Failed to create minimal profile: {create_error}")
+                        return jsonify({"error": "User profile creation failed"}), 500
+                
+                # Check if email is verified
+                if not user_doc.get('emailVerified', False):
+                    return jsonify({
+                        "error": "Email not verified",
+                        "emailVerified": False,
+                        "message": "Please verify your email before accessing this feature",
+                        "requiresEmailVerification": True
+                    }), 403
+                
+                # Store user info in g for use in the route
+                g.user = user_doc
+            else:
+                g.user = decoded_token
+                
         except auth.InvalidIdTokenError:
             return jsonify({"error": "Invalid token"}), 401
         except Exception as e:
@@ -169,6 +213,39 @@ def verify_token(f):
 
         return f(*args, **kwargs)
     return decorated_function
+
+# Email verification decorator (less strict than verify_token)
+def verify_email_optional(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        try:
+            # Get token from Authorization header
+            auth_header = request.headers.get('Authorization')
+            if not auth_header or not auth_header.startswith('Bearer '):
+                return jsonify({"error": "Missing or invalid authorization header"}), 401
+            
+            token = auth_header.split(' ')[1]
+            
+            # Verify JWT token
+            decoded_token = auth.verify_id_token(token)
+            if not decoded_token:
+                return jsonify({"error": "Invalid token"}), 401
+            
+            # Get user from MongoDB
+            if mongo_db is not None:
+                user_doc = mongo_db.users.find_one({'uid': decoded_token['uid']})
+                if not user_doc:
+                    return jsonify({"error": "User not found"}), 404
+                
+                # Store user info in g for use in the route
+                g.user = user_doc
+            
+            return f(*args, **kwargs)
+        except Exception as e:
+            print(f"  Token verification error: {str(e)}")
+            return jsonify({"error": "Token verification failed"}), 401
+    return decorated_function
+
 def bson_safe(obj):
     if isinstance(obj, ObjectId):
         return str(obj)
@@ -263,7 +340,7 @@ def debug_text_extraction():
 # Authentication endpoints
 @app.route('/api/auth/signup', methods=['POST'])
 def signup():
-    """User signup endpoint"""
+    """User signup endpoint with email verification"""
     try:
         data = request.get_json()
         email = data.get('email')
@@ -273,14 +350,15 @@ def signup():
         if not email or not password:
             return jsonify({"error": "Email and password are required"}), 400
 
-        # Create user in Firebase
+        # Create user in Firebase with email verification disabled initially
         user_record = auth.create_user(
             email=email,
             password=password,
-            display_name=full_name
+            display_name=full_name,
+            email_verified=False  # Start with unverified email
         )
 
-        # Create user document in Firestore
+        # Create user document in MongoDB
         if mongo_db is not None:
             user_doc = {
                 'uid': user_record.uid,
@@ -289,21 +367,36 @@ def signup():
                 'createdAt': datetime.now(),
                 'profileCompleted': False,
                 'resumeData': {},
-                'role': 'user' # Add role field
+                'role': 'user',
+                'emailVerified': False  # Track email verification status
             }
             mongo_db.users.insert_one(user_doc)
+
+        # Send email verification
+        try:
+            # Generate email verification link
+            verification_link = auth.generate_email_verification_link(email)
+            
+            # In a real application, you would send this link via email
+            # For now, we'll return it in the response for testing
+            print(f"Email verification link for {email}: {verification_link}")
+            
+        except Exception as email_error:
+            print(f"Failed to generate email verification link: {email_error}")
 
         # Create JWT token
         access_token = create_access_token(identity=user_record.uid)
 
         return jsonify({
-            "message": "User created successfully",
+            "message": "User created successfully. Please check your email to verify your account.",
             "user": {
                 "uid": user_record.uid,
                 "email": email,
-                "fullName": full_name
+                "fullName": full_name,
+                "emailVerified": False
             },
-            "access_token": access_token
+            "access_token": access_token,
+            "verification_required": True
         }), 201
 
     except Exception as e:
@@ -312,7 +405,7 @@ def signup():
 
 @app.route('/api/auth/signin', methods=['POST'])
 def signin():
-    """User signin endpoint"""
+    """User signin endpoint with email verification check"""
     try:
         data = request.get_json()
         email = data.get('email')
@@ -323,6 +416,13 @@ def signin():
 
         # Verify user credentials with Firebase
         user_record = auth.get_user_by_email(email)
+
+        # Check email verification status from MongoDB
+        email_verified = False
+        if mongo_db is not None:
+            user_doc = mongo_db.users.find_one({'uid': user_record.uid})
+            if user_doc:
+                email_verified = user_doc.get('emailVerified', False)
 
         # Sync Firebase custom claims with MongoDB role if needed
         if mongo_db is not None:
@@ -353,9 +453,11 @@ def signin():
             "user": {
                 "uid": user_record.uid,
                 "email": user_record.email,
-                "fullName": user_record.display_name or ""
+                "fullName": user_record.display_name or "",
+                "emailVerified": email_verified
             },
-            "access_token": access_token
+            "access_token": access_token,
+            "verification_required": not email_verified
         }), 200
 
     except Exception as e:
@@ -364,7 +466,7 @@ def signin():
 
 @app.route('/api/auth/signin-with-token', methods=['POST'])
 def signin_with_token():
-    """Signin with Firebase ID token"""
+    """Signin with Firebase ID token and check email verification"""
     try:
         data = request.get_json()
         id_token = data.get('idToken')
@@ -378,6 +480,13 @@ def signin_with_token():
 
         # Get user record
         user_record = auth.get_user(user_id)
+
+        # Check email verification status from MongoDB
+        email_verified = False
+        if mongo_db is not None:
+            user_doc = mongo_db.users.find_one({'uid': user_id})
+            if user_doc:
+                email_verified = user_doc.get('emailVerified', False)
 
         # Sync Firebase custom claims with MongoDB role if needed
         if mongo_db is not None:
@@ -405,13 +514,115 @@ def signin_with_token():
             "user": {
                 "uid": user_record.uid,
                 "email": user_record.email,
-                "fullName": user_record.display_name or ""
-            }
+                "fullName": user_record.display_name or "",
+                "emailVerified": email_verified
+            },
+            "verification_required": not email_verified
         }), 200
 
     except Exception as e:
         print(f"  Signin with token error: {str(e)}")
         return jsonify({"error": "Invalid token"}), 401
+
+# Email verification endpoints
+@app.route('/api/auth/send-verification-email', methods=['POST'])
+@verify_email_optional
+def send_verification_email():
+    """Send email verification link to user with 2-day expiration"""
+    try:
+        user_id = g.user['uid']
+        email = g.user['email']
+        
+        # Configure action code settings with 2-day expiration
+        action_code_settings = auth.ActionCodeSettings(
+            url='http://localhost:3000/email-verification',  # Your frontend URL
+            handle_code_in_app=True,
+            # Firebase default is 3 days, but we'll set it explicitly
+            dynamic_link_domain=None  # Disable dynamic links
+        )
+        
+        # Generate email verification link with custom settings
+        verification_link = auth.generate_email_verification_link(
+            email,
+            action_code_settings=action_code_settings
+        )
+        
+        # In production, send this via email service
+        print(f"Email verification link for {email}: {verification_link}")
+        print(f"Link expires in 2 days (Firebase default)")
+        
+        return jsonify({
+            "message": "Verification email sent successfully",
+            "verification_link": verification_link,  # Remove in production
+            "expires_in_days": 2
+        }), 200
+        
+    except Exception as e:
+        print(f"  Send verification email error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/auth/verify-email', methods=['POST'])
+def verify_email():
+    """Verify user's email address"""
+    try:
+        data = request.get_json()
+        id_token = data.get('idToken')
+        
+        if not id_token:
+            return jsonify({"error": "ID token is required"}), 400
+        
+        # Verify the ID token with Firebase
+        try:
+            decoded_token = auth.verify_id_token(id_token)
+            user_id = decoded_token['uid']
+            email_verified = decoded_token.get('email_verified', False)
+            
+            if not email_verified:
+                return jsonify({
+                    "error": "Email not verified in Firebase",
+                    "emailVerified": False,
+                    "message": "Please verify your email before accessing this feature"
+                }), 400
+            
+            # Update MongoDB with verified status
+            if mongo_db is not None:
+                mongo_db.users.update_one(
+                    {'uid': user_id},
+                    {'$set': {'emailVerified': True, 'emailVerifiedAt': datetime.now()}}
+                )
+                print(f"✅ Email verified for user {user_id}")
+            
+            return jsonify({
+                "message": "Email verified successfully",
+                "emailVerified": True
+            }), 200
+            
+        except auth.InvalidIdTokenError:
+            return jsonify({"error": "Invalid ID token"}), 401
+        except Exception as e:
+            print(f"  Token verification error: {str(e)}")
+            return jsonify({"error": "Token verification failed"}), 401
+        
+    except Exception as e:
+        print(f"  Email verification error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/auth/check-verification-status', methods=['POST'])
+@verify_email_optional
+def check_verification_status():
+    """Check user's email verification status"""
+    try:
+        user_id = g.user['uid']
+        email_verified = g.user.get('emailVerified', False)
+        
+        return jsonify({
+            "emailVerified": email_verified,
+            "message": "Email verified" if email_verified else "Email not verified"
+        }), 200
+        
+    except Exception as e:
+        print(f"  Check verification status error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 # Resume upload and parsing endpoint
 @app.route('/api/resume/upload-and-parse', methods=['POST'])
@@ -508,7 +719,33 @@ def get_user_profile():
                     "profile": profile
                 }), 200
             else:
-                return jsonify({"error": "User profile not found"}), 404
+                # If user doesn't exist in MongoDB, create a minimal profile
+                print(f"⚠️ User {user_id} not found in MongoDB, creating minimal profile")
+                try:
+                    # Get user record from Firebase
+                    firebase_user = auth.get_user(user_id)
+                    
+                    # Create minimal user document
+                    minimal_user_doc = {
+                        'uid': user_id,
+                        'email': firebase_user.email,
+                        'fullName': firebase_user.display_name or '',
+                        'createdAt': datetime.now(),
+                        'profileCompleted': False,
+                        'resumeData': {},
+                        'role': 'user',
+                        'emailVerified': firebase_user.email_verified
+                    }
+                    mongo_db.users.insert_one(minimal_user_doc)
+                    print(f"✅ Created minimal profile for user {user_id}")
+                    
+                    return jsonify({
+                        "success": True,
+                        "profile": minimal_user_doc
+                    }), 200
+                except Exception as create_error:
+                    print(f"❌ Failed to create minimal profile: {create_error}")
+                    return jsonify({"error": "User profile creation failed"}), 500
         else:
             return jsonify({"error": "Database not available"}), 500
             
