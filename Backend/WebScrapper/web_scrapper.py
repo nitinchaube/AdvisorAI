@@ -166,12 +166,14 @@ def scrape_web_content(query, num_results=3, api_key=None):
     if not results:
         return "No relevant information found on the web."
     
-    # Combine all content
+    # Combine all content without JSON-like structure
     combined_content = []
     for result in results:
-        combined_content.append(f"Source: {result['url']}\n{result['content']}\n")
+        # Just add the content without source URLs to avoid JSON artifacts
+        if result['content'] and result['content'] != "No text content found":
+            combined_content.append(result['content'])
     
-    return "\n---\n".join(combined_content)
+    return " ".join(combined_content)
 
 # Example usage:
 if __name__ == "__main__":

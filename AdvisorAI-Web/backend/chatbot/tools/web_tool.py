@@ -28,20 +28,12 @@ class WebTool:
     def _enhance_query_with_stevens(self, query: str) -> str:
         """Enhance query by appending Stevens Institute of Technology context"""
         # Don't duplicate if already contains Stevens
-        if "stevens" in query.lower() or "institute" in query.lower():
+        if "stevens" in query.lower():
+            print(f"Web query already contains Stevens context: '{query}'")
             return query
-        
-        # For professor queries, use a more specific search
-        if "professor" in query.lower() or "prof" in query.lower():
-            # Extract professor name if possible
-            words = query.lower().split()
-            if "dehnad" in words:
-                enhanced_query = "Professor Dehnad Stevens Institute of Technology faculty"
-            else:
-                enhanced_query = f"{query} Stevens Institute of Technology faculty"
-        else:
-            # Add Stevens Institute of Technology to the query
-            enhanced_query = f"{query} Stevens Institute of Technology"
+    
+        # Add Stevens Institute of Technology to the query
+        enhanced_query = f"{query} Stevens Institute of Technology"
         
         print(f"Enhanced web query: '{query}' -> '{enhanced_query}'")
         return enhanced_query
@@ -60,28 +52,6 @@ class WebTool:
         
         if any(indicator in query_lower for indicator in current_time_indicators):
             print(f"Web search triggered: Query contains time indicator")
-            return True
-        
-        # Always use web search for specific technical or procedural questions
-        technical_indicators = [
-            "api", "endpoint", "database", "server", "deployment", "configuration",
-            "setup", "installation", "tutorial", "guide", "how to", "process", "procedure",
-            "apply", "register", "enroll", "submit", "contact", "email", "phone", "address"
-        ]
-        
-        if any(indicator in query_lower for indicator in technical_indicators):
-            print(f"Web search triggered: Query contains technical/procedural indicator")
-            return True
-        
-        # Use web search for questions that likely need current information
-        current_info_indicators = [
-            "what is", "tell me about", "information about", "details about", "latest",
-            "current status", "available", "offered", "schedule", "timing", "location",
-            "requirements", "prerequisites", "cost", "tuition", "fees", "scholarship"
-        ]
-        
-        if any(indicator in query_lower for indicator in current_info_indicators):
-            print(f"Web search triggered: Query likely needs current information")
             return True
         
         # If we have good documents from Chroma, don't web search (but be less strict)
@@ -198,15 +168,20 @@ class WebTool:
                 content = re.sub(r'\s+', ' ', content).strip()
                 # Remove HTML tags if any
                 content = re.sub(r'<[^>]+>', '', content)
-                # Remove special characters that might interfere
+                # Remove JSON-like artifacts and special characters that might interfere
                 content = re.sub(r'[^\w\s\.\,\!\?\;\:\-\(\)]', '', content)
+                # Remove any remaining JSON artifacts
+                content = re.sub(r'Source:\s*https?://[^\s]+\s*', '', content)
+                content = re.sub(r'---\s*', ' ', content)
+                # Clean up multiple spaces
+                content = re.sub(r'\s+', ' ', content).strip()
                 # Limit content length for processing but keep more content
                 content = content[:5000] if len(content) > 5000 else content
                 
-                print(f"✅ WEB: Successfully extracted {len(content)} characters of web content")
-                print(f"📝 WEB: Content preview: {content[:200]}...")
+                print(f"WEB: Successfully extracted {len(content)} characters of web content")
+                print(f"WEB: Content preview: {content[:200]}...")
             else:
-                print(f"⚠️  WEB: No meaningful web content extracted (length: {len(content) if content else 0})")
+                print(f"WEB: No meaningful web content extracted (length: {len(content) if content else 0})")
                 content = "No relevant web content found for this query."
 
             return {
@@ -221,7 +196,7 @@ class WebTool:
             }
 
         except Exception as e:
-            print(f"❌ WEB: Error in web search and scrape: {str(e)}")
+            print(f"WEB: Error in web search and scrape: {str(e)}")
             return {
                 "error": f"Web search and scrape failed: {str(e)}",
                 "success": False
