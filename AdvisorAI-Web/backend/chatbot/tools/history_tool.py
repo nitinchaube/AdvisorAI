@@ -7,7 +7,7 @@ class HistoryTool:
     def __init__(self):
         self.memory_store = get_memory_store()
     
-    async def get_relevant_history(self, user_id: str, current_query: str, limit: int = 5, provided_history: str = "") -> Dict[str, Any]:
+    async def get_relevant_history(self, user_id: str, current_query: str, limit: int = 3, provided_history: str = "") -> Dict[str, Any]:
         """Get relevant conversation history for the current query"""
         try:
             # If provided history is available, use it
@@ -30,7 +30,7 @@ class HistoryTool:
                 if current_entry:
                     history_entries.append(current_entry)
                 
-                # Always return the last 5 conversations for context (reference only)
+                # Always return the last 3 conversations for context
                 relevant_history = history_entries[-limit:] if history_entries else []
                 
                 return {
@@ -40,17 +40,17 @@ class HistoryTool:
                     "current_query": current_query,
                     "is_follow_up": self._is_follow_up_query(current_query),
                     "source": "provided",
-                    "purpose": "context_reference_only"
+                    "purpose": "conversation_context"
                 }
             
             # Otherwise, fetch from memory store
             history = await self.memory_store.get_conversation_history(user_id, limit=limit)
             
-            # Always return the last 5 conversations for context (reference only)
+            # Always return the last 3 conversations for context
             relevant_history = history[-limit:] if history else []
             is_follow_up = self._is_follow_up_query(current_query)
             
-            print(f"📚 HISTORY: Returning last {len(relevant_history)} conversations for context reference")
+            print(f"📚 HISTORY: Returning last {len(relevant_history)} conversations for context")
             
             return {
                 "relevant_history": relevant_history,
@@ -59,11 +59,11 @@ class HistoryTool:
                 "current_query": current_query,
                 "is_follow_up": is_follow_up,
                 "source": "memory",
-                "purpose": "context_reference_only"
+                "purpose": "conversation_context"
             }
             
         except Exception as e:
-            print(f"❌ HISTORY: Error getting history: {str(e)}")
+            print(f"HISTORY: Error getting history: {str(e)}")
             return {
                 "error": f"Failed to get history: {str(e)}",
                 "relevant_history": [],

@@ -344,16 +344,14 @@ class RAGService:
                              chat_history: str = None) -> str:
         """Build context-aware prompt for LLM"""
         
-        # Build context from vector database documents
+        # Build context from available information
         context_parts = []
         if docs and len(docs) > 0:
             context_parts.append("Available Information:")
             for i, doc in enumerate(docs, 1):
-                collection = doc.metadata.get("collection", "unknown")
-                score = doc.metadata.get("similarity_score", "unknown")
-                context_parts.append(f"[{i}. {collection} (relevance: {score:.4f})]: {doc.page_content}")
+                context_parts.append(f"[{i}]: {doc.page_content}")
         else:
-            context_parts.append("Available Information: No relevant documents found in our database.")
+            context_parts.append("Available Information: No relevant information found.")
         
         # Add web content if available
         if web_content:
@@ -373,24 +371,24 @@ class RAGService:
         
         # Get prompt template from environment or use default
         prompt_template = os.getenv("RAG_PROMPT_TEMPLATE", """
-You are an academic advisor for Stevens Institute of Technology.
-
-Below is information that may help answer the user's latest question. Use this information ONLY as context. Do NOT summarize, repeat, prioritize, or provide action plans, suggestions, or extra explanation. Only answer the user's latest question directly and minimally, using the context strictly for reference.
+You are a helpful academic advisor for Stevens Institute of Technology. Your goal is to provide comprehensive, accurate, and useful information to help students with their questions.
 
 {user_context}{chat_context}
 
+Available Information:
 {context}
 
-User Query (answer ONLY this, using the above as context): {user_query}
+User Query: {user_query}
 
 Instructions:
-1. Answer ONLY the latest user query above.
-2. Use the provided information as context, but do NOT repeat, summarize, prioritize, or provide action plans, suggestions, or extra explanation unless it directly answers the latest query.
-3. If the answer is not present in the context, say: "I don't know based on the information I have."
-4. Do NOT speculate, generalize, or add unrelated information.
-5. Do NOT mention your internal processes, code, or system architecture.
-6. Keep your response as short, direct, and minimal as possible.
-7. If the user asks about their personal information, use their profile data if available.
+1. Provide a complete and helpful answer to the user's question using the available information above.
+2. If the information is available in the context, provide it directly and comprehensively.
+3. If you have partial information, provide what you know and mention what additional details might be helpful.
+4. If the answer is not present in the context, provide a helpful response and suggest where they might find more information (e.g., "For the most current information, you can check the Stevens website at [specific URL]").
+5. Be conversational and helpful - don't just say "I don't know" without offering alternatives.
+6. If the user asks about their personal information, use their profile data if available.
+7. Include relevant links or specific resources when appropriate.
+8. If you're providing information from web sources, include the source URL for credibility.
 
 Response:
 """)
@@ -512,7 +510,7 @@ Response:
                     web_content = scrape_web_content(search_query, num_results=self.web_search_results)
                     
                     # Build enhanced prompt with web content
-                    enhanced_prompt = os.getenv("WEB_ENHANCED_PROMPT_TEMPLATE", """You are an intelligent academic advisor for Stevens Institute of Technology.
+                    enhanced_prompt = os.getenv("WEB_ENHANCED_PROMPT_TEMPLATE", """You are a helpful academic advisor for Stevens Institute of Technology. Your goal is to provide comprehensive, accurate, and useful information to help students with their questions.
 
 {user_context}{chat_context}
 
@@ -522,12 +520,20 @@ Available Information:
 Additional Web Information for the query "{user_query}":
 {web_content}
 
-Please provide a comprehensive answer using both the available information and web information above.
-Focus on Stevens Institute of Technology and be helpful to the student.
+Instructions:
+1. Provide a complete and helpful answer using both the available information and web information above.
+2. Synthesize information from both sources to give the most comprehensive answer possible.
+3. If there are conflicting information sources, mention this and provide both perspectives.
+4. Include specific details, dates, requirements, or other concrete information when available.
+5. Include relevant links or sources for credibility and further reference.
+6. Be conversational and helpful - provide actionable information rather than just directing users to websites.
+7. If you're providing information from web sources, include the source URL for credibility.
+
+Response:
 """).format(
                         user_context=f"\nUser Profile Information:\n{user_info}" if user_info else "",
                         chat_context=f"\nRecent Conversation:\n{formatted_chat_history}" if formatted_chat_history else "",
-                        context="\n\n".join([f"[{i+1}. {doc.metadata.get('collection', 'unknown')}]: {doc.page_content}" for i, doc in enumerate(docs)]) if docs else "No relevant documents found in our database.",
+                        context="\n\n".join([f"[{i+1}]: {doc.page_content}" for i, doc in enumerate(docs)]) if docs else "No relevant information found.",
                         user_query=user_query,
                         web_content=web_content
                     )
@@ -579,7 +585,7 @@ Focus on Stevens Institute of Technology and be helpful to the student.
                     web_content = scrape_web_content(search_query, num_results=self.web_search_results)
                     
                     # Build enhanced prompt with web content
-                    enhanced_prompt = os.getenv("WEB_ENHANCED_PROMPT_TEMPLATE", """You are an intelligent academic advisor for Stevens Institute of Technology.
+                    enhanced_prompt = os.getenv("WEB_ENHANCED_PROMPT_TEMPLATE", """You are a helpful academic advisor for Stevens Institute of Technology. Your goal is to provide comprehensive, accurate, and useful information to help students with their questions.
 
 Your initial response was: {initial_response}
 
@@ -588,8 +594,16 @@ Additional web information for the query "{user_query}":
 
 {user_context}{chat_context}
 
-Please provide a comprehensive answer using both your initial knowledge and the web information above.
-If the web information doesn't add value, stick with your original response.
+Instructions:
+1. Review your initial response and the additional web information.
+2. Provide a comprehensive answer that incorporates both your initial knowledge and the web information.
+3. If the web information adds valuable details, integrate them into your response.
+4. If the web information doesn't add value, stick with your original response but make it more helpful and detailed.
+5. Include specific details, dates, requirements, or other concrete information when available.
+6. Include relevant links or sources for credibility and further reference.
+7. Be conversational and helpful - provide actionable information rather than just directing users to websites.
+
+Response:
 """).format(
                         initial_response=initial_response,
                         user_query=user_query,
@@ -687,9 +701,7 @@ If the web information doesn't add value, stick with your original response.
             
             # Build prompt for web search only
             web_only_prompt = os.getenv("WEB_ONLY_PROMPT_TEMPLATE", """
-You are an academic advisor for Stevens Institute of Technology.
-
-Below is web information and context that may help answer the user's latest question. Use this information ONLY as context. Do NOT summarize, repeat, prioritize, or provide action plans, suggestions, or extra explanation. Only answer the user's latest question directly and minimally, using the context strictly for reference.
+You are a helpful academic advisor for Stevens Institute of Technology. Your goal is to provide comprehensive, accurate, and useful information to help students with their questions.
 
 {user_context}
 Chat History: 
@@ -698,16 +710,17 @@ Chat History:
 Web Information for the query "{user_query}":
 {web_content}
 
-User Query (answer ONLY this, using the above as context): {user_query}
+User Query: {user_query}
 
 Instructions:
-1. Answer ONLY the latest user query above.
-2. Use the provided information as context, but do NOT repeat, summarize, prioritize, or provide action plans, suggestions, or extra explanation unless it directly answers the latest query.
-3. If the answer is not present in the context, say: "I don't know based on the information I have."
-4. Do NOT speculate, generalize, or add unrelated information.
-5. Do NOT mention your internal processes, code, or system architecture.
-6. Keep your response as short, direct, and minimal as possible.
+1. Provide a complete and helpful answer to the user's question using the web information above.
+2. If the information is available in the web content, provide it directly and comprehensively.
+3. If you have partial information, provide what you know and mention what additional details might be helpful.
+4. Include specific details, dates, requirements, or other concrete information when available.
+5. Include relevant links or sources for credibility and further reference.
+6. Be conversational and helpful - provide actionable information rather than just directing users to websites.
 7. If the user asks about their personal information, use their profile data if available.
+8. If the answer is not present in the web content, provide a helpful response and suggest where they might find more information.
 
 Response:
 """)

@@ -1,6 +1,7 @@
 from typing import Dict, Any, List
 from langgraph.graph import StateGraph, END
 import asyncio
+import re
 from agents.chroma_agent import ChromaAgent
 from agents.web_agent import WebAgent
 from agents.history_agent import HistoryAgent
@@ -16,7 +17,7 @@ class LangGraphOrchestrator:
         self.llm_router = LLMRouter()
         self.memory_store = get_memory_store()
         
-        # Initialize agents
+        # Initialize agentsG
         self.chroma_agent = ChromaAgent()
         self.web_agent = WebAgent()
         self.history_agent = HistoryAgent()
@@ -31,7 +32,7 @@ class LangGraphOrchestrator:
         # Define the state schema
         workflow = StateGraph(Dict)
         
-        # Add nodes
+        # Add nod"
         workflow.add_node("router", self._router_node)
         workflow.add_node("tools", self._tools_node)
         workflow.add_node("reason", self._reason_node)
@@ -60,7 +61,7 @@ class LangGraphOrchestrator:
     async def _router_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Router node - LLM decides which tools to use using ReAct pattern"""
         query = state.get("query", "")
-        print(f"\n🎯 ROUTER: Analyzing query for tool selection: '{query}'")
+        print(f"\nROUTER: Analyzing query for tool selection: '{query}'")
         
         llm = self.llm_router.get_llm()
         
@@ -87,14 +88,14 @@ class LangGraphOrchestrator:
             print(f"🤖 ROUTER: Generating chat name...")
             name_response = await llm.ainvoke([{"role": "user", "content": chat_name_prompt}])
             chat_name = name_response.content.strip().replace('"', '').replace("'", "")
-            print(f"📝 ROUTER: Generated chat name: '{chat_name}'")
+            print(f"ROUTER: Generated chat name: '{chat_name}'")
             state["chat_name"] = chat_name
-            print(f"📝 ROUTER: Set chat_name in state: '{state['chat_name']}'")
+            print(f"ROUTER: Set chat_name in state: '{state['chat_name']}'")
             
         except Exception as e:
-            print(f"❌ ROUTER: Error generating chat name: {str(e)}")
+            print(f"ROUTER: Error generating chat name: {str(e)}")
             state["chat_name"] = "New Chat"
-            print(f"📝 ROUTER: Set fallback chat_name in state: '{state['chat_name']}'")
+            print(f"ROUTER: Set fallback chat_name in state: '{state['chat_name']}'")
         
         # Check if this is a simple query that can be answered directly
         try:
@@ -127,10 +128,10 @@ class LangGraphOrchestrator:
             }}
             """
             
-            print(f"🤖 ROUTER: Checking if query is simple...")
+            print(f"ROUTER: Checking if query is simple...")
             response = await llm.ainvoke([{"role": "user", "content": simple_check_prompt}])
             
-            print(f"📝 ROUTER: Simple check response: {response.content[:200]}...")
+            print(f"ROUTER: Simple check response: {response.content[:200]}...")
             
             try:
                 import json
@@ -150,11 +151,11 @@ class LangGraphOrchestrator:
                 is_simple = simple_check.get("is_simple", False)
                 reasoning = simple_check.get("reasoning", "No reasoning provided")
                 
-                print(f"📝 ROUTER: Simple check - {is_simple}: {reasoning}")
+                print(f"ROUTER: Simple check - {is_simple}: {reasoning}")
                 
                 # If it's a simple query, use general tool directly
                 if is_simple:
-                    print(f"✅ ROUTER: Simple query detected - using general tool directly")
+                    print(f"ROUTER: Simple query detected - using general tool directly")
                     state["tool_decision"] = {
                         "tools": ["general", "history"],
                         "primary_tool": "general",
@@ -165,11 +166,11 @@ class LangGraphOrchestrator:
                     return state
                 
             except Exception as parse_error:
-                print(f"❌ ROUTER: Error parsing simple check response: {parse_error}")
+                print(f"ROUTER: Error parsing simple check response: {parse_error}")
                 # Continue with normal ReAct flow if parsing fails
         
         except Exception as e:
-            print(f"❌ ROUTER: Error in simple query check: {str(e)}")
+            print(f"ROUTER: Error in simple query check: {str(e)}")
             # Continue with normal ReAct flow if simple check fails
         
         # ReAct-style prompt for one-shot tool selection
@@ -249,10 +250,10 @@ class LangGraphOrchestrator:
                 if "history" not in tools:
                     tools.append("history")
                 
-                print(f"✅ ROUTER: Selected tools: {tools}")
-                print(f"🎯 ROUTER: Primary tool: {primary_tool}")
-                print(f"🧠 ROUTER: Reasoning: {reasoning[:100]}...")
-                print(f"📊 ROUTER: Confidence: {confidence}")
+                print(f"ROUTER: Selected tools: {tools}")
+                print(f"ROUTER: Primary tool: {primary_tool}")
+                print(f"ROUTER: Reasoning: {reasoning[:100]}...")
+                print(f"ROUTER: Confidence: {confidence}")
                 
                 state["tool_decision"] = {
                     "tools": tools,
@@ -262,7 +263,7 @@ class LangGraphOrchestrator:
                 }
                 
             except Exception as parse_error:
-                print(f"❌ ROUTER: Error parsing LLM response: {parse_error}")
+                print(f"ROUTER: Error parsing LLM response: {parse_error}")
                 # Fallback to rule-based selection
                 tools = self._fallback_tool_selection(query)
                 state["tool_decision"] = {
@@ -273,7 +274,7 @@ class LangGraphOrchestrator:
                 }
                 
         except Exception as e:
-            print(f"❌ ROUTER: Error in LLM tool selection: {str(e)}")
+            print(f"ROUTER: Error in LLM tool selection: {str(e)}")
             # Fallback to rule-based selection
             tools = self._fallback_tool_selection(query)
             state["tool_decision"] = {
@@ -290,25 +291,8 @@ class LangGraphOrchestrator:
         query_lower = query.lower().strip()
         tools = ["history"]  # Always include history
         
-        # Check for general knowledge queries (NON-Stevens specific)
-        general_indicators = ["what is", "explain", "define", "how does", "why", "concept", "theory", "meaning of life", "philosophy"]
-        stevens_indicators = ["course", "cs", "class", "subject", "faculty", "professor", "admission", "requirement", "stevens", "institute", "university", "deep learning", "machine learning", "ai", "artificial intelligence", "data science", "computer science", "engineering", "program", "degree", "major", "minor", "dehnad", "professor"]
-        
-        # If it's a general knowledge query without Stevens context
-        if any(indicator in query_lower for indicator in general_indicators) and not any(indicator in query_lower for indicator in stevens_indicators):
-            tools.append("general")
-            print(f"🔄 FALLBACK: Using general tool for general knowledge query")
-        else:
-            # Stevens-specific or mixed queries
-            tools.append("chroma")
-            print(f"🔄 FALLBACK: Using chroma tool for Stevens-specific query")
-            
-            # Add web for current/recent information
-            current_indicators = ["current", "latest", "2024", "2025", "now", "recent", "contact", "phone", "email", "apply", "register", "available", "offer", "have", "provide", "teach", "include"]
-            if any(indicator in query_lower for indicator in current_indicators):
-                tools.append("web")
-                print(f"🔄 FALLBACK: Adding web tool for current information")
-        
+        tools.append("general")
+
         return tools
     
     async def _tools_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
@@ -317,23 +301,23 @@ class LangGraphOrchestrator:
         tools_to_use = tool_decision.get("tools", ["chroma"])
         primary_tool = tool_decision.get("primary_tool", "chroma")
         
-        print(f"\n🔧 TOOLS: Executing tools using ReAct pattern")
-        print(f"📋 TOOLS: Selected tools: {tools_to_use}")
-        print(f"🎯 TOOLS: Primary tool: {primary_tool}")
+        print(f"\TOOLS: Executing tools using ReAct pattern")
+        print(f" TOOLS: Selected tools: {tools_to_use}")
+        print(f" TOOLS: Primary tool: {primary_tool}")
         
         # Execute tools in parallel based on selection
         tasks = []
         
         if "chroma" in tools_to_use:
-            print(f"🔍 TOOLS: Starting Chroma search...")
+            print(f"TOOLS: Starting Chroma search...")
             tasks.append(self.chroma_agent.process(state))
         
         if "history" in tools_to_use:
-            print(f"📚 TOOLS: Starting History search...")
+            print(f"TOOLS: Starting History search...")
             tasks.append(self.history_agent.process(state))
         
         if "general" in tools_to_use:
-            print(f"🧠 TOOLS: Starting General knowledge...")
+            print(f"TOOLS: Starting General knowledge...")
             tasks.append(self.general_agent.process(state))
         
         # Note: Web search is handled separately in the reasoning phase
@@ -385,8 +369,8 @@ class LangGraphOrchestrator:
         available_info = []
         
         if chroma_results.get("documents"):
-            available_info.append(f"Vector Database Results: Found {len(chroma_results['documents'])} documents")
-            print(f"📊 REASON: Found {len(chroma_results.get('documents', []))} Chroma documents")
+            available_info.append(f"Found {len(chroma_results['documents'])} relevant information sources")
+            print(f"📊 REASON: Found {len(chroma_results.get('documents', []))} information sources")
         
         if general_answer:
             available_info.append("General Knowledge Available")
@@ -420,16 +404,16 @@ class LangGraphOrchestrator:
           * The question contains technical/procedural terms (apply, register, contact, email, phone, etc.)
           * The question asks for "what is", "tell me about", "information about" with likely current info needs
           * Available information is insufficient or unclear
-          * The question requires external context not in the database
+          * The question requires external context not in available information
           * The user asks for specific details not covered
-          * We have no or very few documents from the database
+          * We have no or very few relevant information sources
           * The question asks for specific professor contact information or current availability
           * The question asks for current course offerings or schedules
         - Set need_web_search to false if:
           * Available information is comprehensive and sufficient
           * The question is about general knowledge that's well covered
           * The answer can be provided from existing information
-          * We have very good similarity scores (< 0.6) from vector database
+          * We have very good similarity scores (< 0.6) from available information
           * It's a simple greeting or casual conversation
           * The general tool has provided a satisfactory answer
           * The question is basic and doesn't require current information
@@ -486,6 +470,12 @@ class LangGraphOrchestrator:
                 print(f"📝 REASON: Reasoning: {reasoning_result.get('reasoning', 'No reasoning provided')}")
                 print(f"📊 REASON: Confidence: {reasoning_result.get('confidence', 'Unknown')}")
                 
+                # If web search is needed, generate a specific search query
+                if reasoning_result.get('need_web_search', False):
+                    web_query = await self._generate_web_search_query(query, history_results, chroma_results, general_answer)
+                    state["web_search_query"] = web_query
+                    print(f"🔍 REASON: Generated web search query: '{web_query}'")
+                
             except Exception as parse_error:
                 print(f"❌ REASON: Error parsing LLM response: {parse_error}")
                 # Fallback reasoning - be more conservative about web search
@@ -512,6 +502,86 @@ class LangGraphOrchestrator:
         
         return state
     
+    async def _generate_web_search_query(self, original_query: str, history_results: Dict, chroma_results: Dict, general_answer: str) -> str:
+        """Generate a specific web search query based on conversation context and available information"""
+        llm = self.llm_router.get_llm()
+        
+        # Build conversation context
+        conversation_context = ""
+        if history_results.get("relevant_history"):
+            conversation_context = "Conversation History:\n"
+            for i, entry in enumerate(history_results["relevant_history"][-3:]):  # Last 3 conversations
+                conversation_context += f"Q{i+1}: {entry.get('query', 'Unknown')}\n"
+                conversation_context += f"A{i+1}: {entry.get('response', 'Unknown')[:200]}...\n"
+        
+        # Build available information context
+        available_info = []
+        if chroma_results.get("documents"):
+            available_info.append(f"Found {len(chroma_results['documents'])} relevant information sources")
+        if general_answer:
+            available_info.append("General knowledge available")
+        
+        context_info = "\n".join(available_info) if available_info else "No specific information available"
+        
+        web_query_prompt = f"""
+        You are an AI assistant that needs to generate a specific, targeted web search query for Stevens Institute of Technology information.
+
+        Original User Question: "{original_query}"
+
+        {conversation_context}
+
+        Available Information:
+        {context_info}
+
+        Your task is to create a specific web search query that will find the most relevant and current information to answer the user's question.
+
+        Guidelines for creating the search query:
+        1. **Make it specific and targeted** - don't use vague terms
+        2. **Include "Stevens Institute of Technology"** if the question is about Stevens
+        3. **Use specific keywords** that would appear in relevant web pages
+        4. **Include current year (2024/2025)** if asking about current information
+        5. **Use proper names** (professor names, course names, department names) if mentioned
+        6. **Include action words** (apply, contact, register, admission) if relevant
+        7. **Keep it concise** but comprehensive (3-8 words typically work best)
+        8. **Consider the conversation context** - if this is a follow-up, make the query more specific
+
+        Examples of good web search queries:
+        - "Professor Dehnad Stevens Institute of Technology contact email 2024"
+        - "Stevens Institute of Technology computer science courses 2025"
+        - "Stevens Institute of Technology admission requirements application deadline"
+        - "Stevens Institute of Technology machine learning faculty research"
+        - "Stevens Institute of Technology graduate programs application process"
+        - "Stevens Institute of Technology campus location address"
+
+        Generate a specific web search query that will find the most relevant information:
+
+        Web Search Query:
+        """
+        
+        try:
+            print(f"🔍 REASON: Generating specific web search query...")
+            response = await llm.ainvoke([{"role": "user", "content": web_query_prompt}])
+            
+            web_query = response.content.strip()
+            # Clean up the query
+            web_query = web_query.replace('"', '').replace("'", "").strip()
+            
+            # Fallback to original query if generation fails
+            if not web_query or len(web_query) < 5:
+                web_query = f"{original_query} Stevens Institute of Technology"
+                print(f"⚠️ REASON: Web query generation failed, using fallback: '{web_query}'")
+            else:
+                print(f"✅ REASON: Generated specific web search query: '{web_query}'")
+            
+            return web_query
+            
+        except Exception as e:
+            print(f"❌ REASON: Error generating web search query: {str(e)}")
+            # Fallback to enhanced original query
+            fallback_query = f"{original_query} Stevens Institute of Technology"
+            print(f"🔄 REASON: Using fallback web search query: '{fallback_query}'")
+            return fallback_query
+    
     def _should_web_search(self, state: Dict[str, Any]) -> str:
         """Determine if web search should be performed"""
         reasoning_result = state.get("reasoning_result", {})
@@ -526,15 +596,27 @@ class LangGraphOrchestrator:
     
     async def _web_search_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Web search node - performs web search based on reasoning decision"""
-        query = state.get("query", "")
+        original_query = state.get("query", "")
+        web_search_query = state.get("web_search_query", original_query)
         reasoning_result = state.get("reasoning_result", {})
         
         print(f"\n🌐 WEB: Starting web search based on reasoning decision")
+        print(f"📝 WEB: Original query: '{original_query}'")
+        print(f"🔍 WEB: Generated search query: '{web_search_query}'")
         print(f"📝 WEB: Reasoning: {reasoning_result.get('reasoning', 'No reasoning')}")
         
         try:
-            # Perform web search using the web agent
-            web_results = await self.web_agent.process(state)
+            # Create a modified state with the generated web search query
+            web_search_state = state.copy()
+            web_search_state["query"] = web_search_query  # Use the generated query for web search
+            
+            # Perform web search using the web agent with the generated query
+            web_results = await self.web_agent.process(web_search_state)
+            
+            # Add the original query back to the results for context
+            if web_results.get("web_results"):
+                web_results["web_results"]["original_query"] = original_query
+                web_results["web_results"]["search_query_used"] = web_search_query
             
             if web_results.get("web_results", {}).get("success"):
                 print(f"✅ WEB: Web search completed successfully")
@@ -551,7 +633,9 @@ class LangGraphOrchestrator:
                     "success": False,
                     "error": str(e),
                     "web_content": "",
-                    "urls": []
+                    "urls": [],
+                    "original_query": original_query,
+                    "search_query_used": web_search_query
                 }
             }
     
@@ -564,25 +648,43 @@ class LangGraphOrchestrator:
         
         # Check if this is a simple query that needs direct response
         if tool_decision.get("simple_query", False):
-            print(f"✅ FINAL: Simple query detected - using direct response")
+            print(f"✅ FINAL: Simple query detected - using direct response with conversation context")
             llm = self.llm_router.get_llm()
             
-            # Simple response prompt for basic interactions
-            simple_prompt = f"""
-            You are a helpful AI assistant for Stevens Institute of Technology. 
-            The user said: "{query}"
+            # Get conversation history for context even in simple queries
+            history_results = state.get("history_results", {})
+            history_context = ""
+            if history_results.get("relevant_history"):
+                history_context = "\n\nConversation History:\n"
+                for i, entry in enumerate(history_results["relevant_history"]):
+                    history_context += f"Q{i+1}: {entry.get('query', 'Unknown')}\n"
+                    history_context += f"A{i+1}: {entry.get('response', 'Unknown')}\n"
             
-            Provide a brief, friendly, and appropriate response. Keep it short and natural.
+            # Simple response prompt for basic interactions with conversation context
+            simple_prompt = f"""
+            You are a helpful academic advisor for Stevens Institute of Technology. 
+            You are having a conversation with a user.
+            
+            Current user message: "{query}"
+            {history_context}
+            
+            Provide a helpful, informative, and appropriate response that considers the conversation context. 
+            Be conversational and provide useful information when possible. If you can answer their question directly, do so comprehensively.
+            If you need more information to help them, ask clarifying questions.
+            
+            IMPORTANT: Provide ONLY your direct response to the user. Do not include any reasoning, thinking process, or internal thoughts. Just give the direct answer as if you're responding in a normal conversation.
+            
+            Response:
             """
             
             try:
                 response = await llm.ainvoke([{"role": "user", "content": simple_prompt}])
                 answer = response.content.strip()
-                print(f"✅ FINAL: Simple response generated: {answer[:100]}...")
+                print(f"FINAL: Simple response generated with context: {answer[:100]}...")
                 state["answer"] = answer
                 return state
             except Exception as e:
-                print(f"❌ FINAL: Error generating simple response: {str(e)}")
+                print(f"FINAL: Error generating simple response: {str(e)}")
                 # Fallback simple response
                 state["answer"] = "You're welcome! How can I help you today?"
                 return state
@@ -617,7 +719,9 @@ class LangGraphOrchestrator:
                 provide the same information from your previous response, but you can add any additional 
                 relevant information if needed.
                 
-                Respond directly with the information from your previous answer:
+                IMPORTANT: Provide ONLY your direct response to the user. Do not include any reasoning, thinking process, or internal thoughts. Just give the direct answer as if you're responding in a normal conversation.
+                
+                Response:
                 """
                 
                 try:
@@ -635,17 +739,25 @@ class LangGraphOrchestrator:
         # Build comprehensive context
         context_parts = []
         
-        # Add Chroma results
+        # Add available information
         if chroma_results.get("documents"):
-            context_parts.append("Vector Database Results:")
+            context_parts.append("Available Information:")
             for i, doc in enumerate(chroma_results["documents"][:5]):
-                context_parts.append(f"Document {i+1}: {doc['content'][:200]}...")
-            print(f"📊 FINAL: Using {len(chroma_results.get('documents', []))} Chroma documents")
+                context_parts.append(f"[{i+1}]: {doc['content']}")
+            print(f"📊 FINAL: Using {len(chroma_results.get('documents', []))} information sources")
         
         # Add web results
         if web_results.get("scraped_content") or web_results.get("web_content"):
-            context_parts.append("Web Search Results:")
+            context_parts.append("Additional Information:")
             web_content_to_show = web_results.get("scraped_content") or web_results.get("web_content")
+            
+            # Clean web content to remove any JSON artifacts
+            if web_content_to_show:
+                # Remove any remaining JSON-like artifacts
+                web_content_to_show = re.sub(r'Source:\s*https?://[^\s]+\s*', '', web_content_to_show)
+                web_content_to_show = re.sub(r'---\s*', ' ', web_content_to_show)
+                web_content_to_show = re.sub(r'\s+', ' ', web_content_to_show).strip()
+            
             context_parts.append(web_content_to_show[:1000] + "...")
             print(f"🌐 FINAL: Using web search content")
         
@@ -655,15 +767,22 @@ class LangGraphOrchestrator:
             context_parts.append(general_answer[:500] + "...")
             print(f"🧠 FINAL: Using general knowledge")
         
-        # Add history
+        # Add history - structure it as a proper conversation flow
         if history_results.get("relevant_history"):
-            context_parts.append("Previous Conversation Context (for reference only):")
+            context_parts.append("CONVERSATION HISTORY (Use this context to understand the conversation flow):")
             print(f"📚 FINAL: Found {len(history_results['relevant_history'])} history entries")
-            for i, entry in enumerate(history_results["relevant_history"][:5]):
-                context_parts.append(f"Previous Q: {entry.get('query', 'Unknown')}")
-                context_parts.append(f"Previous A: {entry.get('response', 'Unknown')[:100]}...")
+            
+            # Structure the conversation as Q1, A1, Q2, A2, Q3, A3, etc.
+            for i, entry in enumerate(history_results["relevant_history"]):
+                context_parts.append(f"Q{i+1}: {entry.get('query', 'Unknown')}")
+                context_parts.append(f"A{i+1}: {entry.get('response', 'Unknown')}")
                 print(f"📚 FINAL: History entry {i+1}: Q='{entry.get('query', 'Unknown')[:50]}...' A='{entry.get('response', 'Unknown')[:50]}...'")
-            print(f"📚 FINAL: Using conversation history")
+            
+            # Add current question as the next in sequence
+            context_parts.append(f"Q{len(history_results['relevant_history'])+1}: {query}")
+            context_parts.append("(You need to provide A{len(history_results['relevant_history'])+1} - the answer to this question)")
+            
+            print(f"📚 FINAL: Using conversation history with {len(history_results['relevant_history'])} previous Q&A pairs")
             print(f"📚 FINAL: Is follow-up: {history_results.get('is_follow_up', False)}")
         else:
             print(f"⚠️ FINAL: No relevant history found")
@@ -679,31 +798,31 @@ class LangGraphOrchestrator:
         
         # ReAct-style final synthesis prompt
         final_prompt = f"""
-        You are an AI assistant for Stevens Institute of Technology. Synthesize a comprehensive answer using all available information.
+        You are a helpful academic advisor for Stevens Institute of Technology. Your goal is to provide comprehensive, accurate, and useful information to help students with their questions.
 
-        User Question: "{query}"
+        Current User Question: "{query}"
 
         Available Information:
         {context}
 
-        Instructions:
-        1. **Answer the user's question directly and comprehensively**
-        2. **Use information from the vector database (Stevens-specific data) as your primary source**
-        3. **Supplement with web search results for current/recent information**
-        4. **Use general knowledge for concepts and explanations**
-        5. **Reference conversation history for context, but focus on the current question**
-        6. **Be specific about Stevens Institute of Technology when relevant**
-        7. **If information is not available, clearly state what you don't know**
-        8. **Provide actionable information when possible**
-        9. **Be concise but thorough**
-        10. **Avoid speculation or making up information**
+        INSTRUCTIONS:
+        1. **Provide a complete and helpful answer using all available information**
+        2. **If information is available in the context, provide it directly and comprehensively**
+        3. **If you have partial information, provide what you know and mention what additional details might be helpful**
+        4. **Include specific details, dates, requirements, or other concrete information when available**
+        5. **Include relevant links or sources for credibility and further reference**
+        6. **Be conversational and helpful - provide actionable information rather than just directing users to websites**
+        7. **If the answer is not present in the context, provide a helpful response and suggest where they might find more information**
+        8. **Use conversation history to understand context and provide relevant, contextual answers**
+        9. **Reference previous questions and answers when relevant to provide better context**
+        10. **Be specific about Stevens Institute of Technology when relevant**
 
-        Important Guidelines:
-        - If the question is about Stevens courses, faculty, or programs, prioritize vector database results
-        - If current information is needed (contact details, availability, recent updates), use web search results
-        - If general concepts are asked, use general knowledge appropriately
-        - If information is missing, be honest about limitations
-        - Always prioritize accuracy over completeness
+        CONVERSATION CONTEXT USAGE:
+        - **ALWAYS consider the conversation history when answering**
+        - **If the current question relates to previous questions, reference that context**
+        - **If the user asks follow-up questions, use the conversation flow to provide better answers**
+        - **If the question is about something mentioned before, build upon previous answers**
+        - **Maintain conversation continuity and coherence**
 
         Special Handling for Follow-up Questions:
         - If the user says "try again with my previous question", find the most recent question in the conversation history and provide that answer again
@@ -714,7 +833,11 @@ class LangGraphOrchestrator:
         - If you find relevant previous questions in the history, provide those answers directly
         - If no relevant history is found, then ask the user to clarify what they want to know
 
-        Synthesize your answer:
+        Remember: You are part of an ongoing conversation. Use the context to provide the most relevant and helpful answer.
+
+        IMPORTANT: Provide ONLY your final answer to the user's question. Do not include any reasoning, thinking process, or internal thoughts. Just give the direct answer as if you're responding in a normal conversation.
+
+        Answer:
         """
 
         try:
@@ -722,6 +845,10 @@ class LangGraphOrchestrator:
             response = await llm.ainvoke([{"role": "user", "content": final_prompt}])
             
             answer = response.content.strip()
+            
+            # Clean up any reasoning text that might have slipped through
+            answer = self._clean_response_text(answer)
+            
             print(f"✅ FINAL: Answer synthesized successfully")
             print(f"📝 FINAL: Answer length: {len(answer)} characters")
             
@@ -729,7 +856,7 @@ class LangGraphOrchestrator:
             return state
             
         except Exception as e:
-            print(f"❌ FINAL: Error synthesizing answer: {str(e)}")
+            print(f"FINAL: Error synthesizing answer: {str(e)}")
             # Fallback answer
             state["answer"] = "I apologize, but I encountered an error while processing your request. Please try again."
             return state
@@ -800,4 +927,56 @@ class LangGraphOrchestrator:
                 "success": False,
                 "error": str(e),
                 "answer": "I apologize, but I'm experiencing some technical difficulties. Please try again in a moment."
-            } 
+            }
+    
+    def _clean_response_text(self, text: str) -> str:
+        """Clean response text by removing reasoning artifacts and formatting issues"""
+        if not text:
+            return ""
+        
+        # Remove common reasoning artifacts that might slip through
+        reasoning_patterns = [
+            r"Let me think about this\.\.\.",
+            r"I need to consider\.\.\.",
+            r"Based on my analysis\.\.\.",
+            r"Let me analyze this\.\.\.",
+            r"I should look into this\.\.\.",
+            r"Let me check\.\.\.",
+            r"I'll need to\.\.\.",
+            r"First, let me\.\.\.",
+            r"To answer this\.\.\.",
+            r"Looking at this\.\.\.",
+            r"I can see that\.\.\.",
+            r"From what I can tell\.\.\.",
+            r"It appears that\.\.\.",
+            r"I notice that\.\.\.",
+            r"Based on the information\.\.\.",
+            r"According to the data\.\.\.",
+            r"The information shows\.\.\.",
+            r"I can determine that\.\.\.",
+            r"After reviewing\.\.\.",
+            r"Upon examination\.\.\.",
+        ]
+        
+        # Remove reasoning patterns
+        for pattern in reasoning_patterns:
+            text = re.sub(pattern, "", text, flags=re.IGNORECASE)
+        
+        # Remove excessive whitespace and newlines
+        text = re.sub(r'\n\s*\n\s*\n+', '\n\n', text)  # Replace multiple newlines with double newline
+        text = re.sub(r'[ \t]+', ' ', text)  # Replace multiple spaces/tabs with single space
+        
+        # Remove leading/trailing whitespace
+        text = text.strip()
+        
+        # Remove any remaining reasoning artifacts at the start
+        text = re.sub(r'^(Let me|I need to|Based on|I should|I\'ll|First|To answer|Looking|I can see|From what|It appears|I notice|According to|The information|I can determine|After|Upon).*?\.\s*', '', text, flags=re.IGNORECASE | re.MULTILINE)
+        
+        # Ensure the response doesn't start with lowercase (indicating incomplete sentence)
+        if text and text[0].islower():
+            text = text[0].upper() + text[1:]
+        
+        # Remove any trailing incomplete sentences
+        text = re.sub(r'\.\s*$', '.', text)
+        
+        return text.strip() 
