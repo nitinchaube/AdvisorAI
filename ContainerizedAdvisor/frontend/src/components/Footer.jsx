@@ -1,0 +1,55 @@
+import React from "react";
+import { Heart, Github, Twitter, Linkedin, Mail } from "lucide-react";
+
+const Footer = () => {
+  return (
+    <footer className="bg-gradient-to-r from-slate-800 to-slate-700 backdrop-blur-xl border-t border-slate-600/20 px-6 py-4 shadow-2xl">
+      <div className="max-w-6xl mx-auto">
+        <div className="flex flex-col md:flex-row items-center justify-between space-y-4 md:space-y-0">
+          <div className="flex items-center space-x-2">
+            
+            <span className="text-sm text-slate-300 font-medium">
+             Made by the AdvisorAI Team
+            </span>
+          </div>
+          
+          <div className="flex items-center space-x-4">
+            <span className="text-sm text-slate-400">© 2024 AdvisorAI. All rights reserved.</span>
+            <div className="flex items-center space-x-3">
+              <a 
+                href="#" 
+                className="text-slate-400 hover:text-white transition-all duration-300 hover:scale-110 p-2 rounded-lg hover:bg-white/10"
+                title="GitHub"
+              >
+                <Github className="w-4 h-4" />
+              </a>
+              <a 
+                href="#" 
+                className="text-slate-400 hover:text-white transition-all duration-300 hover:scale-110 p-2 rounded-lg hover:bg-white/10"
+                title="Twitter"
+              >
+                <Twitter className="w-4 h-4" />
+              </a>
+              <a 
+                href="#" 
+                className="text-slate-400 hover:text-white transition-all duration-300 hover:scale-110 p-2 rounded-lg hover:bg-white/10"
+                title="LinkedIn"
+              >
+                <Linkedin className="w-4 h-4" />
+              </a>
+              <a 
+                href="#" 
+                className="text-slate-400 hover:text-white transition-all duration-300 hover:scale-110 p-2 rounded-lg hover:bg-white/10"
+                title="Contact"
+              >
+                <Mail className="w-4 h-4" />
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </footer>
+  );
+};
+
+export default Footer;
