@@ -18,6 +18,8 @@ from functools import wraps
 import uuid
 from langchain_core.documents import Document
 from dotenv import load_dotenv
+import threading
+from github_jobs_unified_scraper import UnifiedGitHubScraper
 
 load_dotenv()
 
@@ -36,7 +38,48 @@ FACULTY_RESEARCH_DATA_FILE = os.getenv('FACULTY_RESEARCH_DATA_FILE', 'AllFaculty
 JOBS_CSV_FILE = os.getenv('JOBS_CSV_FILE', 'jobs.csv')
 INTERNSHIPS_CSV_FILE = os.getenv('INTERNSHIPS_CSV_FILE', 'internships.csv')
 
+# --- Background Scraper Setup ---
+scraper_instance = None
+scraper_thread = None
 
+def run_background_scraper():
+    """Background function to run the job scraper every 2 hours"""
+    global scraper_instance
+    
+    if scraper_instance is None:
+        scraper_instance = UnifiedGitHubScraper()
+    
+    try:
+        logging.info("🤖 Starting background job scraper...")
+        # Run scraper immediately on startup
+        scraper_instance.scrape_all_repositories()
+        logging.info("✅ Initial scraping completed")
+        
+        # Then run every 2 hours
+        while True:
+            try:
+                time.sleep(7200)  # 2 hours = 7200 seconds
+                logging.info("🔄 Running scheduled job scraping...")
+                scraper_instance.scrape_all_repositories()
+                logging.info("✅ Scheduled scraping completed")
+            except Exception as e:
+                logging.error(f"❌ Error during scheduled scraping: {str(e)}")
+                # Continue the loop even if there's an error
+                continue
+                
+    except Exception as e:
+        logging.error(f"❌ Critical error in background scraper: {str(e)}")
+
+def start_background_scraper():
+    """Start the background scraper in a separate thread"""
+    global scraper_thread
+    
+    if scraper_thread is None or not scraper_thread.is_alive():
+        scraper_thread = threading.Thread(target=run_background_scraper, daemon=True)
+        scraper_thread.start()
+        logging.info("🚀 Background job scraper thread started")
+    else:
+        logging.info("ℹ️  Background scraper thread already running")
 
 # --- MongoDB Setup ---
 from pymongo import MongoClient
@@ -2720,6 +2763,65 @@ def sync_firebase_claims():
         print(f"  Sync Firebase claims error: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/api/scraper/status', methods=['GET'])
+@jwt_required()
+def get_scraper_status():
+    """Get the status of the background job scraper"""
+    try:
+        global scraper_thread, scraper_instance
+        
+        status = {
+            "scraper_thread_alive": scraper_thread.is_alive() if scraper_thread else False,
+            "scraper_instance_exists": scraper_instance is not None,
+            "thread_name": scraper_thread.name if scraper_thread else None,
+            "thread_daemon": scraper_thread.daemon if scraper_thread else None
+        }
+        
+        return jsonify({
+            "success": True,
+            "status": status,
+            "message": "Scraper status retrieved successfully"
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/api/scraper/trigger', methods=['POST'])
+@jwt_required()
+def trigger_scraper():
+    """Manually trigger the job scraper"""
+    try:
+        global scraper_instance
+        
+        if scraper_instance is None:
+            scraper_instance = UnifiedGitHubScraper()
+        
+        # Run scraper in a separate thread to avoid blocking the request
+        def run_manual_scrape():
+            try:
+                logging.info("🔄 Manual scraping triggered via API")
+                scraper_instance.scrape_all_repositories()
+                logging.info("✅ Manual scraping completed")
+            except Exception as e:
+                logging.error(f"❌ Error during manual scraping: {str(e)}")
+        
+        manual_thread = threading.Thread(target=run_manual_scrape, daemon=True)
+        manual_thread.start()
+        
+        return jsonify({
+            "success": True,
+            "message": "Job scraper triggered manually. Check logs for progress."
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5003))
     print(f"🚀 Starting AdvisorAI backend server on port {port}")
@@ -2729,5 +2831,13 @@ if __name__ == '__main__':
     print(f"   - GET /api/internships") 
     print(f"   - GET /api/jobs/stats")
     print(f"   - GET /api/internships/stats")
+    print(f"🤖 Job scraper endpoints:")
+    print(f"   - GET /api/scraper/status")
+    print(f"   - POST /api/scraper/trigger")
     print(f"🧪 Test CORS: http://localhost:{port}/api/test-cors")
+    
+    # Start the background job scraper
+    start_background_scraper()
+    print(f"🤖 Background job scraper started (runs every 2 hours)")
+    
     app.run(debug=True, host='0.0.0.0', port=port) 
