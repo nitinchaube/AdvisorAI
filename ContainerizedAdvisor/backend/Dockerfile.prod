@@ -1,37 +1,39 @@
 FROM python:3.11-slim
 
-#settign working directory
+# Set working directory
 WORKDIR /app
 
-#Install the dependencies
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-#copy the requirements and install the python dependencies
+# Copy requirements and install Python dependencies
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-#COPY the backend code
+# Copy the backend code
 COPY . /app/
 
-#create necessary directories
+# Create necessary directories
 RUN mkdir -p /app/Data /app/VectorDB /app/uploads
 
-#exposing port 
-EXPOSE 5000 
+# Set proper permissions
+RUN chmod -R 755 /app
 
-#settign env 
+# Expose port
+EXPOSE 5000
+
+# Set environment variables
 ENV FLASK_APP=app.py
-ENV FLASK_ENV=development
+ENV FLASK_ENV=production
 ENV PYTHONPATH=/app
 ENV PORT=5000
 
-
-#healthcheck 
+# Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:5000/api/health || exit 1
 
+# Run the application
 CMD ["python", "app.py"]
-
