@@ -134,12 +134,16 @@ except Exception as e:
 
 # Initialize Redis for caching
 try:
-    redis_client = redis.Redis(
-        host=os.environ.get('REDIS_HOST', 'localhost'),
-        port=int(os.environ.get('REDIS_PORT', 6379)),
-        db=int(os.environ.get('REDIS_DB', 0)),
-        decode_responses=True
-    )
+    redis_url = os.environ.get('REDIS_URL')
+    if redis_url:
+        redis_client = redis.from_url(redis_url, decode_responses=True)
+    else:
+        redis_client = redis.Redis(
+            host=os.environ.get('REDIS_HOST', 'localhost'),
+            port=int(os.environ.get('REDIS_PORT', 6379)),
+            db=int(os.environ.get('REDIS_DB', 0)),
+            decode_responses=True
+        )
     # Test Redis connection
     redis_client.ping()
     print("  Redis client initialized")
@@ -2825,6 +2829,10 @@ def trigger_scraper():
 def create_app():
     return app
 
+
+
+
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5003))
     debug_mode = os.environ.get('FLASK_ENV', 'development') == 'development'
@@ -2845,4 +2853,4 @@ if __name__ == '__main__':
     start_background_scraper()
     print(f"🤖 Background job scraper started (runs every 2 hours)")
     
-    app.run(debug=True, host='0.0.0.0', port=port) 
+    app.run(debug=dubug_mode, host='0.0.0.0', port=port) 
