@@ -1,0 +1,61 @@
+# Flask and Web Framework
+Flask
+Flask-CORS
+Flask-Session
+Flask-JWT-Extended
+
+# Authentication and Security
+firebase-admin
+PyJWT
+python-dotenv
+
+# Database
+pymongo
+redis
+
+# HTTP and Web Scraping
+requests
+beautifulsoup4
+aiohttp
+
+# Document Processing
+PyPDF2
+PyMuPDF
+python-docx
+
+# AI/ML Libraries
+openai
+google-generativeai
+langchain
+langchain-openai
+langchain-google-genai
+langchain-community
+langchain-huggingface
+langchain-anthropic
+langgraph
+chromadb
+sentence-transformers
+transformers
+huggingface-hub
+
+# Data Processing
+pandas
+numpy
+scikit-learn
+scipy
+nltk
+
+# Web Scraping and Automation
+selenium
+schedule
+lxml
+
+# FastAPI (for chatbot main.py)
+fastapi
+uvicorn
+
+# Pydantic (for settings)
+pydantic-settings
+
+# Core Python utilities
+Werkzeug
