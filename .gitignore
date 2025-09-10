@@ -59,7 +59,7 @@ Desktop.ini
 
 # Ignore all data files
 **/Data/
-**/VectorDB/
+# **/VectorDB/
 *firebase.js
 
 start_dev_servers_vscode.ps1

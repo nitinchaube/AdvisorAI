@@ -20,12 +20,14 @@ COPY . /app/
 RUN mkdir -p /app/Data /app/VectorDB /app/uploads
 
 #exposing port 
-EXPOSE 5003 
+EXPOSE 10000 
 
 #settign env 
 ENV FLASK_APP=app.py
 ENV FLASK_ENV=development
 ENV PYTHONPATH=/app
+ENV PORT=10000
+
 
 #healthcheck 
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
