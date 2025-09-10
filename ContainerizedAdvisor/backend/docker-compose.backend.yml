@@ -1,0 +1,45 @@
+version: '3.8'
+
+networks:
+  advisorai_network:
+    driver: bridge
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: advisorai_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - advisorai_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: advisorai_backend
+    ports:
+      - "5003:5003"
+    env_file:
+      - .env
+    volumes:
+      - ./uploads:/app/uploads
+      - ./VectorDB:/app/VectorDB
+      - ./Data:/app/Data
+    networks:
+      - advisorai_network
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  redis_data:

@@ -68,3 +68,5 @@ start_dev_servers.bat
 start_integrated_terminals.bat
 start_dev_servers.ps1
 start_dev_servers.sh
+
+*.csv*
