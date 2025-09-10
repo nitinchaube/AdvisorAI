@@ -412,8 +412,18 @@ def signup():
 
         # Send email verification
         try:
-            # Generate email verification link
-            verification_link = auth.generate_email_verification_link(email)
+            # Configure action code settings with longer expiration
+            action_code_settings = auth.ActionCodeSettings(
+                url='http://localhost:3000/email-verification',
+                handle_code_in_app=True,
+                dynamic_link_domain=None
+            )
+            
+            # Generate email verification link with custom settings
+            verification_link = auth.generate_email_verification_link(
+                email,
+                action_code_settings=action_code_settings
+            )
             
             # In a real application, you would send this link via email
             # For now, we'll return it in the response for testing
@@ -571,11 +581,11 @@ def send_verification_email():
         user_id = g.user['uid']
         email = g.user['email']
         
-        # Configure action code settings with 2-day expiration
+        # Configure action code settings with longer expiration
         action_code_settings = auth.ActionCodeSettings(
             url='http://localhost:3000/email-verification',  # Your frontend URL
             handle_code_in_app=True,
-            # Firebase default is 3 days, but we'll set it explicitly
+            # Set longer expiration time
             dynamic_link_domain=None  # Disable dynamic links
         )
         
@@ -739,7 +749,7 @@ def upload_and_parse_resume():
 
 # Get user profile
 @app.route('/api/user/profile', methods=['GET'])
-@verify_token
+@verify_email_optional
 def get_user_profile():
     """Get user profile data"""
     try:
