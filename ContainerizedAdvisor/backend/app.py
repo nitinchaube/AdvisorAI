@@ -2834,7 +2834,7 @@ def create_app():
 
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5003))
+    port = int(os.environ.get('PORT', 5000))
     debug_mode = os.environ.get('FLASK_ENV', 'development') == 'development'
     
     print(f" Starting AdvisorAI backend server on port {port}")
@@ -2853,4 +2853,4 @@ if __name__ == '__main__':
     start_background_scraper()
     print(f"🤖 Background job scraper started (runs every 2 hours)")
     
-    app.run(debug=dubug_mode, host='0.0.0.0', port=port) 
+    app.run(debug=debug_mode, host='0.0.0.0', port=port) 
