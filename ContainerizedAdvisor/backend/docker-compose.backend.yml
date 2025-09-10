@@ -1,7 +1,5 @@
-version: '3.8'
-
 networks:
-  advisorai_network:
+  backend_advisorai_network:
     driver: bridge
 
 services:
@@ -13,7 +11,7 @@ services:
     volumes:
       - redis_data:/data
     networks:
-      - advisorai_network
+      - backend_advisorai_network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -35,7 +33,7 @@ services:
       - ./VectorDB:/app/VectorDB
       - ./Data:/app/Data
     networks:
-      - advisorai_network
+      - backend_advisorai_network
     depends_on:
       redis:
         condition: service_healthy
