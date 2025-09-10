@@ -18,7 +18,7 @@ coverage/
 *.log
 *firebase_key.json
 *firebae_key1.json
-*firebase.js
+
 uploads/
 # Python
 __pycache__/
@@ -60,7 +60,7 @@ Desktop.ini
 # Ignore all data files
 **/Data/
 # **/VectorDB/
-*firebase.js
+# *firebase.js
 
 start_dev_servers_vscode.ps1
 start_dev_servers_vscode.bat
