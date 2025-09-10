@@ -2822,19 +2822,24 @@ def trigger_scraper():
             "error": str(e)
         }), 500
 
+def create_app():
+    return app
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5003))
-    print(f"🚀 Starting AdvisorAI backend server on port {port}")
-    print(f"📡 API Base URL: http://localhost:{port}/api")
-    print(f"🔍 Job search endpoints:")
+    debug_mode = os.environ.get('FLASK_ENV', 'development') == 'development'
+    
+    print(f" Starting AdvisorAI backend server on port {port}")
+    print(f" API Base URL: http://localhost:{port}/api")
+    print(f" Job search endpoints:")
     print(f"   - GET /api/jobs")
     print(f"   - GET /api/internships") 
     print(f"   - GET /api/jobs/stats")
     print(f"   - GET /api/internships/stats")
-    print(f"🤖 Job scraper endpoints:")
+    print(f"Job scraper endpoints:")
     print(f"   - GET /api/scraper/status")
     print(f"   - POST /api/scraper/trigger")
-    print(f"🧪 Test CORS: http://localhost:{port}/api/test-cors")
+    print(f" Test CORS: http://localhost:{port}/api/test-cors")
     
     # Start the background job scraper
     start_background_scraper()
