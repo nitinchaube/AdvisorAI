@@ -7,7 +7,7 @@ load_dotenv()
 from flask import Flask, request, session, jsonify, Response, g
 from flask_cors import CORS
 import firebase_admin
-from firebase_admin import auth, credentials
+from firebase_admin import auth
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from datetime import timedelta, datetime
 import json
@@ -98,18 +98,12 @@ except Exception as e:
     print(f"  Resume processor initialization failed: {e}")
     resume_processor = None
 
-# Restore only Firebase Admin SDK initialization for authentication
+# Initialize Firebase Admin SDK using Application Default Credentials (ADC).
+# Local dev: run `gcloud auth application-default login`
+# GCP runtime (Cloud Run / GKE / Cloud Functions): uses the default service account automatically.
 if not firebase_admin._apps:
-    # Priority: FIREBASE_CREDENTIALS_JSON (inline JSON) > FIREBASE_CREDENTIALS_PATH (file path)
-    firebase_cred_json = os.environ.get('FIREBASE_CREDENTIALS_JSON', '')
-    if firebase_cred_json:
-        cred = credentials.Certificate(json.loads(firebase_cred_json))
-        logger.info("Firebase initialized from FIREBASE_CREDENTIALS_JSON env var")
-    else:
-        firebase_cred_path = os.environ.get('FIREBASE_CREDENTIALS_PATH', 'firebae_key1.json')
-        cred = credentials.Certificate(firebase_cred_path)
-        logger.info(f"Firebase initialized from credentials file: {firebase_cred_path}")
-    firebase_admin.initialize_app(cred)
+    firebase_admin.initialize_app()
+    logger.info("Firebase Admin SDK initialized with Application Default Credentials")
 
 # Utility function to convert MongoDB documents for JSON serialization
 
