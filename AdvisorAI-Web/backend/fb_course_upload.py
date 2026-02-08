@@ -1,17 +1,13 @@
 import firebase_admin
-from firebase_admin import credentials, firestore
+from firebase_admin import firestore
 import json
 import os
 
-def upload_data_to_firebase(json_file_path, firebase_config_path):
-   
+def upload_data_to_firebase(json_file_path):
+    """Upload course data to Firestore using Application Default Credentials."""
     try:
-        if not os.path.exists(firebase_config_path):
-            print(f"Error: Firebase credentials file not found at {firebase_config_path}")
-            return
-
-        cred = credentials.Certificate(firebase_config_path)
-        firebase_admin.initialize_app(cred)
+        if not firebase_admin._apps:
+            firebase_admin.initialize_app()
 
         db = firestore.client()
 
@@ -43,18 +39,16 @@ def upload_data_to_firebase(json_file_path, firebase_config_path):
         print("Upload process completed.")
 
     except FileNotFoundError:
-        print(f"Error: Required file not found. Check paths: {json_file_path} or {firebase_config_path}")
+        print(f"Error: Required file not found. Check path: {json_file_path}")
     except json.JSONDecodeError:
-        print(f"Error: Could not decode JSON from {json_file_path} or {firebase_config_path}. Please check file format.")
+        print(f"Error: Could not decode JSON from {json_file_path}. Please check file format.")
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
 
 
 if __name__ == "__main__":
-    firebase_credentials_file = 'firebase_key.json'
-
-    #course data JSON file
+    # Course data JSON file
     json_file = 'data/AllCourseRelatedData.json'
 
-  
-    upload_data_to_firebase(json_file, firebase_credentials_file)
+    # Uses ADC — run `gcloud auth application-default login` first for local dev
+    upload_data_to_firebase(json_file)
