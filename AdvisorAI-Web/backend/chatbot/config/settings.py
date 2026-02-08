@@ -14,11 +14,11 @@ class Settings(BaseSettings):
 
     # Model Configuration
     OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4")
-    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
     CLAUDE_MODEL: str = os.getenv("CLAUDE_MODEL", "claude-3-sonnet-20240229")
 
     # Vector Database Configuration
-    VECTORDB_DIR: str = os.getenv("VECTORDB_DIR", "/Users/nitinchaube/Studies/IMPS/ALLAboutAI/Project/AdvisorAI/AdvisorAI/AdvisorAI-Web/backend/VectorDB")
+    VECTORDB_DIR: str = os.getenv("VECTORDB_DIR", "./VectorDB")
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
 
     # Retrieval Configuration
@@ -30,8 +30,7 @@ class Settings(BaseSettings):
     WEB_SEARCH_RESULTS: int = int(os.getenv("WEB_SEARCH_RESULTS", "3"))
 
     # Memory Configuration
-    MEMORY_TYPE: str = os.getenv("MEMORY_TYPE", "in_memory")  # in_memory, redis, postgres
-    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379")
+    MEMORY_TYPE: str = os.getenv("MEMORY_TYPE", "in_memory")  # in_memory, postgres
     POSTGRES_URL: str = os.getenv("POSTGRES_URL", "")
 
     # API Configuration

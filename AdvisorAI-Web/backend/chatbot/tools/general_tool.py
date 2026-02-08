@@ -34,7 +34,7 @@ class GeneralTool:
             
             print(f"🤖 GENERAL: Using LLM to generate answer...")
             response = await llm.ainvoke([{"role": "user", "content": prompt}])
-            print(f"✅ GENERAL: Answer generated successfully")
+            print(f" GENERAL: Answer generated successfully")
             
             return {
                 "answer": response.content,
@@ -44,7 +44,7 @@ class GeneralTool:
             }
             
         except Exception as e:
-            print(f"❌ GENERAL: Error generating answer: {str(e)}")
+            print(f" GENERAL: Error generating answer: {str(e)}")
             return {
                 "error": f"General tool failed: {str(e)}",
                 "success": False

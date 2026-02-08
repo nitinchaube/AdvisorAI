@@ -58,7 +58,7 @@ class RAGService:
         self.web_search_results = int(os.getenv("WEB_SEARCH_RESULTS", "3"))
         
         # API Configuration
-        self.api_base_url = os.getenv("API_BASE_URL", "http://localhost:5002")
+        self.api_base_url = os.getenv("API_BASE_URL", "http://localhost:5003")
         
         # Load all collections
         self.collections = self._load_all_collections()
