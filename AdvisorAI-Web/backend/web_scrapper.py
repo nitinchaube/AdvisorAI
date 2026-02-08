@@ -45,8 +45,8 @@ def duckduckgo_search_urls(query, num_results=3):
 def serpapi_search_urls(query, num_results=3, api_key=None):
     """Use SerpAPI to get Google search results as a backup."""
     api_key = api_key or os.getenv("SERPAPI_API_KEY")
-    if not api_key or api_key == "your_serpapi_key_here":
-        print("No SerpAPI key available.")
+    if not api_key or api_key.startswith("your_") or api_key == "CHANGE_ME":
+        print("No SerpAPI key available. Set SERPAPI_API_KEY in your .env file.")
         return []
     try:
         params = {
