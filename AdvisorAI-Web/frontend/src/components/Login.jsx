@@ -163,6 +163,20 @@ const Login = () => {
                   </div>
                 </div>
 
+                <div style={{ textAlign: "right", marginTop: "-0.5rem" }}>
+                  <Link
+                    to="/forgot-password"
+                    style={{
+                      color: "#3b82f6",
+                      fontSize: "0.85rem",
+                      textDecoration: "none",
+                      fontWeight: 500,
+                    }}
+                  >
+                    Forgot password?
+                  </Link>
+                </div>
+
                 {error && (
                   <div className="error-message">
                     <X className="error-icon" />
