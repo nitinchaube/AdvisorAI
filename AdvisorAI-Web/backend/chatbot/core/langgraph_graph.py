@@ -97,81 +97,112 @@ class LangGraphOrchestrator:
             state["chat_name"] = "New Chat"
             print(f"ROUTER: Set fallback chat_name in state: '{state['chat_name']}'")
         
-        # Check if this is a simple query that can be answered directly
-        try:
-            simple_check_prompt = f"""
-            Determine if this query is simple and can be answered directly without complex reasoning or tool usage.
-            
-            User Query: "{query}"
-            
-            A simple query is:
-            - A basic greeting or introduction
-            - A straightforward question about general concepts
-            - Something that doesn't require Stevens-specific information
-            - A question that can be answered with general knowledge
-            
-            Examples of simple queries:
-            - "How are you?" → Simple greeting
-            - "What is machine learning?" → Simple concept explanation
-            - "Hello" → Simple greeting
-            - "Thank you" → Simple acknowledgment
-            
-            Examples of complex queries:
-            - "Tell me about Professor Dehnad" → Requires Stevens-specific data
-            - "What courses are available in computer science?" → Requires course database
-            - "How do I apply for admission?" → Requires Stevens-specific information
-            
-            Return ONLY a valid JSON object:
-            {{
-                "is_simple": true/false,
-                "reasoning": "brief explanation of why this is simple or complex"
-            }}
-            """
-            
-            print(f"ROUTER: Checking if query is simple...")
-            response = await llm.ainvoke([{"role": "user", "content": simple_check_prompt}])
-            
-            print(f"ROUTER: Simple check response: {response.content[:200]}...")
-            
-            try:
-                import json
-                import re
-                
-                # Try to parse JSON
-                try:
-                    simple_check = json.loads(response.content.strip())
-                except json.JSONDecodeError:
-                    # Try to extract JSON from markdown
-                    json_match = re.search(r'\{.*\}', response.content, re.DOTALL)
-                    if json_match:
-                        simple_check = json.loads(json_match.group())
-                    else:
-                        raise json.JSONDecodeError("No valid JSON found")
-                
-                is_simple = simple_check.get("is_simple", False)
-                reasoning = simple_check.get("reasoning", "No reasoning provided")
-                
-                print(f"ROUTER: Simple check - {is_simple}: {reasoning}")
-                
-                # If it's a simple query, use general tool directly
-                if is_simple:
-                    print(f"ROUTER: Simple query detected - using general tool directly")
-                    state["tool_decision"] = {
-                        "tools": ["general", "history"],
-                        "primary_tool": "general",
-                        "reasoning": f"Simple query detected: {reasoning}",
-                        "confidence": "high",
-                        "simple_query": True
-                    }
-                    return state
-                
-            except Exception as parse_error:
-                print(f"ROUTER: Error parsing simple check response: {parse_error}")
-                # Continue with normal ReAct flow if parsing fails
+        # First check if this is a follow-up question - these should NOT be treated as simple
+        query_lower = query.lower().strip()
+        follow_up_indicators = [
+            "try again", "check again", "again", "repeat", "what about", "how about",
+            "previous question", "last question", "my previous question", 
+            "repeat that", "say that again", "can you repeat", "what was that",
+            "remind me", "recall", "remember", "what did you say", "can you clarify",
+            "previous questions", "my previous questions", "tell me about my previous",
+            "what questions did i ask", "what did i ask", "show me my questions",
+            "list my questions", "past questions", "conversation history", "chat history"
+        ]
         
-        except Exception as e:
-            print(f"ROUTER: Error in simple query check: {str(e)}")
-            # Continue with normal ReAct flow if simple check fails
+        is_follow_up_query = any(indicator in query_lower for indicator in follow_up_indicators)
+        
+        if is_follow_up_query:
+            print(f"🔄 ROUTER: Follow-up query detected - forcing history tool usage")
+            # For follow-up queries, prioritize history tool
+            state["tool_decision"] = {
+                "tools": ["history"],
+                "primary_tool": "history",
+                "reasoning": "Follow-up query detected - needs conversation history",
+                "confidence": "high",
+                "is_follow_up": True
+            }
+            return state
+        else:
+            # Check if this is a simple query that can be answered directly
+            try:
+                simple_check_prompt = f"""
+                Determine if this query is simple and can be answered directly without complex reasoning or tool usage.
+                
+                User Query: "{query}"
+                
+                A simple query is:
+                - A basic greeting or introduction
+                - A straightforward question about general concepts
+                - Something that doesn't require Stevens-specific information
+                - A question that can be answered with general knowledge
+                
+                IMPORTANT: Follow-up questions like "try again", "check again", "repeat", etc. are NOT simple queries.
+                
+                Examples of simple queries:
+                - "How are you?" → Simple greeting
+                - "What is machine learning?" → Simple concept explanation
+                - "Hello" → Simple greeting
+                - "Thank you" → Simple acknowledgment
+                
+                Examples of complex queries (NOT simple):
+                - "Tell me about Professor Dehnad" → Requires Stevens-specific data
+                - "What courses are available in computer science?" → Requires course database
+                - "How do I apply for admission?" → Requires Stevens-specific information
+                - "try again" → Follow-up question, needs history
+                - "check again" → Follow-up question, needs history
+                - "repeat that" → Follow-up question, needs history
+                
+                Return ONLY a valid JSON object:
+                {{
+                    "is_simple": true/false,
+                    "reasoning": "brief explanation of why this is simple or complex"
+                }}
+                """
+                
+                print(f"ROUTER: Checking if query is simple...")
+                response = await llm.ainvoke([{"role": "user", "content": simple_check_prompt}])
+                
+                print(f"ROUTER: Simple check response: {response.content[:200]}...")
+                
+                try:
+                    import json
+                    import re
+                    
+                    # Try to parse JSON
+                    try:
+                        simple_check = json.loads(response.content.strip())
+                    except json.JSONDecodeError:
+                        # Try to extract JSON from markdown
+                        json_match = re.search(r'\{.*\}', response.content, re.DOTALL)
+                        if json_match:
+                            simple_check = json.loads(json_match.group())
+                        else:
+                            raise json.JSONDecodeError("No valid JSON found")
+                    
+                    is_simple = simple_check.get("is_simple", False)
+                    reasoning = simple_check.get("reasoning", "No reasoning provided")
+                    
+                    print(f"ROUTER: Simple check - {is_simple}: {reasoning}")
+                    
+                    # If it's a simple query, use general tool directly
+                    if is_simple:
+                        print(f"ROUTER: Simple query detected - using general tool directly")
+                        state["tool_decision"] = {
+                            "tools": ["general", "history"],
+                            "primary_tool": "general",
+                            "reasoning": f"Simple query detected: {reasoning}",
+                            "confidence": "high",
+                            "simple_query": True
+                        }
+                        return state
+                    
+                except Exception as parse_error:
+                    print(f"ROUTER: Error parsing simple check response: {parse_error}")
+                    # Continue with normal ReAct flow if parsing fails
+            
+            except Exception as e:
+                print(f"ROUTER: Error in simple query check: {str(e)}")
+                # Continue with normal ReAct flow if simple check fails
         
         # ReAct-style prompt for one-shot tool selection
         router_prompt = f"""
@@ -189,13 +220,14 @@ class LangGraphOrchestrator:
         - Use "general" for: what is, explain, define, how does, why, concept, theory (NON-Stevens specific)
         - Use "chroma" for: courses, faculty, professors, programs, Stevens-specific information
         - Use "web" for: current info, contact details, availability, recent updates
-        - Use "history" for: conversation context, follow-up questions
+        - Use "history" for: conversation context, follow-up questions, questions about previous conversations
 
         Think step by step:
         1. What type of information is being requested?
         2. Is it Stevens-specific or general knowledge?
         3. Does it need current/recent information?
         4. Is it a follow-up or context-dependent question?
+        5. Is the user asking about their own previous questions or conversation history?
 
         Return ONLY a valid JSON object with your reasoning and tool selection:
         {{
@@ -214,6 +246,9 @@ class LangGraphOrchestrator:
         - "try again with my previous question" → {{"tools": ["history"], "primary_tool": "history"}}
         - "what about my last question" → {{"tools": ["history"], "primary_tool": "history"}}
         - "repeat that" → {{"tools": ["history"], "primary_tool": "history"}}
+        - "Can you tell me about my previous questions?" → {{"tools": ["history"], "primary_tool": "history"}}
+        - "What questions did I ask?" → {{"tools": ["history"], "primary_tool": "history"}}
+        - "Show me my previous questions" → {{"tools": ["history"], "primary_tool": "history"}}
         - "What is the meaning of life?" → {{"tools": ["general"], "primary_tool": "general"}}
         - "Explain neural networks" → {{"tools": ["general"], "primary_tool": "general"}}
         """
@@ -647,32 +682,58 @@ class LangGraphOrchestrator:
         print(f"\n🎯 FINAL: Synthesizing answer using ReAct pattern")
         
         # Check if this is a simple query that needs direct response
-        if tool_decision.get("simple_query", False):
+        # BUT first check if it's a follow-up question that needs history
+        history_results = state.get("history_results", {})
+        is_follow_up = history_results.get("is_follow_up", False)
+        
+        # If it's a follow-up question, don't treat it as simple - use the full flow
+        if is_follow_up and history_results.get("relevant_history"):
+            print(f"🔄 FINAL: Follow-up detected, bypassing simple query path")
+            # Continue to the normal flow below
+        elif tool_decision.get("simple_query", False):
             print(f"✅ FINAL: Simple query detected - using direct response with conversation context")
             llm = self.llm_router.get_llm()
             
             # Get conversation history for context even in simple queries
-            history_results = state.get("history_results", {})
             history_context = ""
+            history_available = False
             if history_results.get("relevant_history"):
-                history_context = "\n\nConversation History:\n"
-                for i, entry in enumerate(history_results["relevant_history"]):
-                    history_context += f"Q{i+1}: {entry.get('query', 'Unknown')}\n"
-                    history_context += f"A{i+1}: {entry.get('response', 'Unknown')}\n"
+                history_available = True
+                history_context = "\n\n⚠️ CONVERSATION HISTORY IS AVAILABLE ⚠️\n"
+                history_context += "You have access to the following conversation history:\n\n"
+                for i, entry in enumerate(history_results["relevant_history"], 1):
+                    history_context += f"Q{i}: {entry.get('query', 'Unknown')}\n"
+                    history_context += f"A{i}: {entry.get('response', 'Unknown')}\n\n"
             
             # Simple response prompt for basic interactions with conversation context
+            history_instruction = ""
+            if history_available:
+                history_instruction = """
+            
+            CRITICAL INSTRUCTIONS ABOUT HISTORY:
+            - You HAVE ACCESS to the conversation history shown above
+            - NEVER say you don't have access to past conversations - you clearly do
+            - If the user says "try again", "check again", or similar, use the conversation history to understand what they're referring to
+            - Reference previous questions and answers when relevant
+            - If the user asks about previous questions, list them from the history above
+            """
+            
             simple_prompt = f"""
             You are a helpful academic advisor for Stevens Institute of Technology. 
             You are having a conversation with a user.
             
             Current user message: "{query}"
             {history_context}
+            {history_instruction}
             
             Provide a helpful, informative, and appropriate response that considers the conversation context. 
             Be conversational and provide useful information when possible. If you can answer their question directly, do so comprehensively.
             If you need more information to help them, ask clarifying questions.
             
-            IMPORTANT: Provide ONLY your direct response to the user. Do not include any reasoning, thinking process, or internal thoughts. Just give the direct answer as if you're responding in a normal conversation.
+            IMPORTANT: 
+            - Provide ONLY your direct response to the user. Do not include any reasoning, thinking process, or internal thoughts.
+            - If history is available above, USE IT - do not claim you don't have access to it.
+            - If the user says "try again" or similar, use the history to understand what they want repeated.
             
             Response:
             """
@@ -698,6 +759,72 @@ class LangGraphOrchestrator:
         history_results = state.get("history_results", {})
         reasoning_result = state.get("reasoning_result", {})
         
+        # Check if this is a meta-question about conversation history
+        query_lower = query.lower().strip()
+        meta_history_keywords = [
+            "previous questions", "my previous questions", "tell me about my previous",
+            "what questions did i ask", "what did i ask", "recall my questions",
+            "show me my questions", "list my questions", "my questions", "past questions",
+            "conversation history", "chat history", "our conversation"
+        ]
+        
+        is_meta_history_query = any(keyword in query_lower for keyword in meta_history_keywords)
+        
+        if is_meta_history_query and history_results.get("relevant_history"):
+            print(f"📋 FINAL: Detected meta-question about conversation history")
+            llm = self.llm_router.get_llm()
+            
+            # Build a formatted list of previous questions
+            history_list = []
+            for i, entry in enumerate(history_results["relevant_history"], 1):
+                question = entry.get('query', 'Unknown')
+                response = entry.get('response', 'Unknown')
+                history_list.append(f"Question {i}: {question}\nAnswer {i}: {response[:200]}...")
+            
+            history_text = "\n\n".join(history_list)
+            
+            meta_prompt = f"""
+            The user is asking about their previous questions in this conversation.
+            
+            User's current question: "{query}"
+            
+            Here is the conversation history with their previous questions and your answers:
+            
+            {history_text}
+            
+            Your task is to:
+            1. **List all the previous questions** the user asked in this conversation
+            2. **Briefly summarize what each question was about**
+            3. **Mention that you have access to this conversation history**
+            4. **Be helpful and conversational** - acknowledge their questions and show you remember the conversation
+            
+            IMPORTANT: 
+            - DO NOT say you don't have access to previous questions - you clearly do have them listed above
+            - DO list the questions clearly and helpfully
+            - DO acknowledge the conversation context
+            - Provide ONLY your direct response to the user. Do not include any reasoning, thinking process, or internal thoughts.
+            
+            Response:
+            """
+            
+            try:
+                response = await llm.ainvoke([{"role": "user", "content": meta_prompt}])
+                answer = response.content.strip()
+                print(f"✅ FINAL: Meta-history response generated")
+                state["answer"] = answer
+                return state
+            except Exception as e:
+                print(f"❌ FINAL: Error generating meta-history response: {str(e)}")
+                # Fallback: manually construct the answer
+                if history_results["relevant_history"]:
+                    answer_parts = ["Here are your previous questions from our conversation:\n"]
+                    for i, entry in enumerate(history_results["relevant_history"], 1):
+                        question = entry.get('query', 'Unknown')
+                        answer_parts.append(f"{i}. {question}")
+                    answer = "\n".join(answer_parts)
+                    state["answer"] = answer
+                    return state
+        
         # Check if this is a follow-up question and handle it specially
         is_follow_up = history_results.get("is_follow_up", False)
         if is_follow_up and history_results.get("relevant_history"):
@@ -712,14 +839,23 @@ class LangGraphOrchestrator:
                 follow_up_prompt = f"""
                 The user is asking a follow-up question: "{query}"
                 
+                ⚠️ CRITICAL: YOU HAVE ACCESS TO THE CONVERSATION HISTORY ⚠️
+                
                 Based on the conversation history, their previous question was: "{previous_query}"
                 And your previous answer was: "{previous_response}"
                 
-                For follow-up questions like "try again with my previous question", "check again", etc., 
-                provide the same information from your previous response, but you can add any additional 
-                relevant information if needed.
+                For follow-up questions like "try again", "check again", "repeat", etc., 
+                you should:
+                1. **Use the conversation history** - you clearly have access to it (shown above)
+                2. **Provide the same information** from your previous response
+                3. **You can add any additional relevant information** if needed
+                4. **NEVER say you don't have access** to previous conversations - you clearly do
                 
-                IMPORTANT: Provide ONLY your direct response to the user. Do not include any reasoning, thinking process, or internal thoughts. Just give the direct answer as if you're responding in a normal conversation.
+                IMPORTANT: 
+                - Provide ONLY your direct response to the user
+                - Do not include any reasoning, thinking process, or internal thoughts
+                - Do NOT claim you don't have access to history - you clearly do
+                - Use the previous question and answer shown above to respond appropriately
                 
                 Response:
                 """
@@ -797,6 +933,26 @@ class LangGraphOrchestrator:
         context = "\n\n".join(context_parts) if context_parts else "No specific information available."
         
         # ReAct-style final synthesis prompt
+        # Check if history is available and emphasize it
+        history_available = bool(history_results.get("relevant_history"))
+        history_count = len(history_results.get("relevant_history", [])) if history_available else 0
+        
+        history_instruction = ""
+        if history_available:
+            history_instruction = f"""
+        
+        ⚠️ CRITICAL: CONVERSATION HISTORY IS AVAILABLE ⚠️
+        You have access to {history_count} previous conversation(s) with this user. The conversation history is provided in the "CONVERSATION HISTORY" section above.
+        
+        IMPORTANT RULES ABOUT HISTORY:
+        - **NEVER say you don't have access to previous questions or conversation history** - you clearly do have it
+        - **ALWAYS use the conversation history** to provide context-aware answers
+        - **If the user asks about previous questions**, list them from the conversation history
+        - **If the user asks follow-up questions**, use the history to understand what they're referring to
+        - **Reference previous parts of the conversation** when relevant
+        - **Build upon previous answers** rather than starting from scratch
+        """
+        
         final_prompt = f"""
         You are a helpful academic advisor for Stevens Institute of Technology. Your goal is to provide comprehensive, accurate, and useful information to help students with their questions.
 
@@ -804,6 +960,7 @@ class LangGraphOrchestrator:
 
         Available Information:
         {context}
+        {history_instruction}
 
         INSTRUCTIONS:
         1. **Provide a complete and helpful answer using all available information**
@@ -818,17 +975,19 @@ class LangGraphOrchestrator:
         10. **Be specific about Stevens Institute of Technology when relevant**
 
         CONVERSATION CONTEXT USAGE:
-        - **ALWAYS consider the conversation history when answering**
-        - **If the current question relates to previous questions, reference that context**
+        - **ALWAYS consider the conversation history when answering** - it is provided above in the "CONVERSATION HISTORY" section
+        - **If the current question relates to previous questions, reference that context directly**
         - **If the user asks follow-up questions, use the conversation flow to provide better answers**
         - **If the question is about something mentioned before, build upon previous answers**
         - **Maintain conversation continuity and coherence**
+        - **If the user asks about their previous questions, list them from the conversation history**
 
         Special Handling for Follow-up Questions:
         - If the user says "try again with my previous question", find the most recent question in the conversation history and provide that answer again
         - If the user says "check again", look at the most recent conversation and repeat or clarify that information
         - If the user says "what about my last question", find the most recent question and provide the answer
         - If the user says "repeat that", find the most recent answer and repeat it
+        - If the user asks "tell me about my previous questions" or similar, list all previous questions from the conversation history
         - For these follow-up questions, DO NOT ask the user to provide the question - use the conversation history to find it
         - If you find relevant previous questions in the history, provide those answers directly
         - If no relevant history is found, then ask the user to clarify what they want to know

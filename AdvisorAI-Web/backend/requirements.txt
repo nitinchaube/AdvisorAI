@@ -16,7 +16,7 @@ langchain
 langchain-openai
 langchain-google-genai
 langchain-community
-chromadb
+chromadb==0.5.23
 sentence-transformers
 transformers
 huggingface-hub
