@@ -1,48 +1,100 @@
 """
-LangGraph orchestrator – the central workflow that routes queries through
-tools (Chroma, web, history, general) using a ReAct-style approach.
+LangGraph orchestrator – ReAct + Reflection pipeline for AdvisorAI.
 
-Optimisations over the original implementation
------------------------------------------------
-* **Merged LLM calls**: Chat-name generation + tool selection happen in a
-  single LLM call (was 2-3 separate calls).
-* **Removed redundant classification**: GeneralAgent no longer re-classifies
-  queries the router already classified.
-* **Deterministic web-search gating**: The "reason" node uses a rule-based
-  check first, falling back to LLM only when necessary (saves 1 LLM call
-  in the common case).
-* **Input sanitization**: All user queries are sanitised before being
-  embedded in prompts.
-* **Structured logging**: print() replaced by the ``chatbot`` logger.
+Architecture
+============
+
+**Safety gate** – blocks harmful, inappropriate, or completely off-topic
+queries before any tools run.
+
+**ReAct (Reason → Act → Observe)** – the agent explicitly *thinks* about
+what information it needs, *acts* by calling tools, and *observes* the
+results before deciding the next step.
+
+**Reflection** – after generating a draft answer the LLM performs a
+self-critique.  If the score is below a threshold the answer is *refined*.
+
+Graph
+-----
+::
+
+    ┌────────┐
+    │ router │  ← classify (general / domain / blocked) + chat name
+    └───┬────┘
+        │  blocked? ──► immediate polite decline → save → END
+        ▼
+    ┌────────┐
+    │ gather │  ← always: history.  domain: + chroma.  general: + general_agent
+    └───┬────┘
+        ▼
+    ┌──────────┐
+    │ evaluate │  ← ReAct THINK: is gathered info sufficient?
+    └───┬──────┘
+        │  need_web? ──┐
+        │              ▼
+        │        ┌────────────┐
+        │        │ web_search │  ← ReAct ACT: fallback scraper
+        │        └─────┬──────┘
+        │              │
+        ▼              ▼
+    ┌──────────┐
+    │ generate │  ← synthesise answer from ALL context
+    └───┬──────┘
+        ▼
+    ┌─────────┐
+    │ reflect │  ← self-critique: score 1-10 + feedback
+    └───┬─────┘
+        │  quality_ok? ──┐
+        │                ▼
+        │          ┌────────┐
+        │          │ refine │  ← improve answer using reflection feedback
+        │          └───┬────┘
+        │              │
+        ▼              ▼
+    ┌──────┐
+    │ save │  ← persist conversation
+    └──────┘
 """
 
-from typing import Dict, Any, List
-from typing_extensions import TypedDict
+from __future__ import annotations
+
 import asyncio
 import logging
+import re
+from typing import Any, Dict, List
 
-from langgraph.graph import StateGraph, END
+from typing_extensions import TypedDict
+from langgraph.graph import END, StateGraph
 
 from agents.chroma_agent import ChromaAgent
-from agents.web_agent import WebAgent
-from agents.history_agent import HistoryAgent
 from agents.general_agent import GeneralAgent
+from agents.history_agent import HistoryAgent
+from agents.web_agent import WebAgent
 from core.llm_router import LLMRouter
 from core.memory_store import get_memory_store
-from core.utils import parse_llm_json, sanitize_query, clean_response
+from core.utils import clean_response, parse_llm_json, sanitize_query
 
 logger = logging.getLogger("chatbot")
 
+# ═══════════════════════════════════════════════════════════════════════════
+# State schema
+# ═══════════════════════════════════════════════════════════════════════════
 
-# ── State schema ─────────────────────────────────────────────────────────
 
 class ChatState(TypedDict, total=False):
     """Typed state flowing through the LangGraph workflow."""
+
+    # ── Input ──
     query: str
     user_id: str
     chat_history: str
+
+    # ── Router ──
     chat_name: str
-    tool_decision: Dict[str, Any]
+    query_type: str  # "general" | "domain" | "blocked"
+    is_follow_up: bool
+
+    # ── Tool outputs ──
     chroma_results: Dict[str, Any]
     collections_searched: List[str]
     chroma_error: str
@@ -50,498 +102,709 @@ class ChatState(TypedDict, total=False):
     general_answer: str
     general_error: str
     used_general_tool: bool
-    question_type: str
     web_results: Dict[str, Any]
     web_search_query: str
-    reasoning_result: Dict[str, Any]
+
+    # ── Evaluate (ReAct reasoning trace) ──
+    react_thought: str
+    need_web_search: bool
+
+    # ── Generate ──
+    draft_answer: str
+
+    # ── Reflect ──
+    reflection: Dict[str, Any]
+
+    # ── Final ──
     answer: str
 
 
-# ── Follow-up detection (shared with HistoryTool) ────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════
+# Constants
+# ═══════════════════════════════════════════════════════════════════════════
 
-_FOLLOW_UP_INDICATORS = frozenset(
-    [
-        "try again", "check again", "again", "repeat", "what about", "how about",
-        "previous question", "last question", "my previous question",
-        "repeat that", "say that again", "can you repeat", "what was that",
-        "remind me", "recall", "remember", "what did you say", "can you clarify",
-        "previous questions", "my previous questions", "tell me about my previous",
-        "what questions did i ask", "what did i ask", "show me my questions",
-        "list my questions", "past questions", "conversation history", "chat history",
-    ]
+_FOLLOW_UP_INDICATORS = frozenset([
+    "try again", "check again", "again", "repeat",
+    "what about", "how about", "tell me more", "more details",
+    "elaborate", "expand", "continue", "go on",
+    "previous question", "last question", "my previous question",
+    "repeat that", "say that again", "can you repeat", "what was that",
+    "remind me", "recall", "remember", "what did you say", "can you clarify",
+    "previous questions", "my previous questions", "tell me about my previous",
+    "what questions did i ask", "what did i ask", "show me my questions",
+    "list my questions", "past questions", "conversation history", "chat history",
+])
+
+# Patterns that indicate harmful / inappropriate / off-topic queries.
+# Matched case-insensitively against the query.
+_BLOCKED_PATTERNS = [
+    # Violence / harm
+    r"\b(?:kill|murder|attack|bomb|weapon|gun|shoot|assault|terrorism|terrorist)\b",
+    # Drugs / illegal
+    r"\b(?:how\s+to\s+(?:make|cook|produce|manufacture)\s+(?:drug|meth|cocaine|heroin))\b",
+    # Hate speech
+    r"\b(?:hate\s+(?:speech|group)|racist|racism|sexist|sexism|homophobic)\b",
+    # Explicit / sexual
+    r"\b(?:porn|pornograph|nude|naked|sexual\s+content|explicit)\b",
+    # Hacking / malicious
+    r"\b(?:hack(?:ing)?|exploit|malware|ransomware|ddos|phishing|crack\s+password)\b",
+    # Self-harm
+    r"\b(?:suicide|self[- ]?harm|cut\s+myself|end\s+my\s+life)\b",
+    # Cheating
+    r"\b(?:write\s+my\s+(?:essay|paper|assignment|homework)|do\s+my\s+homework)\b",
+]
+_COMPILED_BLOCKED = [re.compile(p, re.IGNORECASE) for p in _BLOCKED_PATTERNS]
+
+_DECLINE_MESSAGE = (
+    "I appreciate you reaching out! However, I'm specifically designed to help "
+    "with questions about Stevens Institute of Technology — things like courses, "
+    "programs, admissions, faculty, campus life, and academic advising. "
+    "I'm not able to help with that particular request. "
+    "Feel free to ask me anything about Stevens and I'll do my best to help! 😊"
 )
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Orchestrator
+# ═══════════════════════════════════════════════════════════════════════════
+
+
 class LangGraphOrchestrator:
-    """Main orchestrator using LangGraph with a ReAct-style workflow."""
+    """ReAct + Reflection orchestrator for the AdvisorAI chatbot."""
+
+    _SIMILARITY_THRESHOLD = 1.2
+    _MIN_GOOD_DOCS = 2
+    _REFLECTION_THRESHOLD = 7
 
     def __init__(self):
         self.llm_router = LLMRouter()
         self.memory_store = get_memory_store()
 
-        # Agents
         self.chroma_agent = ChromaAgent()
         self.web_agent = WebAgent()
         self.history_agent = HistoryAgent()
         self.general_agent = GeneralAgent()
 
         self.graph = self._build_graph()
+        logger.info("LangGraph orchestrator initialised (ReAct + Reflection)")
 
     # ── Graph construction ────────────────────────────────────────────
 
     def _build_graph(self) -> StateGraph:
-        workflow = StateGraph(ChatState)
+        wf = StateGraph(ChatState)
 
-        workflow.add_node("router", self._router_node)
-        workflow.add_node("tools", self._tools_node)
-        workflow.add_node("reason", self._reason_node)
-        workflow.add_node("web_search", self._web_search_node)
-        workflow.add_node("final", self._final_node)
-        workflow.add_node("save", self._save_node)
+        wf.add_node("router", self._router_node)
+        wf.add_node("gather", self._gather_node)
+        wf.add_node("evaluate", self._evaluate_node)
+        wf.add_node("web_search", self._web_search_node)
+        wf.add_node("generate", self._generate_node)
+        wf.add_node("reflect", self._reflect_node)
+        wf.add_node("refine", self._refine_node)
+        wf.add_node("save", self._save_node)
 
-        workflow.set_entry_point("router")
-        workflow.add_edge("router", "tools")
-        workflow.add_edge("tools", "reason")
-        workflow.add_conditional_edges(
-            "reason",
-            self._should_web_search,
-            {"web_search": "web_search", "final": "final"},
+        wf.set_entry_point("router")
+
+        # Safety gate: blocked queries go straight to save (answer already set)
+        wf.add_conditional_edges(
+            "router",
+            self._route_after_router,
+            {"blocked": "save", "gather": "gather"},
         )
-        workflow.add_edge("web_search", "final")
-        workflow.add_edge("final", "save")
-        workflow.add_edge("save", END)
 
-        return workflow.compile()
+        wf.add_edge("gather", "evaluate")
+        wf.add_conditional_edges(
+            "evaluate",
+            self._route_after_evaluate,
+            {"web_search": "web_search", "generate": "generate"},
+        )
+        wf.add_edge("web_search", "generate")
 
-    # ── 1. Router node ────────────────────────────────────────────────
+        wf.add_edge("generate", "reflect")
+        wf.add_conditional_edges(
+            "reflect",
+            self._route_after_reflect,
+            {"refine": "refine", "save": "save"},
+        )
+        wf.add_edge("refine", "save")
+        wf.add_edge("save", END)
+
+        return wf.compile()
+
+    # ──────────────────────────────────────────────────────────────────
+    # 1. ROUTER – classify + safety gate + chat name
+    # ──────────────────────────────────────────────────────────────────
 
     async def _router_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Single LLM call that determines:
-        - Which tools to invoke
-        - A short chat-session name
+        query = sanitize_query(state.get("query", ""))
+        state["query"] = query
+        q_lower = query.lower().strip()
 
-        Follow-up queries are fast-tracked to the history tool.
-        """
-        raw_query = state.get("query", "")
-        query = sanitize_query(raw_query)
-        state["query"] = query  # store sanitised version
-        query_lower = query.lower().strip()
-
-        # Fast-track: follow-up queries always go to history
-        if any(ind in query_lower for ind in _FOLLOW_UP_INDICATORS):
-            logger.info("Router: follow-up detected → history tool")
-            state["tool_decision"] = {
-                "tools": ["history"],
-                "primary_tool": "history",
-                "reasoning": "Follow-up query detected",
-                "confidence": "high",
-                "is_follow_up": True,
-            }
-            state["chat_name"] = "Follow-up Question"
+        # ── Safety gate: block harmful / inappropriate queries ────────
+        if self._is_blocked(q_lower):
+            state["query_type"] = "blocked"
+            state["chat_name"] = "Declined Request"
+            state["answer"] = _DECLINE_MESSAGE
+            logger.warning("Router: BLOCKED query — '%s'", query[:80])
             return state
 
-        # Combined LLM call: tool selection + chat name
+        # ── Fast-track follow-ups ─────────────────────────────────────
+        is_follow_up = any(ind in q_lower for ind in _FOLLOW_UP_INDICATORS)
+        state["is_follow_up"] = is_follow_up
+        if is_follow_up:
+            state["query_type"] = "domain"
+            state["chat_name"] = "Follow-up Question"
+            logger.info("Router: follow-up → domain")
+            return state
+
+        # ── LLM classification ────────────────────────────────────────
         llm = self.llm_router.get_llm()
-
-        combined_prompt = f"""You are an AI assistant for Stevens Institute of Technology.
-Analyze the user query and return a JSON object with:
-1. Which tools to use
-2. A short chat session name (3-8 words)
-
-Available tools:
-- "general" – general knowledge, definitions, concepts (NOT Stevens-specific)
-- "chroma" – Stevens-specific data (courses, faculty, programs, policies)
-- "web" – current / recent information, contact details, updates
-- "history" – conversation context, follow-up questions
-
-User Query: "{query}"
-
-Decision Guidelines:
-- "general" for: what is, explain, define, concept, theory (non-Stevens)
-- "chroma" for: courses, faculty, professors, programs, Stevens-specific info
-- "web" for: current info, contact details, recent updates
-- "history" for: follow-up questions, references to previous conversation
-
-Return ONLY valid JSON:
-{{
-  "tools": ["tool1", "tool2"],
-  "primary_tool": "main_tool",
-  "reasoning": "brief analysis",
-  "confidence": "high/medium/low",
-  "chat_name": "Short Descriptive Name"
-}}"""
+        prompt = (
+            "You are an AI assistant for Stevens Institute of Technology.\n"
+            "Classify the query and generate a chat name.\n\n"
+            f'Query: "{query}"\n\n'
+            "Rules:\n"
+            '- "blocked" → query is harmful, inappropriate, offensive, contains '
+            "violence, hate speech, explicit content, requests to cheat, or is "
+            "completely unrelated to education / academics / university life.\n"
+            '- "general" → pure general knowledge NOT Stevens-specific but still '
+            "appropriate (e.g. 'What is machine learning?')\n"
+            '- "domain" → ANYTHING Stevens-related or that may be in university '
+            'docs. When in doubt pick "domain".\n\n'
+            "Return ONLY valid JSON:\n"
+            '{"query_type":"general"|"domain"|"blocked",'
+            '"chat_name":"3-8 words","reasoning":"one line"}'
+        )
 
         try:
-            response = await llm.ainvoke([{"role": "user", "content": combined_prompt}])
-            parsed = parse_llm_json(response.content)
-
+            resp = await llm.ainvoke([{"role": "user", "content": prompt}])
+            parsed = parse_llm_json(resp.content)
             if parsed:
-                tools = parsed.get("tools", ["chroma"])
-                primary = parsed.get("primary_tool", tools[0] if tools else "chroma")
-                valid_tools = {"general", "chroma", "web", "history"}
-                tools = [t for t in tools if t in valid_tools] or ["chroma"]
-
-                # Always include history for context
-                if "history" not in tools:
-                    tools.append("history")
-
-                state["tool_decision"] = {
-                    "tools": tools,
-                    "primary_tool": primary if primary in valid_tools else tools[0],
-                    "reasoning": parsed.get("reasoning", ""),
-                    "confidence": parsed.get("confidence", "medium"),
-                    "simple_query": primary == "general" and len(tools) <= 2,
-                }
+                qt = parsed.get("query_type", "domain")
+                if qt not in ("general", "domain", "blocked"):
+                    qt = "domain"
+                state["query_type"] = qt
                 state["chat_name"] = parsed.get("chat_name", "New Chat")
+                logger.info("Router: type=%s name='%s'", qt, state["chat_name"])
 
-                logger.info(
-                    "Router: tools=%s primary=%s chat_name='%s'",
-                    tools, primary, state["chat_name"],
-                )
+                # If LLM classified as blocked, set decline message
+                if qt == "blocked":
+                    state["answer"] = _DECLINE_MESSAGE
             else:
-                # Fallback: rule-based
-                tools = self._fallback_tool_selection(query)
-                state["tool_decision"] = {
-                    "tools": tools,
-                    "primary_tool": tools[0],
-                    "reasoning": "Fallback – LLM response unparseable",
-                    "confidence": "low",
-                }
+                state["query_type"] = self._fallback_classify(query)
                 state["chat_name"] = "New Chat"
-
-        except Exception as e:
-            logger.error("Router LLM error: %s", e, exc_info=True)
-            tools = self._fallback_tool_selection(query)
-            state["tool_decision"] = {
-                "tools": tools,
-                "primary_tool": tools[0],
-                "reasoning": f"Fallback due to error: {e}",
-                "confidence": "low",
-            }
+        except Exception as exc:
+            logger.error("Router error: %s", exc, exc_info=True)
+            state["query_type"] = self._fallback_classify(query)
             state["chat_name"] = "New Chat"
 
         return state
 
     @staticmethod
-    def _fallback_tool_selection(query: str) -> List[str]:
-        """Rule-based fallback when LLM routing fails."""
-        q = query.lower()
-        tools = ["history"]
-
-        stevens_keywords = [
-            "stevens", "course", "faculty", "professor", "program",
-            "admission", "campus", "hoboken", "department",
-        ]
-        if any(kw in q for kw in stevens_keywords):
-            tools.insert(0, "chroma")
-        else:
-            tools.insert(0, "general")
-
-        return tools
-
-    # ── 2. Tools node ─────────────────────────────────────────────────
-
-    async def _tools_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute selected tools in parallel."""
-        decision = state.get("tool_decision", {})
-        tools_to_use = decision.get("tools", ["chroma"])
-
-        tasks = []
-        tool_names = []
-
-        if "chroma" in tools_to_use:
-            tasks.append(self.chroma_agent.process(state.copy()))
-            tool_names.append("chroma")
-        if "history" in tools_to_use:
-            tasks.append(self.history_agent.process(state.copy()))
-            tool_names.append("history")
-        if "general" in tools_to_use:
-            tasks.append(self.general_agent.process(state.copy()))
-            tool_names.append("general")
-
-        if tasks:
-            logger.info("Tools: executing %s in parallel", tool_names)
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-
-            for name, result in zip(tool_names, results):
-                if isinstance(result, Exception):
-                    logger.error("Tool %s failed: %s", name, result)
-                    state[f"{name}_error"] = str(result)
-                elif isinstance(result, dict):
-                    # Merge only tool-specific keys to avoid overwriting
-                    for key in (
-                        "chroma_results", "collections_searched", "chroma_error",
-                        "history_results",
-                        "general_answer", "used_general_tool", "general_error",
-                        "question_type",
-                    ):
-                        if key in result:
-                            state[key] = result[key]
-
-        return state
-
-    # ── 3. Reason node ────────────────────────────────────────────────
-
-    async def _reason_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """Decide whether web search is needed – rule-based first, LLM fallback."""
-        query = state.get("query", "")
-        decision = state.get("tool_decision", {})
-
-        # Simple / follow-up queries never need web search
-        if decision.get("simple_query") or decision.get("is_follow_up"):
-            state["reasoning_result"] = {
-                "need_web_search": False,
-                "reasoning": "Simple or follow-up query",
-            }
-            return state
-
-        # If the router already selected "web", honour it
-        if "web" in decision.get("tools", []):
-            state["reasoning_result"] = {"need_web_search": True, "reasoning": "Router selected web tool"}
-            web_query = await self._generate_web_search_query(query, state)
-            state["web_search_query"] = web_query
-            return state
-
-        # Rule-based heuristic: check for time-sensitive indicators
-        q_lower = query.lower()
-        time_indicators = [
-            "current", "recent", "latest", "2024", "2025", "2026",
-            "upcoming", "deadline", "application", "admission",
-            "enrollment", "registration", "semester", "contact",
-            "email", "phone", "address", "schedule",
-        ]
-        if any(ind in q_lower for ind in time_indicators):
-            logger.info("Reason: time-sensitive indicator detected → web search")
-            state["reasoning_result"] = {
-                "need_web_search": True,
-                "reasoning": "Time-sensitive query detected",
-            }
-            web_query = await self._generate_web_search_query(query, state)
-            state["web_search_query"] = web_query
-            return state
-
-        # Check if chroma returned enough good data
-        chroma = state.get("chroma_results", {})
-        docs = chroma.get("documents", [])
-        if docs and len(docs) >= 2:
-            state["reasoning_result"] = {
-                "need_web_search": False,
-                "reasoning": f"Sufficient vector-DB results ({len(docs)} docs)",
-            }
-            return state
-
-        # Fallback: if we have very little data, do web search
-        if not docs:
-            state["reasoning_result"] = {
-                "need_web_search": True,
-                "reasoning": "No vector-DB results – web search as fallback",
-            }
-            web_query = await self._generate_web_search_query(query, state)
-            state["web_search_query"] = web_query
-            return state
-
-        # Default: no web search
-        state["reasoning_result"] = {
-            "need_web_search": False,
-            "reasoning": "Default – available data should suffice",
-        }
-        return state
-
-    async def _generate_web_search_query(
-        self, original_query: str, state: Dict[str, Any]
-    ) -> str:
-        """Generate a targeted web search query."""
-        llm = self.llm_router.get_llm()
-
-        prompt = (
-            "Generate a specific web search query to find information about "
-            "Stevens Institute of Technology related to the following user question.\n\n"
-            f'User Question: "{sanitize_query(original_query)}"\n\n'
-            "Return ONLY the search query (3-10 words). Include 'Stevens Institute of Technology' if relevant."
-        )
-
-        try:
-            response = await llm.ainvoke([{"role": "user", "content": prompt}])
-            query = response.content.strip().strip('"').strip("'")
-            if len(query) < 5:
-                raise ValueError("Generated query too short")
-            return query
-        except Exception:
-            return f"{original_query} Stevens Institute of Technology"
+    def _is_blocked(query_lower: str) -> bool:
+        """Fast regex-based safety check (runs before the LLM call)."""
+        return any(p.search(query_lower) for p in _COMPILED_BLOCKED)
 
     @staticmethod
-    def _should_web_search(state: Dict[str, Any]) -> str:
-        result = state.get("reasoning_result", {})
-        return "web_search" if result.get("need_web_search") else "final"
+    def _fallback_classify(query: str) -> str:
+        q = query.lower()
+        kws = [
+            "stevens", "course", "faculty", "professor", "program",
+            "admission", "campus", "hoboken", "department", "degree",
+            "major", "minor", "tuition", "scholarship", "housing",
+            "registrar", "transcript", "gpa", "credit", "semester",
+        ]
+        return "domain" if any(k in q for k in kws) else "general"
 
-    # ── 4. Web search node ────────────────────────────────────────────
+    @staticmethod
+    def _route_after_router(state: Dict[str, Any]) -> str:
+        return "blocked" if state.get("query_type") == "blocked" else "gather"
 
-    async def _web_search_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        original_query = state.get("query", "")
-        search_query = state.get("web_search_query", original_query)
+    # ──────────────────────────────────────────────────────────────────
+    # 2. GATHER – run tools (always history; chroma OR general)
+    # ──────────────────────────────────────────────────────────────────
 
-        logger.info("Web search: '%s'", search_query)
+    async def _gather_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        qt = state.get("query_type", "domain")
+        tasks, names = [], []
 
-        try:
-            web_state = state.copy()
-            web_state["query"] = search_query
-            web_results = await self.web_agent.process(web_state)
+        tasks.append(self.history_agent.process(state.copy()))
+        names.append("history")
 
-            if web_results.get("web_results"):
-                web_results["web_results"]["original_query"] = original_query
-                web_results["web_results"]["search_query_used"] = search_query
-                state["web_results"] = web_results["web_results"]
-            else:
-                state["web_results"] = {"success": False, "web_content": ""}
+        if qt == "domain":
+            tasks.append(self.chroma_agent.process(state.copy()))
+            names.append("chroma")
+        else:
+            tasks.append(self.general_agent.process(state.copy()))
+            names.append("general")
 
-        except Exception as e:
-            logger.error("Web search error: %s", e, exc_info=True)
-            state["web_results"] = {"success": False, "error": str(e), "web_content": ""}
+        logger.info("Gather: running %s (type=%s)", names, qt)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        _KEYS = {
+            "history": ("history_results",),
+            "chroma": ("chroma_results", "collections_searched", "chroma_error"),
+            "general": ("general_answer", "used_general_tool", "general_error"),
+        }
+        for name, res in zip(names, results):
+            if isinstance(res, Exception):
+                logger.error("Gather: '%s' failed: %s", name, res)
+                state[f"{name}_error"] = str(res)
+            elif isinstance(res, dict):
+                for key in _KEYS.get(name, ()):
+                    if key in res:
+                        state[key] = res[key]
 
         return state
 
-    # ── 5. Final answer node ──────────────────────────────────────────
+    # ──────────────────────────────────────────────────────────────────
+    # 3. EVALUATE – ReAct THINK
+    # ──────────────────────────────────────────────────────────────────
 
-    async def _final_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    async def _evaluate_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """ReAct *Think* step: examine gathered data and decide next action."""
+        qt = state.get("query_type", "domain")
         query = state.get("query", "")
-        decision = state.get("tool_decision", {})
-        history_results = state.get("history_results", {})
-        is_follow_up = history_results.get("is_follow_up", False)
 
+        if qt == "general":
+            state["react_thought"] = (
+                "THINK: General knowledge question. The general agent has "
+                "already produced an answer. No additional tools needed."
+            )
+            state["need_web_search"] = False
+            logger.info("Evaluate: general → skip web")
+            return state
+
+        # ── Domain: assess chroma quality ────────────────────────────
+        chroma = state.get("chroma_results", {})
+        docs = chroma.get("documents", [])
+        good_docs = [
+            d for d in docs
+            if d.get("metadata", {}).get("similarity_score", 999)
+            < self._SIMILARITY_THRESHOLD
+        ]
+        history = state.get("history_results", {})
+        hist_count = len(history.get("relevant_history", []))
+
+        thought_lines = [
+            f"THINK: Query is domain-specific: '{query[:80]}...'",
+            f"  - Conversation history entries: {hist_count}",
+            f"  - Chroma documents retrieved: {len(docs)}",
+            f"  - Quality documents (score < {self._SIMILARITY_THRESHOLD}): {len(good_docs)}",
+            f"  - Minimum quality docs needed: {self._MIN_GOOD_DOCS}",
+        ]
+
+        if len(good_docs) >= self._MIN_GOOD_DOCS:
+            thought_lines.append(
+                "DECIDE: Sufficient quality data from vector DB. "
+                "Proceeding to answer generation."
+            )
+            state["need_web_search"] = False
+        else:
+            thought_lines.append(
+                "DECIDE: Insufficient data from vector DB. "
+                "Need to ACT → call web search for additional information."
+            )
+            state["need_web_search"] = True
+            state["web_search_query"] = await self._make_search_query(query)
+
+        state["react_thought"] = "\n".join(thought_lines)
+        logger.info(
+            "Evaluate: docs=%d good=%d → web_search=%s",
+            len(docs), len(good_docs), state["need_web_search"],
+        )
+        return state
+
+    async def _make_search_query(self, original: str) -> str:
+        """Generate a Stevens-focused web search query via LLM.
+
+        The query ALWAYS includes 'Stevens Institute of Technology' so the
+        scraper returns relevant university information.
+        """
+        llm = self.llm_router.get_llm()
+        prompt = (
+            "Generate a short web search query (5-12 words) to find information "
+            "from Stevens Institute of Technology for this student question:\n\n"
+            f'"{sanitize_query(original)}"\n\n'
+            "RULES:\n"
+            "- ALWAYS include 'Stevens Institute of Technology' in the query.\n"
+            "- Focus on the specific topic the student is asking about.\n"
+            "- Return ONLY the search query, nothing else."
+        )
+        try:
+            resp = await llm.ainvoke([{"role": "user", "content": prompt}])
+            q = resp.content.strip().strip('"').strip("'")
+            # Guarantee Stevens is in the query
+            if "stevens" not in q.lower():
+                q = f"{q} Stevens Institute of Technology"
+            return q if len(q) >= 5 else f"{original} Stevens Institute of Technology"
+        except Exception:
+            return f"{original} Stevens Institute of Technology"
+
+    @staticmethod
+    def _route_after_evaluate(state: Dict[str, Any]) -> str:
+        return "web_search" if state.get("need_web_search") else "generate"
+
+    # ──────────────────────────────────────────────────────────────────
+    # 4. WEB SEARCH – ReAct ACT
+    # ──────────────────────────────────────────────────────────────────
+
+    async def _web_search_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        original = state.get("query", "")
+        search_q = state.get("web_search_query", original)
+        logger.info("Web search (ACT): '%s'", search_q)
+
+        try:
+            ws = state.copy()
+            ws["query"] = search_q
+            res = await self.web_agent.process(ws)
+
+            web = res.get("web_results", {})
+            if web:
+                web["original_query"] = original
+                web["search_query_used"] = search_q
+                state["web_results"] = web
+            else:
+                state["web_results"] = {"success": False, "web_content": ""}
+        except Exception as exc:
+            logger.error("Web search error: %s", exc, exc_info=True)
+            state["web_results"] = {
+                "success": False, "error": str(exc), "web_content": "",
+            }
+
+        web_ok = state.get("web_results", {}).get("success", False)
+        web_len = len(
+            state.get("web_results", {}).get("scraped_content", "")
+            or state.get("web_results", {}).get("web_content", "")
+        )
+        state["react_thought"] = state.get("react_thought", "") + (
+            f"\nACT: Executed web search with query '{search_q}'."
+            f"\nOBSERVE: Web search {'succeeded' if web_ok else 'failed'}. "
+            f"Content length: {web_len} chars."
+        )
+        return state
+
+    # ──────────────────────────────────────────────────────────────────
+    # 5. GENERATE – synthesise the draft answer
+    # ──────────────────────────────────────────────────────────────────
+
+    async def _generate_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        query = state.get("query", "")
+        history_results = state.get("history_results", {})
         llm = self.llm_router.get_llm()
 
-        # ── Build context from all tools ──
-        context_parts = []
+        # ── Build context ────────────────────────────────────────────
+        ctx: List[str] = []
+        has_info = False
 
-        # Chroma results
+        hist = history_results.get("relevant_history", [])
+        if hist:
+            ctx.append("=== Conversation History ===")
+            for i, e in enumerate(hist, 1):
+                ctx.append(f"Q{i}: {e.get('query', '')}")
+                ctx.append(f"A{i}: {e.get('response', '')}")
+            ctx.append("")
+
         chroma = state.get("chroma_results", {})
         if chroma.get("documents"):
-            context_parts.append("=== Database Information ===")
-            for i, doc in enumerate(chroma["documents"][:5], 1):
-                context_parts.append(f"[{i}]: {doc['content']}")
+            ctx.append("=== University Database ===")
+            for i, d in enumerate(chroma["documents"][:5], 1):
+                ctx.append(f"[{i}]: {d['content']}")
+            has_info = True
 
-        # Web results
         web = state.get("web_results", {})
-        web_content = web.get("scraped_content") or web.get("web_content", "")
-        if web_content:
-            context_parts.append("=== Web Search Results ===")
-            context_parts.append(web_content[:2000])
+        wc = web.get("scraped_content") or web.get("web_content", "")
+        if wc and len(wc.strip()) > 50:
+            ctx.append("=== Web Search Results ===")
+            ctx.append(wc[:3000])
+            has_info = True
 
-        # General knowledge
-        general = state.get("general_answer")
-        if general:
-            context_parts.append("=== General Knowledge ===")
-            context_parts.append(general[:1000])
+        gen = state.get("general_answer")
+        if gen and len(gen.strip()) > 20:
+            ctx.append("=== General Knowledge ===")
+            ctx.append(gen[:1500])
+            has_info = True
 
-        # Conversation history
-        history_text = ""
-        if history_results.get("relevant_history"):
-            history_text = "\n=== Conversation History ===\n"
-            for i, entry in enumerate(history_results["relevant_history"], 1):
-                history_text += f"Q{i}: {entry.get('query', '')}\n"
-                history_text += f"A{i}: {entry.get('response', '')}\n\n"
+        context_text = "\n\n".join(ctx) if ctx else ""
 
-        context = "\n\n".join(context_parts) if context_parts else "No specific information available."
-
-        # ── Construct the final prompt ──
-        history_instruction = ""
-        if history_results.get("relevant_history"):
-            count = len(history_results["relevant_history"])
-            history_instruction = (
-                f"\nYou have access to {count} previous conversation(s). "
-                "NEVER claim you lack access to history. "
-                "Use the conversation history to provide context-aware answers. "
-                "For follow-up queries like 'try again' or 'repeat', reference previous Q&A.\n"
+        # ── Extra instructions based on context ──────────────────────
+        extra = ""
+        if hist:
+            extra += (
+                f"\nYou have {len(hist)} previous conversation(s). "
+                "ALWAYS use them for context. NEVER claim you lack history.\n"
+            )
+        if not has_info and not hist:
+            extra += (
+                "\n⚠️ No specific information was found for this query. "
+                "Let the student know you currently don't have that "
+                "information but offer to help with other Stevens-related "
+                "questions they may have.\n"
+            )
+        elif not has_info and hist:
+            extra += (
+                "\n⚠️ No new information found, but history is available. "
+                "Answer from history context. If the current question is "
+                "about something new, let the student know you don't have "
+                "that specific information right now and offer to help with "
+                "other questions.\n"
             )
 
-        safe_query = sanitize_query(query)
+        prompt = f"""You are a knowledgeable and friendly academic advisor at Stevens Institute of Technology.
+You have access to an extensive university database and live web search to find answers.
 
-        final_prompt = f"""You are a helpful academic advisor for Stevens Institute of Technology.
+Question: "{sanitize_query(query)}"
 
-Current User Question: "{safe_query}"
-
-Available Information:
-{context}
-{history_text}
-{history_instruction}
-
+{context_text}
+{extra}
 INSTRUCTIONS:
-1. Provide a complete, helpful answer using all available information.
-2. Include specific details, dates, or requirements when available.
-3. If information is partial, state what you know and suggest where to find more.
-4. Be conversational and actionable – don't just redirect to websites.
-5. For follow-up questions, use conversation history directly.
-6. NEVER include reasoning, internal thoughts, or meta-commentary.
+1. Answer using ALL available information above — be thorough and specific.
+2. Include concrete details: names, dates, requirements, course codes when available.
+3. If you have partial information, share what you know and say you can look into it further.
+4. Be conversational, warm, and actionable — give real answers students can act on.
+5. For follow-up questions, reference conversation history directly.
+6. NEVER hallucinate or make up facts not present in the context above.
+7. NEVER tell the student to "visit the website" or "check the website" or "go to stevens.edu" — YOU are their resource. If you don't have the info, simply say so and offer to help with other questions.
+8. NEVER suggest the student "contact the university" or "reach out to admissions" as a first response. Only mention contacting a specific office (with the office name) as a last resort for very specific personal matters (e.g. financial aid status, individual transcript issues).
 
 Answer:"""
 
         try:
-            response = await llm.ainvoke([{"role": "user", "content": final_prompt}])
-            state["answer"] = clean_response(response.content.strip())
-            logger.info("Final answer: %d characters", len(state["answer"]))
-        except Exception as e:
-            logger.error("Final answer error: %s", e, exc_info=True)
-            state["answer"] = (
-                "I apologize, but I encountered an error processing your request. "
-                "Please try again."
+            resp = await llm.ainvoke([{"role": "user", "content": prompt}])
+            state["draft_answer"] = clean_response(resp.content.strip())
+            logger.info("Generate: draft answer %d chars", len(state["draft_answer"]))
+        except Exception as exc:
+            logger.error("Generate error: %s", exc, exc_info=True)
+            state["draft_answer"] = (
+                "I'm sorry, I ran into an issue while looking that up. "
+                "Could you try asking again? I'm here to help!"
             )
 
         return state
 
-    # ── 6. Save node ──────────────────────────────────────────────────
+    # ──────────────────────────────────────────────────────────────────
+    # 6. REFLECT – self-critique the draft answer
+    # ──────────────────────────────────────────────────────────────────
+
+    async def _reflect_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Score the draft answer 1-10 and provide improvement feedback."""
+        query = state.get("query", "")
+        draft = state.get("draft_answer", "")
+        llm = self.llm_router.get_llm()
+
+        sources: List[str] = []
+        if state.get("chroma_results", {}).get("documents"):
+            sources.append(f"{len(state['chroma_results']['documents'])} database docs")
+        if state.get("web_results", {}).get("success"):
+            sources.append("web search results")
+        if state.get("general_answer"):
+            sources.append("general LLM knowledge")
+        if state.get("history_results", {}).get("relevant_history"):
+            sources.append(f"{len(state['history_results']['relevant_history'])} history entries")
+
+        prompt = f"""You are a quality-assurance reviewer for an academic advising chatbot
+at Stevens Institute of Technology.
+
+ORIGINAL QUESTION: "{sanitize_query(query)}"
+
+AVAILABLE SOURCES: {', '.join(sources) if sources else 'None'}
+
+DRAFT ANSWER:
+\"\"\"
+{draft[:2000]}
+\"\"\"
+
+Evaluate on these criteria:
+1. **Relevance** – Does it directly answer the question?
+2. **Completeness** – Does it address all parts of the question?
+3. **Accuracy** – Is it grounded in sources (no hallucination)?
+4. **Helpfulness** – Is it actionable and student-friendly?
+5. **Tone** – Is it warm, conversational, and confident?
+6. **Self-sufficiency** – Does it AVOID telling the student to "visit the website", "check the website", "go to stevens.edu", or "contact the university"? The chatbot should be the student's resource, not a redirect service. (Score lower if it deflects to a website.)
+
+Return ONLY valid JSON:
+{{
+  "score": <1-10>,
+  "strengths": "what the answer does well",
+  "weaknesses": "specific issues to fix (empty string if none)",
+  "suggestion": "concrete instruction to improve the answer (empty string if none)"
+}}"""
+
+        try:
+            resp = await llm.ainvoke([{"role": "user", "content": prompt}])
+            parsed = parse_llm_json(resp.content)
+
+            if parsed:
+                score = int(parsed.get("score", 10))
+                score = max(1, min(10, score))
+                reflection = {
+                    "score": score,
+                    "strengths": parsed.get("strengths", ""),
+                    "weaknesses": parsed.get("weaknesses", ""),
+                    "suggestion": parsed.get("suggestion", ""),
+                    "is_acceptable": score >= self._REFLECTION_THRESHOLD,
+                }
+            else:
+                reflection = {
+                    "score": 8, "is_acceptable": True,
+                    "strengths": "", "weaknesses": "", "suggestion": "",
+                }
+
+            state["reflection"] = reflection
+
+            if reflection["is_acceptable"]:
+                state["answer"] = draft
+                logger.info("Reflect: score=%d → ACCEPT", reflection["score"])
+            else:
+                logger.info(
+                    "Reflect: score=%d → REFINE (weaknesses: %s)",
+                    reflection["score"], reflection.get("weaknesses", "")[:120],
+                )
+        except Exception as exc:
+            logger.error("Reflect error: %s", exc, exc_info=True)
+            state["reflection"] = {
+                "score": 8, "is_acceptable": True,
+                "strengths": "", "weaknesses": "", "suggestion": "",
+            }
+            state["answer"] = draft
+
+        return state
+
+    @staticmethod
+    def _route_after_reflect(state: Dict[str, Any]) -> str:
+        refl = state.get("reflection", {})
+        return "save" if refl.get("is_acceptable", True) else "refine"
+
+    # ──────────────────────────────────────────────────────────────────
+    # 7. REFINE – improve the answer using reflection feedback
+    # ──────────────────────────────────────────────────────────────────
+
+    async def _refine_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Re-generate the answer incorporating reflection feedback."""
+        query = state.get("query", "")
+        draft = state.get("draft_answer", "")
+        refl = state.get("reflection", {})
+        llm = self.llm_router.get_llm()
+
+        prompt = f"""You are a friendly academic advisor at Stevens Institute of Technology.
+
+QUESTION: "{sanitize_query(query)}"
+
+Your previous answer had these issues:
+- Weaknesses: {refl.get('weaknesses', 'None noted')}
+- Suggestion: {refl.get('suggestion', 'None')}
+
+PREVIOUS ANSWER:
+\"\"\"
+{draft[:2000]}
+\"\"\"
+
+Rewrite the answer to fix the issues above. Keep what was good:
+- Strengths: {refl.get('strengths', 'N/A')}
+
+RULES:
+1. Fix the specific weaknesses identified.
+2. Keep factual content that was correct.
+3. Do NOT add information not present in the original answer's sources.
+4. Be conversational, specific, and helpful.
+5. NEVER tell the student to "visit the website" or "check stevens.edu" — YOU are their resource.
+6. NEVER include meta-commentary like "here is my improved answer".
+
+Improved Answer:"""
+
+        try:
+            resp = await llm.ainvoke([{"role": "user", "content": prompt}])
+            state["answer"] = clean_response(resp.content.strip())
+            logger.info(
+                "Refine: improved answer %d chars (was %d)",
+                len(state["answer"]), len(draft),
+            )
+        except Exception as exc:
+            logger.error("Refine error: %s", exc, exc_info=True)
+            state["answer"] = draft
+
+        return state
+
+    # ──────────────────────────────────────────────────────────────────
+    # 8. SAVE – persist the conversation
+    # ──────────────────────────────────────────────────────────────────
 
     async def _save_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        user_id = state.get("user_id", "default")
-        query = state.get("query", "")
-        answer = state.get("answer", "")
-
+        uid = state.get("user_id", "default")
         await self.memory_store.save_conversation(
-            user_id=user_id,
-            query=query,
-            response=answer,
+            user_id=uid,
+            query=state.get("query", ""),
+            response=state.get("answer", ""),
             metadata={
-                "tools_used": state.get("tool_decision", {}).get("tools", []),
+                "query_type": state.get("query_type", "unknown"),
                 "collections_searched": state.get("collections_searched", []),
-                "web_search_performed": bool(state.get("web_results")),
+                "web_search_performed": bool(
+                    state.get("web_results", {}).get("success")
+                ),
                 "used_general_tool": state.get("used_general_tool", False),
+                "is_follow_up": state.get("is_follow_up", False),
+                "reflection_score": state.get("reflection", {}).get("score"),
+                "was_refined": not state.get("reflection", {}).get(
+                    "is_acceptable", True
+                ),
             },
         )
         return state
 
-    # ── Public API ────────────────────────────────────────────────────
+    # ══════════════════════════════════════════════════════════════════
+    # PUBLIC API
+    # ══════════════════════════════════════════════════════════════════
 
     async def process_query(
         self, query: str, user_id: str = "default", chat_history: str = ""
     ) -> Dict[str, Any]:
-        initial_state = {
+        initial: Dict[str, Any] = {
             "query": query,
             "user_id": user_id,
             "chat_history": chat_history,
         }
 
         try:
-            logger.info("Processing query: '%s'", query[:100])
-            final_state = await self.graph.ainvoke(initial_state)
+            logger.info("Processing: '%s'", query[:100])
+            fs = await self.graph.ainvoke(initial)
 
-            answer = final_state.get("answer", "")
             return {
                 "success": True,
-                "answer": answer,
+                "answer": fs.get("answer", ""),
                 "metadata": {
-                    "tools_used": final_state.get("tool_decision", {}).get("tools", []),
-                    "collections_searched": final_state.get("collections_searched", []),
-                    "web_search_performed": bool(final_state.get("web_results")),
-                    "used_general_tool": final_state.get("used_general_tool", False),
-                    "reasoning_result": final_state.get("reasoning_result", {}),
-                    "chat_name": final_state.get("chat_name", "New Chat"),
+                    "query_type": fs.get("query_type", "unknown"),
+                    "tools_used": self._tools_used(fs),
+                    "collections_searched": fs.get("collections_searched", []),
+                    "web_search_performed": bool(
+                        fs.get("web_results", {}).get("success")
+                    ),
+                    "used_general_tool": fs.get("used_general_tool", False),
+                    "reasoning_result": {
+                        "react_thought": fs.get("react_thought", ""),
+                        "need_web_search": fs.get("need_web_search", False),
+                    },
+                    "reflection": fs.get("reflection", {}),
+                    "chat_name": fs.get("chat_name", "New Chat"),
+                    "is_follow_up": fs.get("is_follow_up", False),
                 },
             }
-
-        except Exception as e:
-            logger.error("Query processing error: %s", e, exc_info=True)
+        except Exception as exc:
+            logger.error("Pipeline error: %s", exc, exc_info=True)
             return {
                 "success": False,
-                "error": str(e),
-                "answer": "I apologize, but I'm experiencing technical difficulties. Please try again.",
+                "error": str(exc),
+                "answer": (
+                    "I'm sorry, I ran into a technical issue. "
+                    "Could you try asking again? I'm here to help!"
+                ),
             }
+
+    @staticmethod
+    def _tools_used(state: Dict[str, Any]) -> List[str]:
+        used = ["history"]
+        if state.get("chroma_results", {}).get("documents"):
+            used.append("chroma")
+        if state.get("web_results", {}).get("success"):
+            used.append("web")
+        if state.get("used_general_tool"):
+            used.append("general")
+        return used
