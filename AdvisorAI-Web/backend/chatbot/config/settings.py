@@ -1,15 +1,17 @@
 import os
-from typing import Dict, Any
 from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
 
 load_dotenv()
 
+
 class Settings(BaseSettings):
+    """Centralized configuration for the chatbot subsystem."""
+
     # LLM Configuration
     LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "gemini")
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
-    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")  # Changed from GOOGLE_API_KEY
+    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
 
     # Model Configuration
@@ -30,18 +32,17 @@ class Settings(BaseSettings):
     WEB_SEARCH_RESULTS: int = int(os.getenv("WEB_SEARCH_RESULTS", "3"))
 
     # Memory Configuration
-    MEMORY_TYPE: str = os.getenv("MEMORY_TYPE", "in_memory")  # in_memory, postgres
-    POSTGRES_URL: str = os.getenv("POSTGRES_URL", "")
-
-    # API Configuration
-    API_HOST: str = os.getenv("API_HOST", "0.0.0.0")
-    API_PORT: int = int(os.getenv("API_PORT", "8000"))
+    MEMORY_TYPE: str = os.getenv("MEMORY_TYPE", "in_memory")
 
     # Concurrency Configuration
     MAX_CONCURRENT_TOOLS: int = int(os.getenv("MAX_CONCURRENT_TOOLS", "3"))
 
+    # Input Sanitization
+    MAX_QUERY_LENGTH: int = int(os.getenv("MAX_QUERY_LENGTH", "2000"))
+
     class Config:
         env_file = ".env"
-        extra = "allow"  # Allow extra fields from environment
+        extra = "allow"
 
-settings = Settings() 
+
+settings = Settings()

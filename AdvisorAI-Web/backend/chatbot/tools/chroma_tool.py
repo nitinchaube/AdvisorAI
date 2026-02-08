@@ -1,258 +1,236 @@
-from typing import List, Dict, Any
+"""ChromaDB vector-search tool – routes queries to the right collections."""
+
+import hashlib
+import logging
+import os
+from typing import Dict, Any, List
+
+import chromadb
 from langchain.schema import Document
 from langchain_community.vectorstores import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
-import os
-import hashlib
-import json
-import chromadb
+
 from config.settings import settings
 from core.llm_router import LLMRouter
+from core.utils import parse_llm_json_array, sanitize_query
+
+logger = logging.getLogger("chatbot")
+
 
 class ChromaTool:
-    """Tool for interacting with Chroma vector database collections using RAG service logic"""
+    """Search across ChromaDB vector collections using LLM-based routing."""
 
     def __init__(self):
         self.embedding_model = HuggingFaceEmbeddings(model_name=settings.EMBEDDING_MODEL)
-        self.collections = self._load_collections()
         self.llm_router = LLMRouter()
-        print(f"ChromaTool initialized with {len(self.collections)} collections: {list(self.collections.keys())}")
+        self.collections = self._load_collections()
+        logger.info(
+            "ChromaTool initialised with %d collections: %s",
+            len(self.collections),
+            list(self.collections.keys()),
+        )
+
+    # ------------------------------------------------------------------
+    # Collection loading
+    # ------------------------------------------------------------------
 
     def _load_collections(self) -> Dict[str, Chroma]:
-        """Load all available Chroma collections using RAG service logic"""
-        collections = {}
-        if os.path.exists(settings.VECTORDB_DIR):
-            print(f"Loading collections from: {settings.VECTORDB_DIR}")
-            for folder in os.listdir(settings.VECTORDB_DIR):
-                full_path = os.path.join(settings.VECTORDB_DIR, folder)
-                if os.path.isdir(full_path):
-                    try:
-                        # Try direct ChromaDB client approach (RAG service logic)
-                        print(f"Trying to load collection {folder} with direct client...")
-                        client = chromadb.PersistentClient(path=full_path)
-                        
-                        # Get collection info
-                        collection_info = client.list_collections()
-                        print(f"Available collections in {folder}: {[c.name for c in collection_info]}")
-                        
-                        # Try to get the collection
-                        try:
-                            collection = client.get_collection(name=folder)
-                            count = collection.count()
-                            print(f"Collection {folder} has {count} documents")
-                            
-                            if count > 0:
-                                # Create a Chroma wrapper with the client
-                                chroma_wrapper = Chroma(
-                                    client=client,
-                                    collection_name=folder,
-                                    embedding_function=self.embedding_model
-                                )
-                                collections[folder] = chroma_wrapper
-                                print(f"Successfully loaded collection: {folder}")
-                            else:
-                                print(f"Collection {folder} has no documents, skipping")
-                                
-                        except Exception as get_error:
-                            print(f"Error getting collection {folder}: {get_error}")
-                            # Try with default collection name
-                            try:
-                                collection = client.get_collection()
-                                count = collection.count()
-                                print(f"Default collection has {count} documents")
-                                
-                                if count > 0:
-                                    chroma_wrapper = Chroma(
-                                        client=client,
-                                        embedding_function=self.embedding_model
-                                    )
-                                    collections[folder] = chroma_wrapper
-                                    print(f"Successfully loaded default collection for {folder}")
-                                else:
-                                    print(f"Default collection has no documents, skipping")
-                                    
-                            except Exception as default_error:
-                                print(f"Error getting default collection for {folder}: {default_error}")
-                                
-                    except Exception as e:
-                        print(f"Error loading collection {folder}: {e}")
-                        # Fallback to simple Chroma approach
-                        try:
-                            chroma_wrapper = Chroma(
-                                collection_name=folder,
-                                persist_directory=full_path,
-                                embedding_function=self.embedding_model
-                            )
-                            collections[folder] = chroma_wrapper
-                            print(f"Successfully loaded collection using fallback: {folder}")
-                        except Exception as fallback_error:
-                            print(f"Fallback also failed for {folder}: {fallback_error}")
-        else:
-            print(f"VectorDB directory does not exist: {settings.VECTORDB_DIR}")
-        
+        """Discover and load all Chroma collections from VECTORDB_DIR."""
+        collections: Dict[str, Chroma] = {}
+
+        if not os.path.exists(settings.VECTORDB_DIR):
+            logger.warning("VectorDB dir does not exist: %s", settings.VECTORDB_DIR)
+            return collections
+
+        for folder in os.listdir(settings.VECTORDB_DIR):
+            full_path = os.path.join(settings.VECTORDB_DIR, folder)
+            if not os.path.isdir(full_path):
+                continue
+
+            wrapper = self._try_load_collection(folder, full_path)
+            if wrapper is not None:
+                collections[folder] = wrapper
+
         return collections
 
-    async def _ask_router_llm(self, user_query: str) -> List[str]:
-        """Ask LLM which collections to search based on user query (RAG service logic)"""
-        collections = list(self.collections.keys()) # Ensure this is up-to-date
-        
-        # If no collections are loaded, return empty list
-        if not collections:
-            print("No collections available, will use web search only")
+    def _try_load_collection(self, name: str, path: str):
+        """Attempt to load a single Chroma collection; returns wrapper or None."""
+        # Primary approach – PersistentClient
+        try:
+            client = chromadb.PersistentClient(path=path)
+            collection = client.get_collection(name=name)
+            count = collection.count()
+            if count == 0:
+                logger.debug("Collection %s is empty, skipping", name)
+                return None
+
+            wrapper = Chroma(
+                client=client,
+                collection_name=name,
+                embedding_function=self.embedding_model,
+            )
+            logger.info("Loaded collection %s (%d docs)", name, count)
+            return wrapper
+
+        except Exception as primary_err:
+            logger.debug("Primary load failed for %s: %s", name, primary_err)
+
+        # Fallback – simple Chroma constructor
+        try:
+            wrapper = Chroma(
+                collection_name=name,
+                persist_directory=path,
+                embedding_function=self.embedding_model,
+            )
+            logger.info("Loaded collection %s via fallback", name)
+            return wrapper
+        except Exception as fallback_err:
+            logger.error("Failed to load collection %s: %s", name, fallback_err)
+            return None
+
+    # ------------------------------------------------------------------
+    # LLM-based collection routing
+    # ------------------------------------------------------------------
+
+    async def _select_collections(self, query: str) -> List[str]:
+        """Ask the LLM which collections are relevant for *query*."""
+        available = list(self.collections.keys())
+        if not available:
             return []
-        
-        router_prompt = """
-        You are a smart router in a RAG system for Stevens Institute of Technology.
 
-        Available collections:
-        {collections}
+        safe_query = sanitize_query(query)
+        prompt = (
+            "You are a smart router in a RAG system for Stevens Institute of Technology.\n\n"
+            f"Available collections: {available}\n\n"
+            f'User question: "{safe_query}"\n\n'
+            "Return ONLY a valid JSON array of relevant collection names. No explanation.\n\n"
+            "Examples:\n"
+            '- Course questions → ["AllCourseRelatedData"]\n'
+            '- Faculty questions → ["AllFacultyGeneralInformation", "AllFacultyResearchInformation"]\n'
+            "- If unsure → return all collections"
+        )
 
-        User question: "{user_query}"
-
-        Your task is to determine which collections are most relevant to answer this question.
-        Return ONLY a valid JSON array of collection names. No explanation.
-
-        Examples:
-        - For course questions: ["AllCourseRelatedData"]
-        - For faculty questions: ["AllFacultyGeneralInformation", "AllFacultyResearchInformation"]
-        - For general questions: ["AllFacultyGeneralInformation", "AllCourseRelatedData"]
-        - If no collections are relevant, return: []
-        """
-        
-        prompt = router_prompt.format(collections=collections, user_query=user_query)
-        
         try:
             llm = self.llm_router.get_llm()
             response = await llm.ainvoke([{"role": "user", "content": prompt}])
-            if response.content is None:
-                print("LLM returned None content, falling back")
-                return collections  # or []
-            selected_collections = json.loads(response.content.strip() or '[]')
-            
-            # Validate that selected collections exist
-            valid_collections = [col for col in selected_collections if col in collections]
-            if not valid_collections:
-                print("No valid collections selected, using all available collections")
-                return collections
-            
-            print(f"Router selected collections: {valid_collections}")
-            return valid_collections
-            
+
+            selected = parse_llm_json_array(response.content) or []
+            valid = [c for c in selected if c in available]
+
+            if not valid:
+                logger.debug("No valid collections selected, using all")
+                return available
+
+            logger.debug("Router selected collections: %s", valid)
+            return valid
+
         except Exception as e:
-            print(f"Error in router LLM: {e}")
-            print("Falling back to all available collections")
-            return collections
+            logger.warning("Collection routing error, using all: %s", e)
+            return available
 
-    async def _retrieve_from_collections(self, user_query: str, collection_names: List[str]) -> List[Document]:
-        """Retrieve documents from specified collections and return top-k sorted results (RAG service logic)"""
-        all_docs = []
-        
-        # If no collections specified, return empty list
+    # ------------------------------------------------------------------
+    # Retrieval
+    # ------------------------------------------------------------------
+
+    async def _retrieve_documents(
+        self, query: str, collection_names: List[str]
+    ) -> List[Document]:
+        """Retrieve, de-duplicate, and rank documents from the given collections."""
         if not collection_names:
-            print("No collections specified for retrieval")
             return []
-        
-        for collection_name in collection_names:
-            if collection_name in self.collections:
-                try:
-                    vector_store = self.collections[collection_name]
-                    # Get more docs than needed for better sorting
-                    docs_with_scores = vector_store.similarity_search_with_score(
-                        user_query, 
-                        k=settings.TOP_K_PER_COLLECTION
-                    )
-                    
-                    for doc, score in docs_with_scores:
-                        doc.metadata["collection"] = collection_name
-                        doc.metadata["source"] = "vector_db"
-                        doc.metadata["similarity_score"] = score
-                    
-                    all_docs.extend([doc for doc, _ in docs_with_scores])
-                    print(f"Retrieved {len(docs_with_scores)} docs from {collection_name}")
-                    
-                except Exception as e:
-                    print(f"Error retrieving from {collection_name}: {e}")
-            else:
-                print(f"Collection {collection_name} not found in loaded collections")
-        
-        # Sort by similarity score (lower is better for cosine similarity)
-        all_docs.sort(key=lambda x: x.metadata.get("similarity_score", 1e6))
-        
-        # Remove duplicates based on content hash
-        seen_contents = set()
-        unique_docs = []
-        for doc in all_docs:
-            content_hash = hashlib.md5(doc.page_content.encode()).hexdigest()
-            if content_hash not in seen_contents:
-                unique_docs.append(doc)
-                seen_contents.add(content_hash)
-            
-        top_docs = unique_docs[:settings.MAX_TOTAL_DOCS]
-        print(f"Returning top {len(top_docs)} documents from {len(unique_docs)} unique documents")
-        return top_docs
 
-    async def search_collections(self, query: str, user_id: str = None) -> Dict[str, Any]:
-        """Search across all available collections"""
+        all_docs: List[Document] = []
+
+        for name in collection_names:
+            store = self.collections.get(name)
+            if store is None:
+                continue
+            try:
+                docs_with_scores = store.similarity_search_with_score(
+                    query, k=settings.TOP_K_PER_COLLECTION
+                )
+                for doc, score in docs_with_scores:
+                    doc.metadata["collection"] = name
+                    doc.metadata["source"] = "vector_db"
+                    doc.metadata["similarity_score"] = score
+                all_docs.extend(doc for doc, _ in docs_with_scores)
+                logger.debug("Retrieved %d docs from %s", len(docs_with_scores), name)
+            except Exception as e:
+                logger.error("Retrieval error in %s: %s", name, e)
+
+        # Sort by similarity (lower = better for cosine distance)
+        all_docs.sort(key=lambda d: d.metadata.get("similarity_score", 1e6))
+
+        # De-duplicate by content hash
+        seen = set()
+        unique: List[Document] = []
+        for doc in all_docs:
+            h = hashlib.md5(doc.page_content.encode()).hexdigest()
+            if h not in seen:
+                seen.add(h)
+                unique.append(doc)
+
+        return unique[: settings.MAX_TOTAL_DOCS]
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    async def search_collections(self, query: str) -> Dict[str, Any]:
+        """High-level search: route → retrieve → serialise."""
         try:
-            print(f"🔍 CHROMA: Searching collections for query: '{query}'")
-            
             if not self.collections:
-                print(f"⚠️  CHROMA: No collections available")
                 return {
                     "documents": [],
-                    "collections_searched": [],
+                    "collections_used": [],
                     "success": False,
-                    "error": "No collections available"
+                    "error": "No collections available",
                 }
-            
-            # Use LLM to decide which collections to search
-            selected_collections = await self._ask_router_llm(query)
-            print(f"🎯 CHROMA: LLM selected collections: {selected_collections}")
-            
-            # Retrieve documents from selected collections
-            all_documents = await self._retrieve_from_collections(query, selected_collections)
-            
-            print(f"✅ CHROMA: Found {len(all_documents)} documents from {len(selected_collections)} collections")
-            
-            # Convert documents to a format that can be serialized
-            documents_data = []
-            for doc in all_documents:
-                documents_data.append({
-                    "content": doc.page_content,
-                    "metadata": doc.metadata,
-                    "collection": doc.metadata.get("collection", "unknown")
-                })
-            
+
+            selected = await self._select_collections(query)
+            docs = await self._retrieve_documents(query, selected)
+
+            logger.info(
+                "Chroma search: %d docs from %s", len(docs), selected
+            )
+
             return {
-                "documents": documents_data,
-                "collections_searched": selected_collections,
-                "success": True
+                "documents": [
+                    {
+                        "content": d.page_content,
+                        "metadata": d.metadata,
+                        "collection": d.metadata.get("collection", "unknown"),
+                    }
+                    for d in docs
+                ],
+                "collections_used": selected,
+                "success": True,
             }
-            
+
         except Exception as e:
-            print(f"❌ CHROMA: Error searching collections: {str(e)}")
+            logger.error("ChromaTool search error: %s", e, exc_info=True)
             return {
                 "documents": [],
-                "collections_searched": [],
+                "collections_used": [],
                 "success": False,
-                "error": str(e)
+                "error": str(e),
             }
 
-    def get_collection(self, collection_name: str):
-        """Get a specific collection by name"""
-        return self.collections.get(collection_name)
+    # ------------------------------------------------------------------
+    # Utility accessors
+    # ------------------------------------------------------------------
+
+    def get_collection(self, name: str):
+        return self.collections.get(name)
 
     def get_collection_names(self) -> List[str]:
-        """Get list of available collection names"""
         return list(self.collections.keys())
 
     def get_collection_stats(self) -> Dict[str, Any]:
-        """Get statistics about all collections"""
         stats = {}
-        for name, collection in self.collections.items():
+        for name, col in self.collections.items():
             try:
-                count = collection._collection.count()
-                stats[name] = {"document_count": count}
+                stats[name] = {"document_count": col._collection.count()}
             except Exception as e:
                 stats[name] = {"error": str(e)}
-        return stats 
+        return stats
