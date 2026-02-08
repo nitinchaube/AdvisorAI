@@ -57,10 +57,18 @@ CORS(app,
          "http://localhost:5003",  # Backend server (new port)
          "http://127.0.0.1:5003",  # Backend server (new port alternative)
      ],
-     allow_headers=['Content-Type', 'Authorization'],
-     methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
-)  # Make sure all frontend dev ports are included for CORS
-
+     allow_headers=[
+         'Content-Type', 
+         'Authorization', 
+         'X-Requested-With',
+         'Accept',
+         'Origin',
+         'Access-Control-Request-Method',
+         'Access-Control-Request-Headers'
+     ],
+     methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+     expose_headers=['Content-Range', 'X-Content-Range']
+)
 # Initialize Resume Processor
 try:
     resume_processor = ResumeProcessor()
@@ -2675,4 +2683,5 @@ if __name__ == '__main__':
     print(f"   - GET /api/jobs/stats")
     print(f"   - GET /api/internships/stats")
     print(f"🧪 Test CORS: http://localhost:{port}/api/test-cors")
-    app.run(debug=True, host='0.0.0.0', port=port) 
+    # app.run(debug=True, host='0.0.0.0', port=port) 
+    app.run(debug=True, port=port)

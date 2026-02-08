@@ -14,7 +14,7 @@ class Settings(BaseSettings):
 
     # Model Configuration
     OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4")
-    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
     CLAUDE_MODEL: str = os.getenv("CLAUDE_MODEL", "claude-3-sonnet-20240229")
 
     # Vector Database Configuration

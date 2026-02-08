@@ -133,36 +133,60 @@ class ChatbotIntegrationService:
             return ""
         
         formatted_parts = []
+        current_query = None
+        
         for entry in chat_history[-10:]:  # Last 10 entries for better context
             if isinstance(entry, dict):
                 # Handle both formats: frontend format and legacy format
                 if 'role' in entry and 'content' in entry:
                     # Frontend format: {role: 'user'/'assistant', content: '...'}
                     role = entry.get('role', '')
-                    content = entry.get('content', '')
+                    content = entry.get('content', '').strip()
                     if role and content:
                         if role == 'user':
-                            formatted_parts.append(f"Q: {content}")
+                            # If we have a pending query, save it first
+                            if current_query:
+                                formatted_parts.append(f"Q: {current_query}")
+                                current_query = None
+                            current_query = content
+                        elif role == 'assistant' and current_query:
+                            # We have both Q and A, add them together
+                            formatted_parts.append(f"Q: {current_query}")
+                            formatted_parts.append(f"A: {content}")
+                            current_query = None
                         elif role == 'assistant':
+                            # Only A without Q (shouldn't happen, but handle it)
                             formatted_parts.append(f"A: {content}")
                 elif 'query' in entry and 'response' in entry:
                     # Legacy format: {query: '...', response: '...'}
-                    query = entry.get('query', '')
-                    response = entry.get('response', '')
+                    query = entry.get('query', '').strip()
+                    response = entry.get('response', '').strip()
                     if query and response:
                         formatted_parts.append(f"Q: {query}")
                         formatted_parts.append(f"A: {response}")
                 elif 'type' in entry and 'content' in entry:
                     # Another possible format: {type: 'user'/'ai', content: '...'}
                     msg_type = entry.get('type', '')
-                    content = entry.get('content', '')
+                    content = entry.get('content', '').strip()
                     if msg_type and content:
                         if msg_type == 'user':
-                            formatted_parts.append(f"Q: {content}")
+                            if current_query:
+                                formatted_parts.append(f"Q: {current_query}")
+                            current_query = content
+                        elif msg_type == 'ai' and current_query:
+                            formatted_parts.append(f"Q: {current_query}")
+                            formatted_parts.append(f"A: {content}")
+                            current_query = None
                         elif msg_type == 'ai':
                             formatted_parts.append(f"A: {content}")
         
-        return "\n\n".join(formatted_parts)
+        # Handle any remaining query without answer
+        if current_query:
+            formatted_parts.append(f"Q: {current_query}")
+        
+        result = "\n".join(formatted_parts)
+        print(f"📝 ChatbotIntegration: Formatted history ({len(formatted_parts)} parts): {result[:200]}...")
+        return result
     
     def load_vector_store(self, collection_name: str):
         """Load a specific vector store collection"""

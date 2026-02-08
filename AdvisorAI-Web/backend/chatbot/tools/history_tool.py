@@ -13,6 +13,7 @@ class HistoryTool:
             # If provided history is available, use it
             if provided_history:
                 print(f"📚 HISTORY: Using provided chat history for context")
+                print(f"📚 HISTORY: Raw history length: {len(provided_history)} characters")
                 # Parse the provided history format (Q: ... A: ...)
                 history_entries = []
                 lines = provided_history.split('\n')
@@ -20,18 +21,33 @@ class HistoryTool:
                 
                 for line in lines:
                     line = line.strip()
+                    if not line:  # Skip empty lines
+                        continue
                     if line.startswith('Q: '):
-                        if current_entry:
+                        if current_entry and current_entry.get('query'):
                             history_entries.append(current_entry)
-                        current_entry = {'query': line[3:], 'response': ''}
+                        current_entry = {'query': line[3:].strip(), 'response': ''}
                     elif line.startswith('A: ') and current_entry:
-                        current_entry['response'] = line[3:]
+                        current_entry['response'] = line[3:].strip()
+                    elif current_entry and current_entry.get('query'):
+                        # Handle multi-line responses
+                        if current_entry.get('response'):
+                            current_entry['response'] += ' ' + line
                 
-                if current_entry:
+                if current_entry and current_entry.get('query'):
                     history_entries.append(current_entry)
+                
+                print(f"📚 HISTORY: Parsed {len(history_entries)} history entries")
                 
                 # Always return the last 3 conversations for context
                 relevant_history = history_entries[-limit:] if history_entries else []
+                
+                if relevant_history:
+                    print(f"📚 HISTORY: Returning {len(relevant_history)} relevant history entries")
+                    for i, entry in enumerate(relevant_history, 1):
+                        print(f"📚 HISTORY: Entry {i}: Q='{entry.get('query', '')[:50]}...' A='{entry.get('response', '')[:50]}...'")
+                else:
+                    print(f"⚠️ HISTORY: No relevant history entries found after parsing")
                 
                 return {
                     "relevant_history": relevant_history,
@@ -84,7 +100,10 @@ class HistoryTool:
             "try again", "repeat", "rephrase", "clarify", "previous question",
             "last question", "my previous question", "what about my last question",
             "repeat that", "say that again", "can you repeat", "what was that",
-            "remind me", "recall", "remember", "what did you say", "can you clarify"
+            "remind me", "recall", "remember", "what did you say", "can you clarify",
+            "previous questions", "my previous questions", "tell me about my previous",
+            "what questions did i ask", "what did i ask", "show me my questions",
+            "list my questions", "past questions", "conversation history", "chat history"
         ]
         
         query_lower = query.lower().strip()
