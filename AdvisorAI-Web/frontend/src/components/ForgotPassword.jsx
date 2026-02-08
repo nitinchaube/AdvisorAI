@@ -49,7 +49,7 @@ const ForgotPassword = () => {
       <StaticHeader showSignIn={true} showSignUp={true} />
 
       <div className="login-content">
-        <div className="top-section" style={{ justifyItems: "center" }}>
+        <div className="top-section" style={{ gridTemplateColumns: "1fr", justifyItems: "center" }}>
           <div className="form-section">
             <div className="form-container">
               <form className="signup-form" onSubmit={handleSubmit}>
