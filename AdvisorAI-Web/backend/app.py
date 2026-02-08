@@ -131,6 +131,12 @@ def mongo_doc_to_json(doc):
     return doc
 
 def verify_token(f):
+    """Authentication decorator that requires a valid Firebase ID token AND verified email.
+    
+    If MongoDB says email is unverified, this decorator re-checks Firebase Auth
+    directly (the source of truth) and syncs the status before deciding.
+    This prevents stale MongoDB data from blocking users who already verified.
+    """
     @wraps(f)
     def decorated_function(*args, **kwargs):
         id_token = None
@@ -144,19 +150,15 @@ def verify_token(f):
             decoded_token = auth.verify_id_token(id_token)
             user_id = decoded_token['uid']
             
-            # Get user from MongoDB to check email verification status
             if mongo_db is not None:
                 user_doc = mongo_db.users.find_one({'uid': user_id})
                 
                 # If user doesn't exist in MongoDB, create a minimal profile
                 if not user_doc:
-                    print(f"⚠️ User {user_id} not found in MongoDB, creating minimal profile")
+                    logger.warning(f"User {user_id} not found in MongoDB, creating minimal profile")
                     try:
-                        # Get user record from Firebase
                         firebase_user = auth.get_user(user_id)
-                        
-                        # Create minimal user document
-                        minimal_user_doc = {
+                        user_doc = {
                             'uid': user_id,
                             'email': firebase_user.email,
                             'fullName': firebase_user.display_name or '',
@@ -166,21 +168,41 @@ def verify_token(f):
                             'role': 'user',
                             'emailVerified': firebase_user.email_verified
                         }
-                        mongo_db.users.insert_one(minimal_user_doc)
-                        user_doc = minimal_user_doc
-                        print(f"✅ Created minimal profile for user {user_id}")
+                        mongo_db.users.insert_one(user_doc)
+                        logger.info(f"Created minimal profile for user {user_id}")
                     except Exception as create_error:
-                        print(f"❌ Failed to create minimal profile: {create_error}")
+                        logger.error(f"Failed to create minimal profile: {create_error}")
                         return jsonify({"error": "User profile creation failed"}), 500
                 
-                # Check if email is verified
+                # Check email verification – sync from Firebase if MongoDB is stale
                 if not user_doc.get('emailVerified', False):
-                    return jsonify({
-                        "error": "Email not verified",
-                        "emailVerified": False,
-                        "message": "Please verify your email before accessing this feature",
-                        "requiresEmailVerification": True
-                    }), 403
+                    # MongoDB says unverified – double-check with Firebase (source of truth)
+                    try:
+                        firebase_user = auth.get_user(user_id)
+                        if firebase_user.email_verified:
+                            # Firebase says verified – sync to MongoDB
+                            mongo_db.users.update_one(
+                                {'uid': user_id},
+                                {'$set': {'emailVerified': True, 'emailVerifiedAt': datetime.now()}}
+                            )
+                            user_doc['emailVerified'] = True
+                            logger.info(f"Synced email verification from Firebase for user {user_id}")
+                        else:
+                            # Genuinely unverified
+                            return jsonify({
+                                "error": "Email not verified",
+                                "emailVerified": False,
+                                "message": "Please verify your email before accessing this feature",
+                                "requiresEmailVerification": True
+                            }), 403
+                    except Exception as fb_error:
+                        logger.error(f"Firebase check failed during verify_token: {fb_error}")
+                        return jsonify({
+                            "error": "Email not verified",
+                            "emailVerified": False,
+                            "message": "Please verify your email before accessing this feature",
+                            "requiresEmailVerification": True
+                        }), 403
                 
                 # Store user info in g for use in the route
                 g.user = user_doc
@@ -223,7 +245,7 @@ def verify_email_optional(f):
             
             return f(*args, **kwargs)
         except Exception as e:
-            print(f"  Token verification error: {str(e)}")
+            logger.error(f"Token verification error: {str(e)}")
             return jsonify({"error": "Token verification failed"}), 401
     return decorated_function
 
@@ -315,7 +337,7 @@ def debug_text_extraction():
             return jsonify({"error": "Resume processor not available"}), 500
             
     except Exception as e:
-        print(f"  Debug extraction error: {str(e)}")
+        logger.error(f"Debug extraction error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 # Authentication endpoints
@@ -355,15 +377,11 @@ def signup():
 
         # Send email verification
         try:
-            # Generate email verification link
             verification_link = auth.generate_email_verification_link(email)
-            
-            # In a real application, you would send this link via email
-            # For now, we'll return it in the response for testing
-            print(f"Email verification link for {email}: {verification_link}")
-            
+            logger.info(f"Email verification link generated for {email}")
+            logger.debug(f"Verification link: {verification_link}")
         except Exception as email_error:
-            print(f"Failed to generate email verification link: {email_error}")
+            logger.error(f"Failed to generate email verification link: {email_error}")
 
         # Create JWT token
         access_token = create_access_token(identity=user_record.uid)
@@ -381,12 +399,16 @@ def signup():
         }), 201
 
     except Exception as e:
-        print(f"  Signup error: {str(e)}")
+        logger.error(f"Signup error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/auth/signin', methods=['POST'])
 def signin():
-    """User signin endpoint with email verification check"""
+    """User signin endpoint with email verification check.
+    
+    Uses Firebase Auth as the source of truth for email_verified
+    and syncs status to MongoDB on every sign-in.
+    """
     try:
         data = request.get_json()
         email = data.get('email')
@@ -395,36 +417,36 @@ def signin():
         if not email or not password:
             return jsonify({"error": "Email and password are required"}), 400
 
-        # Verify user credentials with Firebase
+        # Get user record from Firebase (source of truth)
         user_record = auth.get_user_by_email(email)
+        email_verified = user_record.email_verified  # Check Firebase directly
 
-        # Check email verification status from MongoDB
-        email_verified = False
         if mongo_db is not None:
             user_doc = mongo_db.users.find_one({'uid': user_record.uid})
+            
             if user_doc:
-                email_verified = user_doc.get('emailVerified', False)
-
-        # Sync Firebase custom claims with MongoDB role if needed
-        if mongo_db is not None:
-            try:
-                user_doc = mongo_db.users.find_one({'uid': user_record.uid})
-                if user_doc and user_doc.get('role'):
-                    # Check if Firebase custom claims match MongoDB role
-                    current_claims = user_record.custom_claims or {}
+                # Sync email verification from Firebase → MongoDB
+                mongo_verified = user_doc.get('emailVerified', False)
+                if email_verified and not mongo_verified:
+                    mongo_db.users.update_one(
+                        {'uid': user_record.uid},
+                        {'$set': {'emailVerified': True, 'emailVerifiedAt': datetime.now()}}
+                    )
+                    logger.info(f"Synced email verification during signin for user {user_record.uid}")
+                
+                # Sync Firebase custom claims with MongoDB role
+                try:
                     mongo_role = user_doc.get('role')
-                    
-                    if current_claims.get('role') != mongo_role:
-                        # Update Firebase custom claims to match MongoDB
-                        custom_claims = {
-                            'role': mongo_role,
-                            'admin': mongo_role == 'admin'
-                        }
-                        auth.set_custom_user_claims(user_record.uid, custom_claims)
-                        print(f"✅ Synced Firebase custom claims for user {user_record.uid}: {custom_claims}")
-            except Exception as sync_error:
-                print(f"⚠️  Firebase custom claims sync failed: {sync_error}")
-                # Continue with signin even if sync fails
+                    if mongo_role:
+                        current_claims = user_record.custom_claims or {}
+                        if current_claims.get('role') != mongo_role:
+                            auth.set_custom_user_claims(user_record.uid, {
+                                'role': mongo_role,
+                                'admin': mongo_role == 'admin'
+                            })
+                            logger.info(f"Synced Firebase custom claims for user {user_record.uid}")
+                except Exception as sync_error:
+                    logger.warning(f"Firebase custom claims sync failed: {sync_error}")
 
         # Create JWT token
         access_token = create_access_token(identity=user_record.uid)
@@ -442,12 +464,16 @@ def signin():
         }), 200
 
     except Exception as e:
-        print(f"  Signin error: {str(e)}")
+        logger.error(f"Signin error: {str(e)}")
         return jsonify({"error": "Invalid credentials"}), 401
 
 @app.route('/api/auth/signin-with-token', methods=['POST'])
 def signin_with_token():
-    """Signin with Firebase ID token and check email verification"""
+    """Signin with Firebase ID token and check email verification.
+    
+    Always checks Firebase Auth directly for email_verified status
+    and syncs it to MongoDB so both stay in sync.
+    """
     try:
         data = request.get_json()
         id_token = data.get('idToken')
@@ -459,36 +485,36 @@ def signin_with_token():
         decoded_token = auth.verify_id_token(id_token)
         user_id = decoded_token['uid']
 
-        # Get user record
+        # Get user record from Firebase (source of truth for email_verified)
         user_record = auth.get_user(user_id)
+        email_verified = user_record.email_verified  # Check Firebase directly
 
-        # Check email verification status from MongoDB
-        email_verified = False
         if mongo_db is not None:
             user_doc = mongo_db.users.find_one({'uid': user_id})
+            
             if user_doc:
-                email_verified = user_doc.get('emailVerified', False)
-
-        # Sync Firebase custom claims with MongoDB role if needed
-        if mongo_db is not None:
-            try:
-                user_doc = mongo_db.users.find_one({'uid': user_id})
-                if user_doc and user_doc.get('role'):
-                    # Check if Firebase custom claims match MongoDB role
-                    current_claims = user_record.custom_claims or {}
+                # Sync email verification: if Firebase says verified, update MongoDB
+                mongo_verified = user_doc.get('emailVerified', False)
+                if email_verified and not mongo_verified:
+                    mongo_db.users.update_one(
+                        {'uid': user_id},
+                        {'$set': {'emailVerified': True, 'emailVerifiedAt': datetime.now()}}
+                    )
+                    logger.info(f"Synced email verification during signin for user {user_id}")
+                
+                # Sync Firebase custom claims with MongoDB role
+                try:
                     mongo_role = user_doc.get('role')
-                    
-                    if current_claims.get('role') != mongo_role:
-                        # Update Firebase custom claims to match MongoDB
-                        custom_claims = {
-                            'role': mongo_role,
-                            'admin': mongo_role == 'admin'
-                        }
-                        auth.set_custom_user_claims(user_id, custom_claims)
-                        print(f"✅ Synced Firebase custom claims for user {user_id}: {custom_claims}")
-            except Exception as sync_error:
-                print(f"⚠️  Firebase custom claims sync failed: {sync_error}")
-                # Continue with signin even if sync fails
+                    if mongo_role:
+                        current_claims = user_record.custom_claims or {}
+                        if current_claims.get('role') != mongo_role:
+                            auth.set_custom_user_claims(user_id, {
+                                'role': mongo_role,
+                                'admin': mongo_role == 'admin'
+                            })
+                            logger.info(f"Synced Firebase custom claims for user {user_id}")
+                except Exception as sync_error:
+                    logger.warning(f"Firebase custom claims sync failed: {sync_error}")
 
         return jsonify({
             "message": "Signin successful",
@@ -502,7 +528,7 @@ def signin_with_token():
         }), 200
 
     except Exception as e:
-        print(f"  Signin with token error: {str(e)}")
+        logger.error(f"Signin with token error: {str(e)}")
         return jsonify({"error": "Invalid token"}), 401
 
 # Email verification endpoints
@@ -543,12 +569,17 @@ def send_verification_email():
         return jsonify(response_data), 200
         
     except Exception as e:
-        print(f"  Send verification email error: {str(e)}")
+        logger.error(f"Send verification email error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/auth/verify-email', methods=['POST'])
 def verify_email():
-    """Verify user's email address"""
+    """Verify user's email address.
+    
+    Checks Firebase Auth directly (not the stale ID token) because the
+    email_verified claim in an ID token is only set at token-issue time
+    and won't reflect a verification that happened after the token was minted.
+    """
     try:
         data = request.get_json()
         id_token = data.get('idToken')
@@ -556,26 +587,30 @@ def verify_email():
         if not id_token:
             return jsonify({"error": "ID token is required"}), 400
         
-        # Verify the ID token with Firebase
         try:
+            # Decode token just to get the uid
             decoded_token = auth.verify_id_token(id_token)
             user_id = decoded_token['uid']
-            email_verified = decoded_token.get('email_verified', False)
+            
+            # Check Firebase Auth directly (source of truth) instead of
+            # the cached email_verified claim in the ID token
+            firebase_user = auth.get_user(user_id)
+            email_verified = firebase_user.email_verified
             
             if not email_verified:
                 return jsonify({
-                    "error": "Email not verified in Firebase",
+                    "error": "Email not yet verified in Firebase",
                     "emailVerified": False,
-                    "message": "Please verify your email before accessing this feature"
+                    "message": "Please click the verification link in your email first"
                 }), 400
             
-            # Update MongoDB with verified status
+            # Sync verified status to MongoDB
             if mongo_db is not None:
                 mongo_db.users.update_one(
                     {'uid': user_id},
                     {'$set': {'emailVerified': True, 'emailVerifiedAt': datetime.now()}}
                 )
-                print(f"✅ Email verified for user {user_id}")
+                logger.info(f"Email verified and synced for user {user_id}")
             
             return jsonify({
                 "message": "Email verified successfully",
@@ -585,20 +620,36 @@ def verify_email():
         except auth.InvalidIdTokenError:
             return jsonify({"error": "Invalid ID token"}), 401
         except Exception as e:
-            print(f"  Token verification error: {str(e)}")
+            logger.error(f"Token verification error: {str(e)}")
             return jsonify({"error": "Token verification failed"}), 401
         
     except Exception as e:
-        print(f"  Email verification error: {str(e)}")
+        logger.error(f"Email verification error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/auth/check-verification-status', methods=['POST'])
 @verify_email_optional
 def check_verification_status():
-    """Check user's email verification status"""
+    """Check user's email verification status.
+    
+    Always checks Firebase Auth directly and syncs to MongoDB,
+    so the status is always up-to-date even if the user just verified.
+    """
     try:
         user_id = g.user['uid']
-        email_verified = g.user.get('emailVerified', False)
+        
+        # Check Firebase Auth directly (source of truth)
+        firebase_user = auth.get_user(user_id)
+        email_verified = firebase_user.email_verified
+        
+        # If Firebase says verified but MongoDB doesn't, sync it
+        mongo_verified = g.user.get('emailVerified', False)
+        if email_verified and not mongo_verified and mongo_db is not None:
+            mongo_db.users.update_one(
+                {'uid': user_id},
+                {'$set': {'emailVerified': True, 'emailVerifiedAt': datetime.now()}}
+            )
+            logger.info(f"Synced email verification status for user {user_id}")
         
         return jsonify({
             "emailVerified": email_verified,
@@ -606,7 +657,7 @@ def check_verification_status():
         }), 200
         
     except Exception as e:
-        print(f"  Check verification status error: {str(e)}")
+        logger.error(f"Check verification status error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 # Resume upload and parsing endpoint
@@ -684,9 +735,9 @@ def upload_and_parse_resume():
 
 
 
-# Get user profile
+# Get user profile (uses verify_email_optional so unverified users can fetch their profile)
 @app.route('/api/user/profile', methods=['GET'])
-@verify_token
+@verify_email_optional
 def get_user_profile():
     """Get user profile data"""
     try:
@@ -738,9 +789,9 @@ def get_user_profile():
         print(f"  Get profile error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-# Update user profile
+# Update user profile (uses verify_email_optional so unverified users can complete their profile)
 @app.route('/api/user/profile', methods=['PUT'])
-@verify_token
+@verify_email_optional
 def update_user_profile():
     """Update user profile data"""
     try:
