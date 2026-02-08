@@ -41,6 +41,7 @@ build/
 *.pyd
 *.mypy_cache/
 *.env
+*.env.example
 venv/
 env/
 ENV/
