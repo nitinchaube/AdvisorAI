@@ -83,6 +83,8 @@ class ChatbotIntegrationService:
 
             metadata = result.get("metadata", {})
 
+            reflection = metadata.get("reflection", {})
+
             return {
                 "response": result["answer"],
                 "sources": {
@@ -93,6 +95,10 @@ class ChatbotIntegrationService:
                     "chat_history_included": bool(formatted_history),
                     "general_tool_used": metadata.get("used_general_tool", False),
                     "reasoning": metadata.get("reasoning_result", {}),
+                    "reflection": {
+                        "score": reflection.get("score"),
+                        "was_refined": not reflection.get("is_acceptable", True),
+                    },
                     "top_documents": [],
                 },
                 "processing_time": time.time() - start,
