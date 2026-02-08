@@ -1,66 +1,95 @@
+from dotenv import load_dotenv
+import os
+
+# Load environment variables FIRST — before any os.environ calls
+load_dotenv()
+
 from flask import Flask, request, session, jsonify, Response, g
 from flask_cors import CORS
 import firebase_admin
 from firebase_admin import auth, credentials
-import os
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from datetime import timedelta, datetime
 import json
-from dotenv import load_dotenv
 from resume_processor import ResumeProcessor
 # Replace RAG service with chatbot integration
 from chatbot_integration import get_chatbot_integration
 from faculty_data_mapper import mongo_faculty_to_admin_format, admin_format_to_mongo_faculty
 import logging
 import time
-import redis
 from functools import wraps
 import uuid
 from langchain_core.documents import Document
+
+# Configure logging from environment
+LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO').upper()
+logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO))
+logger = logging.getLogger(__name__)
 
 # --- MongoDB Setup ---
 from pymongo import MongoClient
 from bson import ObjectId
 MONGO_URI = os.environ.get('MONGO_URI')
+MONGO_DB_NAME = os.environ.get('MONGO_DB_NAME', 'AdvisorAI')
 mongo_client = MongoClient(MONGO_URI)
-mongo_db = mongo_client['AdvisorAI']
-
-# Load environment variables
-load_dotenv()
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+mongo_db = mongo_client[MONGO_DB_NAME]
 
 # Initialize Flask app
 app = Flask(__name__)
 
-# Configure Flask
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-here')
-app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'your-jwt-secret-key')
-app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
+# Configure Flask — secrets MUST be set via .env in production
+_secret_key = os.environ.get('SECRET_KEY', '')
+_jwt_secret_key = os.environ.get('JWT_SECRET_KEY', '')
+_flask_env = os.environ.get('FLASK_ENV', 'development')
+
+if _flask_env == 'production' and (not _secret_key or _secret_key == 'CHANGE_ME_TO_A_RANDOM_SECRET'):
+    raise RuntimeError("SECRET_KEY must be set to a strong random value in production!")
+if _flask_env == 'production' and (not _jwt_secret_key or _jwt_secret_key == 'CHANGE_ME_TO_A_RANDOM_JWT_SECRET'):
+    raise RuntimeError("JWT_SECRET_KEY must be set to a strong random value in production!")
+
+app.config['SECRET_KEY'] = _secret_key or 'dev-only-secret-key'
+app.config['JWT_SECRET_KEY'] = _jwt_secret_key or 'dev-only-jwt-secret-key'
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(
+    hours=int(os.environ.get('JWT_ACCESS_TOKEN_EXPIRES_HOURS', '24'))
+)
 
 # Initialize extensions
 JWTManager(app)
 
+# CORS origins from environment (comma-separated)
+_cors_origins_str = os.environ.get('CORS_ORIGINS', '')
+if _cors_origins_str:
+    CORS_ORIGINS = [origin.strip() for origin in _cors_origins_str.split(',') if origin.strip()]
+else:
+    # Fallback for development
+    CORS_ORIGINS = [
+        "http://localhost:3000",
+        "http://localhost:3002",
+        "http://127.0.0.1:3002",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
+        "http://localhost:5003",
+        "http://127.0.0.1:5003",
+    ]
+
 # Enable CORS for all routes and allow credentials (cookies)
 CORS(app, 
      supports_credentials=True, 
-     origins=[
-         "http://localhost:3000",  # React dev server
-         "http://localhost:3002",  # Vite dev server (port 3002)
-         "http://127.0.0.1:3002",  # Vite dev server (port 3002 alternative)
-         "http://localhost:5173",  # Vite dev server
-         "http://127.0.0.1:5173",  # Vite dev server (alternative)
-         "http://localhost:4173",  # Vite preview server
-         "http://127.0.0.1:4173",  # Vite preview server (alternative)
-         "http://localhost:5003",  # Backend server (new port)
-         "http://127.0.0.1:5003",  # Backend server (new port alternative)
+     origins=CORS_ORIGINS,
+     allow_headers=[
+         'Content-Type', 
+         'Authorization', 
+         'X-Requested-With',
+         'Accept',
+         'Origin',
+         'Access-Control-Request-Method',
+         'Access-Control-Request-Headers'
      ],
-     allow_headers=['Content-Type', 'Authorization'],
-     methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
-)  # Make sure all frontend dev ports are included for CORS
-
+     methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+     expose_headers=['Content-Range', 'X-Content-Range']
+)
 # Initialize Resume Processor
 try:
     resume_processor = ResumeProcessor()
@@ -69,66 +98,18 @@ except Exception as e:
     print(f"  Resume processor initialization failed: {e}")
     resume_processor = None
 
-# Initialize Redis for caching
-try:
-    redis_client = redis.Redis(
-        host=os.environ.get('REDIS_HOST', 'localhost'),
-        port=int(os.environ.get('REDIS_PORT', 6379)),
-        db=int(os.environ.get('REDIS_DB', 0)),
-        decode_responses=True
-    )
-    # Test Redis connection
-    redis_client.ping()
-    print("  Redis client initialized")
-except Exception as e:
-    print(f"  Redis client initialization failed: {e}")
-    redis_client = None
-
 # Restore only Firebase Admin SDK initialization for authentication
 if not firebase_admin._apps:
-    cred = credentials.Certificate('firebae_key1.json')
-firebase_admin.initialize_app(cred)
-
-# Cache decorator for chat sessions
-def cache_chat_sessions(expiry=3600):  # 1 hour cache
-    def decorator(f):
-        @wraps(f)
-        def decorated_function(*args, **kwargs):
-            if not redis_client:
-                return f(*args, **kwargs)
-            
-            user_id = get_jwt_identity()
-            cache_key = f"chat_sessions:{user_id}"
-            
-            # Try to get from cache first
-            cached_data = redis_client.get(cache_key)
-            if cached_data:
-                try:
-                    return json.loads(cached_data)
-                except:
-                    pass
-            
-            # If not in cache, get from database
-            result = f(*args, **kwargs)
-            
-            # Cache the result
-            try:
-                redis_client.setex(cache_key, expiry, json.dumps(result))
-            except:
-                pass
-            
-            return result
-        return decorated_function
-    return decorator
-
-# Invalidate cache when sessions are modified
-def invalidate_chat_cache(user_id):
-    if redis_client:
-        try:
-            cache_key = f"chat_sessions:{user_id}"
-            redis_client.delete(cache_key)
-        except:
-            pass
+    # Priority: FIREBASE_CREDENTIALS_JSON (inline JSON) > FIREBASE_CREDENTIALS_PATH (file path)
+    firebase_cred_json = os.environ.get('FIREBASE_CREDENTIALS_JSON', '')
+    if firebase_cred_json:
+        cred = credentials.Certificate(json.loads(firebase_cred_json))
+        logger.info("Firebase initialized from FIREBASE_CREDENTIALS_JSON env var")
+    else:
+        firebase_cred_path = os.environ.get('FIREBASE_CREDENTIALS_PATH', 'firebae_key1.json')
+        cred = credentials.Certificate(firebase_cred_path)
+        logger.info(f"Firebase initialized from credentials file: {firebase_cred_path}")
+    firebase_admin.initialize_app(cred)
 
 # Utility function to convert MongoDB documents for JSON serialization
 
@@ -307,7 +288,7 @@ def debug_text_extraction():
             return jsonify({"error": "No file selected"}), 400
         
         # Create uploads directory if it doesn't exist
-        upload_dir = 'uploads'
+        upload_dir = os.environ.get('UPLOAD_DIR', 'uploads')
         if not os.path.exists(upload_dir):
             os.makedirs(upload_dir)
         
@@ -534,10 +515,10 @@ def send_verification_email():
         email = g.user['email']
         
         # Configure action code settings with 2-day expiration
+        frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
         action_code_settings = auth.ActionCodeSettings(
-            url='http://localhost:3000/email-verification',  # Your frontend URL
+            url=f'{frontend_url}/email-verification',
             handle_code_in_app=True,
-            # Firebase default is 3 days, but we'll set it explicitly
             dynamic_link_domain=None  # Disable dynamic links
         )
         
@@ -547,15 +528,19 @@ def send_verification_email():
             action_code_settings=action_code_settings
         )
         
-        # In production, send this via email service
-        print(f"Email verification link for {email}: {verification_link}")
-        print(f"Link expires in 2 days (Firebase default)")
+        # In production, send this via email service (e.g. SendGrid, SES)
+        logger.info(f"Email verification link generated for {email}")
+        logger.debug(f"Verification link: {verification_link}")
         
-        return jsonify({
+        response_data = {
             "message": "Verification email sent successfully",
-            "verification_link": verification_link,  # Remove in production
             "expires_in_days": 2
-        }), 200
+        }
+        # Only include the link in non-production environments for testing
+        if os.environ.get('FLASK_ENV', 'development') != 'production':
+            response_data["verification_link"] = verification_link
+        
+        return jsonify(response_data), 200
         
     except Exception as e:
         print(f"  Send verification email error: {str(e)}")
@@ -652,7 +637,7 @@ def upload_and_parse_resume():
             return jsonify({"error": "Invalid file type. Only PDF, DOCX, and DOC files are allowed"}), 400
         
         # Create uploads directory if it doesn't exist
-        upload_dir = 'uploads'
+        upload_dir = os.environ.get('UPLOAD_DIR', 'uploads')
         if not os.path.exists(upload_dir):
             os.makedirs(upload_dir)
         
@@ -975,9 +960,6 @@ def chat_query():
                     
                     mongo_db.chat_sessions.replace_one({'_id': ObjectId(session_id)}, update_data)
                     
-                    # Invalidate cache
-                    invalidate_chat_cache(user_id)
-                    
                     print(f"💾 Chat messages saved to session {session_id} for user {user_id}")
                 else:
                     print(f"  Session {session_id} not found")
@@ -1061,14 +1043,19 @@ def chat_stream():
                 error_data = json.dumps({'error': str(e)})
                 yield f"data: {error_data}\n\n"
         
+        # Use the request's Origin header if it's in allowed origins, otherwise use first allowed origin
+        request_origin = request.headers.get('Origin', '')
+        allowed_origin = request_origin if request_origin in CORS_ORIGINS else (CORS_ORIGINS[0] if CORS_ORIGINS else '*')
+        
         return Response(
             generate(),
             mimetype='text/plain',
             headers={
                 'Cache-Control': 'no-cache',
                 'Connection': 'keep-alive',
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+                'Access-Control-Allow-Origin': allowed_origin,
+                'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+                'Access-Control-Allow-Credentials': 'true'
             }
         )
         
@@ -1079,19 +1066,9 @@ def chat_stream():
 @app.route('/api/chat/sessions', methods=['GET'])
 @verify_token
 def get_chat_sessions():
-    """Get user's chat sessions with caching"""
+    """Get user's chat sessions"""
     try:
         user_id = g.user['uid']
-        
-        # Try to get from cache first
-        if redis_client:
-            cache_key = f"chat_sessions:{user_id}"
-            cached_data = redis_client.get(cache_key)
-            if cached_data:
-                try:
-                    return jsonify(json.loads(cached_data))
-                except:
-                    pass
         
         if mongo_db is not None:
             # Query chat sessions from Firestore (without ordering to avoid index requirement)
@@ -1111,14 +1088,6 @@ def get_chat_sessions():
                 "success": True,
                 "sessions": sessions
             }
-            
-            # Cache the result
-            if redis_client:
-                try:
-                    cache_key = f"chat_sessions:{user_id}"
-                    redis_client.setex(cache_key, 3600, json.dumps(result))  # 1 hour cache
-                except:
-                    pass
             
             return jsonify(result), 200
         else:
@@ -1149,9 +1118,6 @@ def create_chat_session():
             
             session_ref = mongo_db.chat_sessions.insert_one(session_doc)
             session_id = str(session_ref.inserted_id)
-            
-            # Invalidate cache
-            invalidate_chat_cache(user_id)
             
             return jsonify({
                 "success": True,
@@ -1225,9 +1191,6 @@ def update_chat_session(session_id):
                 'last_updated': datetime.now()
             })
             
-            # Invalidate cache
-            invalidate_chat_cache(user_id)
-            
             return jsonify({
                 "success": True,
                 "message": "Chat session updated successfully"
@@ -1259,9 +1222,6 @@ def delete_chat_session(session_id):
             
             # Delete the session (messages are stored within the session document)
             mongo_db.chat_sessions.delete_one({'_id': ObjectId(session_id)})
-            
-            # Invalidate cache
-            invalidate_chat_cache(user_id)
             
             return jsonify({
                 "success": True,
@@ -2103,7 +2063,8 @@ def get_jobs():
     """Get job listings with filtering and pagination"""
     try:
         # Read jobs CSV
-        jobs_data = read_csv_data('jobs.csv')
+        jobs_csv_path = os.environ.get('JOBS_CSV_PATH', 'jobs.csv')
+        jobs_data = read_csv_data(jobs_csv_path)
         if not jobs_data:
             return jsonify({'success': False, 'error': 'Unable to load jobs data'}), 500
         
@@ -2145,7 +2106,8 @@ def get_internships():
     """Get internship listings with filtering and pagination"""
     try:
         # Read internships CSV
-        internships_data = read_csv_data('internships.csv')
+        internships_csv_path = os.environ.get('INTERNSHIPS_CSV_PATH', 'internships.csv')
+        internships_data = read_csv_data(internships_csv_path)
         if not internships_data:
             return jsonify({'success': False, 'error': 'Unable to load internships data'}), 500
         
@@ -2243,7 +2205,8 @@ def filter_internships(internships: List[Dict], filters: Dict) -> List[Dict]:
 def get_job_stats():
     """Get job statistics for filters"""
     try:
-        jobs_data = read_csv_data('jobs.csv')
+        jobs_csv_path = os.environ.get('JOBS_CSV_PATH', 'jobs.csv')
+        jobs_data = read_csv_data(jobs_csv_path)
         if not jobs_data:
             return jsonify({'success': False, 'error': 'Unable to load jobs data'}), 500
         
@@ -2290,7 +2253,8 @@ def get_job_stats():
 def get_internship_stats():
     """Get internship statistics for filters"""
     try:
-        internships_data = read_csv_data('internships.csv')
+        internships_csv_path = os.environ.get('INTERNSHIPS_CSV_PATH', 'internships.csv')
+        internships_data = read_csv_data(internships_csv_path)
         if not internships_data:
             return jsonify({'success': False, 'error': 'Unable to load internships data'}), 500
         
@@ -2667,12 +2631,17 @@ def sync_firebase_claims():
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5003))
-    print(f"🚀 Starting AdvisorAI backend server on port {port}")
-    print(f"📡 API Base URL: http://localhost:{port}/api")
+    host = os.environ.get('APP_HOST', '0.0.0.0')
+    debug = os.environ.get('DEBUG', 'false').lower() in ('true', '1', 'yes')
+    
+    print(f"🚀 Starting AdvisorAI backend server on {host}:{port}")
+    print(f"📡 API Base URL: http://{host}:{port}/api")
+    print(f"⚙️  Environment: {os.environ.get('FLASK_ENV', 'development')}")
+    print(f"🐛 Debug mode: {debug}")
     print(f"🔍 Job search endpoints:")
     print(f"   - GET /api/jobs")
     print(f"   - GET /api/internships") 
     print(f"   - GET /api/jobs/stats")
     print(f"   - GET /api/internships/stats")
-    print(f"🧪 Test CORS: http://localhost:{port}/api/test-cors")
-    app.run(debug=True, host='0.0.0.0', port=port) 
+    print(f"🧪 Test CORS: http://{host}:{port}/api/test-cors")
+    app.run(debug=debug, host=host, port=port)

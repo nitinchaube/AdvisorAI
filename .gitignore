@@ -56,7 +56,7 @@ ENV/
 Thumbs.db
 ehthumbs.db
 Desktop.ini
-
+*/FineTuningAdvisorAI
 # Ignore all data files
 **/Data/
 # **/VectorDB/
