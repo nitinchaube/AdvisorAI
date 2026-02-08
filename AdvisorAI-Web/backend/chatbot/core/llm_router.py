@@ -1,136 +1,114 @@
-from typing import Dict, Any, Optional
+"""LLM provider router with automatic fallback logic."""
+
+import logging
+from typing import Any, Optional
 from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_anthropic import ChatAnthropic
 from config.settings import settings
 
+logger = logging.getLogger("chatbot")
+
+# Provider → (API-key attr, LLM factory)
+_PROVIDER_KEY_MAP = {
+    "openai": "OPENAI_API_KEY",
+    "gemini": "GEMINI_API_KEY",
+    "claude": "ANTHROPIC_API_KEY",
+}
+
+
 class LLMRouter:
-    """Router for different LLM providers with fallback logic"""
+    """Router for different LLM providers with fallback logic."""
 
     def __init__(self):
         self.provider = settings.LLM_PROVIDER
-        print(f"🔧 LLM Router initialized with provider: {self.provider}")
         self._validate_provider()
+        logger.info("LLM Router initialised with provider: %s", self.provider)
+
+    # ------------------------------------------------------------------
+    # Validation & fallback
+    # ------------------------------------------------------------------
 
     def _validate_provider(self):
-        """Validate that the required API keys are available"""
-        if self.provider == "openai" and not settings.OPENAI_API_KEY:
-            print("⚠️  Warning: OpenAI API key not found, falling back to available providers")
-            self._try_fallback_provider()
-        elif self.provider == "gemini" and not settings.GEMINI_API_KEY:
-            print("⚠️  Warning: Gemini API key not found, falling back to available providers")
-            self._try_fallback_provider()
-        elif self.provider == "claude" and not settings.ANTHROPIC_API_KEY:
-            print("⚠️  Warning: Anthropic API key not found, falling back to available providers")
+        """Ensure the configured provider has a valid API key; fall back otherwise."""
+        key_attr = _PROVIDER_KEY_MAP.get(self.provider)
+        if key_attr and not getattr(settings, key_attr, ""):
+            logger.warning(
+                "%s API key missing – attempting fallback", self.provider
+            )
             self._try_fallback_provider()
 
     def _try_fallback_provider(self):
-        """Try to find an available provider"""
-        fallback_providers = ["openai", "gemini", "claude"]
+        for provider, key_attr in _PROVIDER_KEY_MAP.items():
+            if provider != self.provider and getattr(settings, key_attr, ""):
+                self.provider = provider
+                logger.info("Switched to fallback provider: %s", provider)
+                return
+        logger.error("No LLM API keys available")
+        raise RuntimeError(
+            "No LLM API keys configured. Set at least one of "
+            "OPENAI_API_KEY, GEMINI_API_KEY, or ANTHROPIC_API_KEY."
+        )
 
-        for provider in fallback_providers:
-            if provider != self.provider:
-                try:
-                    if provider == "openai" and settings.OPENAI_API_KEY:
-                        self.provider = provider
-                        print(f"🔄 Switched to {provider} provider")
-                        return
-                    elif provider == "gemini" and settings.GEMINI_API_KEY:
-                        self.provider = provider
-                        print(f"🔄 Switched to {provider} provider")
-                        return
-                    elif provider == "claude" and settings.ANTHROPIC_API_KEY:
-                        self.provider = provider
-                        print(f"🔄 Switched to {provider} provider")
-                        return
-                except Exception:
-                    continue
+    # ------------------------------------------------------------------
+    # LLM instantiation
+    # ------------------------------------------------------------------
 
-        # If no provider is available, use a mock provider for testing
-        print("⚠️  No API keys available, using mock provider for testing")
-        self.provider = "mock"
-
-    def get_llm(self, streaming: bool = False, callbacks: list = None, **kwargs) -> Any:
-        """Get LLM instance based on provider configuration"""
-        print(f"🤖 Getting LLM instance for provider: {self.provider}")
+    def get_llm(
+        self,
+        streaming: bool = False,
+        callbacks: Optional[list] = None,
+        **kwargs,
+    ) -> Any:
+        """Return an LLM instance for the active provider."""
+        cb = callbacks or []
 
         if self.provider == "openai":
             return ChatOpenAI(
                 model=settings.OPENAI_MODEL,
                 openai_api_key=settings.OPENAI_API_KEY,
                 streaming=streaming,
-                callbacks=callbacks or [],
-                **kwargs
+                callbacks=cb,
+                **kwargs,
             )
-        elif self.provider == "gemini":
-            # Remove streaming parameter for Gemini as it doesn't support it the same way
-            gemini_kwargs = {k: v for k, v in kwargs.items() if k != 'streaming'}
+
+        if self.provider == "gemini":
+            gemini_kwargs = {k: v for k, v in kwargs.items() if k != "streaming"}
             return ChatGoogleGenerativeAI(
                 model=settings.GEMINI_MODEL,
                 google_api_key=settings.GEMINI_API_KEY,
-                callbacks=callbacks or [],
-                **gemini_kwargs
+                callbacks=cb,
+                **gemini_kwargs,
             )
-        elif self.provider == "claude":
+
+        if self.provider == "claude":
             return ChatAnthropic(
                 model=settings.CLAUDE_MODEL,
                 anthropic_api_key=settings.ANTHROPIC_API_KEY,
                 streaming=streaming,
-                callbacks=callbacks or [],
-                **kwargs
+                callbacks=cb,
+                **kwargs,
             )
-        elif self.provider == "mock":
-            # Mock LLM for testing without API keys
-            class MockLLM:
-                def __init__(self):
-                    self.model_name = "mock-model"
 
-                async def ainvoke(self, messages):
-                    class MockResponse:
-                        def __init__(self, content):
-                            self.content = content
-
-                    # Simple mock response based on the query
-                    query = messages[0]["content"] if messages else ""
-                    if "computer science" in query.lower():
-                        return MockResponse("Computer Science courses at Stevens Institute of Technology include programming, algorithms, data structures, and software engineering.")
-                    elif "machine learning" in query.lower():
-                        return MockResponse("Machine learning is a subset of artificial intelligence that enables computers to learn and improve from experience without being explicitly programmed.")
-                    elif "admission" in query.lower():
-                        return MockResponse("For current admission requirements, please visit the Stevens Institute of Technology website or contact the admissions office.")
-                    else:
-                        return MockResponse("I can help you with information about Stevens Institute of Technology. Please ask me about courses, faculty, admission requirements, or general academic topics.")
-
-                def invoke(self, prompt):
-                    return self.ainvoke([{"role": "user", "content": prompt}])
-
-            return MockLLM()
-        else:
-            raise ValueError(f"Unsupported LLM provider: {self.provider}")
+        raise ValueError(f"Unsupported LLM provider: {self.provider}")
 
     def get_fallback_llm(self) -> Any:
-        """Get a fallback LLM if the primary one fails"""
-        fallback_providers = ["openai", "gemini", "claude"]
-
-        for provider in fallback_providers:
-            if provider != self.provider:
-                try:
-                    if provider == "openai" and settings.OPENAI_API_KEY:
-                        return ChatOpenAI(
-                            model=settings.OPENAI_MODEL,
-                            openai_api_key=settings.OPENAI_API_KEY
-                        )
-                    elif provider == "gemini" and settings.GEMINI_API_KEY:
-                        return ChatGoogleGenerativeAI(
-                            model=settings.GEMINI_MODEL,
-                            google_api_key=settings.GEMINI_API_KEY
-                        )
-                    elif provider == "claude" and settings.ANTHROPIC_API_KEY:
-                        return ChatAnthropic(
-                            model=settings.CLAUDE_MODEL,
-                            anthropic_api_key=settings.ANTHROPIC_API_KEY
-                        )
-                except Exception:
-                    continue
-
-        raise RuntimeError("No fallback LLM available") 
+        """Return an LLM from a different provider (for retry scenarios)."""
+        for provider, key_attr in _PROVIDER_KEY_MAP.items():
+            if provider != self.provider and getattr(settings, key_attr, ""):
+                if provider == "openai":
+                    return ChatOpenAI(
+                        model=settings.OPENAI_MODEL,
+                        openai_api_key=settings.OPENAI_API_KEY,
+                    )
+                if provider == "gemini":
+                    return ChatGoogleGenerativeAI(
+                        model=settings.GEMINI_MODEL,
+                        google_api_key=settings.GEMINI_API_KEY,
+                    )
+                if provider == "claude":
+                    return ChatAnthropic(
+                        model=settings.CLAUDE_MODEL,
+                        anthropic_api_key=settings.ANTHROPIC_API_KEY,
+                    )
+        raise RuntimeError("No fallback LLM available")
