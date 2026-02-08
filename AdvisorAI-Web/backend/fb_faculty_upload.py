@@ -1,5 +1,5 @@
 import firebase_admin
-from firebase_admin import credentials, firestore
+from firebase_admin import firestore
 import json
 import os
 import re
@@ -18,15 +18,11 @@ def extract_name(info_string):
     
     return None
 
-def upload_faculty_data_to_firebase(general_info_path, research_info_path, firebase_config_path):
-    
+def upload_faculty_data_to_firebase(general_info_path, research_info_path):
+    """Upload faculty data to Firestore using Application Default Credentials."""
     try:
-        if not os.path.exists(firebase_config_path):
-            print(f"Error: Firebase credentials file not found at {firebase_config_path}")
-            return
-
-        cred = credentials.Certificate(firebase_config_path)
-        firebase_admin.initialize_app(cred)
+        if not firebase_admin._apps:
+            firebase_admin.initialize_app()
 
         db = firestore.client()
 
@@ -79,7 +75,7 @@ def upload_faculty_data_to_firebase(general_info_path, research_info_path, fireb
         print("Upload process completed.")
 
     except FileNotFoundError:
-        print(f"Error: One or more JSON files not found. Check paths: {general_info_path}, {research_info_path}, or {firebase_config_path}")
+        print(f"Error: One or more JSON files not found. Check paths: {general_info_path}, {research_info_path}")
     except json.JSONDecodeError:
         print(f"Error: Could not decode JSON from one of the files. Please check file formats.")
     except Exception as e:
@@ -87,12 +83,9 @@ def upload_faculty_data_to_firebase(general_info_path, research_info_path, fireb
 
 
 if __name__ == "__main__":
-    #path to your Firebase service account JSON file
-    firebase_credentials_file = 'firebase_key.json'
-
-    #paths to your faculty data JSON files
+    # Paths to your faculty data JSON files
     general_info_json = 'data/AllFacultyGeneralInformation.json'
     research_info_json = 'data/AllFacultyResearchInformation.json'
 
-    #call the upload function
-    upload_faculty_data_to_firebase(general_info_json, research_info_json, firebase_credentials_file)
+    # Uses ADC — run `gcloud auth application-default login` first for local dev
+    upload_faculty_data_to_firebase(general_info_json, research_info_json)
