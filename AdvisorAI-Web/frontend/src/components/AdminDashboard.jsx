@@ -18,6 +18,10 @@ import {
   CheckCircle,
   ChevronLeft,
   ChevronRight,
+  RefreshCw,
+  Briefcase,
+  Clock,
+  Zap,
 } from "lucide-react";
 
 const AdminDashboard = () => {
@@ -48,6 +52,10 @@ const AdminDashboard = () => {
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [totalPages, setTotalPages] = useState(1);
 
+  // Scraper state
+  const [scraperStatus, setScraperStatus] = useState(null);
+  const [scraperRunning, setScraperRunning] = useState(false);
+
   // Handler for menu toggle
   const handleMenuToggle = () => {
     setSidebarOpen(!sidebarOpen);
@@ -56,6 +64,40 @@ const AdminDashboard = () => {
   useEffect(() => {
     loadData();
   }, [activeTab]);
+
+  // Fetch scraper status on mount and every 30s
+  useEffect(() => {
+    const fetchScraperStatus = async () => {
+      try {
+        const res = await adminAPI.getScraperStatus();
+        setScraperStatus(res.scraper);
+      } catch {
+        // silently ignore — non-critical
+      }
+    };
+    fetchScraperStatus();
+    const interval = setInterval(fetchScraperStatus, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleTriggerScraper = async () => {
+    try {
+      setScraperRunning(true);
+      await adminAPI.triggerScraper();
+      showNotification("Job scraper started! It will run in the background.", "success");
+      // Poll status a few times to get the updated result
+      setTimeout(async () => {
+        try {
+          const res = await adminAPI.getScraperStatus();
+          setScraperStatus(res.scraper);
+        } catch {}
+        setScraperRunning(false);
+      }, 5000);
+    } catch (error) {
+      showNotification("Failed to trigger scraper: " + error.message, "error");
+      setScraperRunning(false);
+    }
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -585,8 +627,67 @@ const AdminDashboard = () => {
       <div className="h-full w-full overflow-hidden">
         {/* Admin Content Container */}
         <div className="h-full bg-white/90 backdrop-blur-sm overflow-y-auto">
-          {/* Tabs */}
+          {/* Job Scraper Card */}
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
+            <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/60 rounded-2xl p-5 shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="bg-amber-100 p-3 rounded-xl">
+                  <Briefcase className="w-6 h-6 text-amber-600" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-slate-800 text-sm">Jobs & Internships Scraper</h3>
+                  {scraperStatus ? (
+                    <div className="flex items-center gap-3 mt-1 text-xs text-slate-500">
+                      <span className="flex items-center gap-1">
+                        <span className={`inline-block w-2 h-2 rounded-full ${
+                          scraperStatus.last_status?.includes("success") ? "bg-green-500" :
+                          scraperStatus.last_status?.includes("error") ? "bg-red-500" : "bg-slate-400"
+                        }`} />
+                        {scraperStatus.last_status || "idle"}
+                      </span>
+                      {scraperStatus.last_run && (
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          Last: {new Date(scraperStatus.last_run).toLocaleString()}
+                        </span>
+                      )}
+                      <span>Runs: {scraperStatus.runs || 0}</span>
+                      <span>Every {scraperStatus.interval_hours || 2}h</span>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-400 mt-1">Loading status…</p>
+                  )}
+                  {scraperStatus?.last_error && (
+                    <p className="text-xs text-red-500 mt-1 truncate max-w-md">{scraperStatus.last_error}</p>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={handleTriggerScraper}
+                disabled={scraperRunning}
+                className={`flex items-center gap-2 px-5 py-3 rounded-xl font-semibold text-sm transition-all duration-300 shadow-md hover:shadow-lg transform hover:scale-105 ${
+                  scraperRunning
+                    ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+                    : "bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-600 hover:to-orange-600"
+                }`}
+              >
+                {scraperRunning ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Running…
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-4 h-4" />
+                    Run Scraper Now
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
             <div className="bg-gradient-to-r from-slate-800/95 to-slate-700/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-slate-600/20 p-2">
               <nav className="flex space-x-2">
                 <button

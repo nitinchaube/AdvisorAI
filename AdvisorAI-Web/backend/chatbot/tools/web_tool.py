@@ -74,8 +74,11 @@ class WebTool:
 
             content = self._clean_content(content)
 
-            if len(content) < 100:
-                logger.debug("Web search returned insufficient content")
+            # Consider shorter but still meaningful content as usable context.
+            # This makes it more likely that web results are included in the
+            # final answer even when pages are brief.
+            if len(content) < 50:
+                logger.debug("Web search returned very short content")
                 content = ""
 
             return {

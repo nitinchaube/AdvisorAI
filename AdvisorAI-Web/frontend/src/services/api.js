@@ -1,5 +1,9 @@
 import { auth } from "../config/firebase";
-const API_BASE_URL = "http://localhost:5003/api";
+
+// API base URL — reads from env var so the same code works for dev & prod.
+// Dev:  VITE_API_BASE_URL=http://localhost:5003/api  (in .env)
+// Prod: VITE_API_BASE_URL=https://<cloud-run-url>/api (in .env.production)
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5003/api";
 
 class ApiService {
   constructor(auth) {
@@ -460,20 +464,32 @@ class ApiService {
   }
 
   // Streaming chat method
-  async streamChatMessage(query, chatHistory = [], onToken) {
+  /**
+   * Stream a chat message via SSE.
+   *
+   * @param {string}   query       – the user's question
+   * @param {Array}    chatHistory – recent Q/A pairs
+   * @param {string}   sessionId   – current chat session ID
+   * @param {Function} onToken     – called with each text chunk (string)
+   * @param {Function} onStatus    – called with status text (e.g. "Thinking…")
+   * @param {Function} onDone      – called with metadata once stream completes
+   */
+  async streamChatMessage(query, chatHistory = [], sessionId = null, onToken, onStatus, onDone) {
     const url = `${this.baseURL}/chat/stream`;
-    const token = localStorage.getItem("backendToken");
+    // Use a fresh Firebase ID token (same as makeRequest / getAuthHeaders)
+    const authHeaders = await this.getAuthHeaders();
 
     try {
       const response = await fetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(token && { Authorization: `Bearer ${token}` }),
+          ...authHeaders,
         },
         body: JSON.stringify({
           query,
           chat_history: chatHistory,
+          session_id: sessionId,
         }),
       });
 
@@ -483,28 +499,37 @@ class ApiService {
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
+      let buffer = "";
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value);
-        const lines = chunk.split("\n");
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        // Keep last (possibly incomplete) line in the buffer
+        buffer = lines.pop() || "";
 
         for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const data = line.slice(6);
-            if (data === "[DONE]") {
-              return;
+          if (!line.startsWith("data: ")) continue;
+          const payload = line.slice(6).trim();
+          if (!payload || payload === "[DONE]") continue;
+
+          try {
+            const event = JSON.parse(payload);
+
+            if (event.type === "status" && onStatus) {
+              onStatus(event.content, event);
+            } else if (event.type === "token" && onToken) {
+              onToken(event.content);
+            } else if (event.type === "done" && onDone) {
+              onDone(event);
+            } else if (event.type === "error") {
+              throw new Error(event.content || "Stream error");
             }
-            try {
-              const parsed = JSON.parse(data);
-              if (parsed.token && onToken) {
-                onToken(parsed.token);
-              }
-            } catch (e) {
-              console.error("Error parsing stream data:", e);
-            }
+          } catch (e) {
+            if (e.message && !e.message.includes("JSON")) throw e;
+            console.warn("Skipping unparseable SSE line:", payload);
           }
         }
       }
@@ -819,6 +844,29 @@ export const adminAPI = {
       },
     });
     if (!response.ok) throw new Error("Failed to sync Firebase claims");
+    return await response.json();
+  },
+
+  // Scraper Admin API
+  async triggerScraper() {
+    const authHeaders = await apiService.getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/admin/scraper/run`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders,
+      },
+    });
+    if (!response.ok) throw new Error("Failed to trigger scraper");
+    return await response.json();
+  },
+
+  async getScraperStatus() {
+    const response = await fetch(`${API_BASE_URL}/scraper/status`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!response.ok) throw new Error("Failed to fetch scraper status");
     return await response.json();
   },
 };
