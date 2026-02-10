@@ -85,6 +85,10 @@ class ChatbotIntegrationService:
 
             reflection = metadata.get("reflection", {})
 
+            reasoning = metadata.get("reasoning_result", {}) or {}
+            web_meta = metadata.get("web_search", {}) or {}
+            reasoning["web_search"] = web_meta
+
             return {
                 "response": result["answer"],
                 "sources": {
@@ -94,7 +98,7 @@ class ChatbotIntegrationService:
                     "user_info_included": bool(user_id),
                     "chat_history_included": bool(formatted_history),
                     "general_tool_used": metadata.get("used_general_tool", False),
-                    "reasoning": metadata.get("reasoning_result", {}),
+                    "reasoning": reasoning,
                     "reflection": {
                         "score": reflection.get("score"),
                         "was_refined": not reflection.get("is_acceptable", True),
@@ -183,8 +187,91 @@ class ChatbotIntegrationService:
 
     def stream_query(self, user_query: str, user_id: str = None,
                      chat_history: List[Dict] = None):
-        """Placeholder for future streaming implementation."""
-        return self.process_query(user_query, user_id, chat_history)
+        """Generator that yields SSE-style dicts: status → tokens → done.
+
+        Uses the orchestrator's ``stream_process_query`` so the frontend
+        receives a live status update after every pipeline node completes,
+        then streams the final answer word-by-word.
+        """
+        start = time.time()
+
+        if not self.orchestrator:
+            yield {"type": "token", "content": "The chatbot system is currently unavailable. Please try again later."}
+            yield {"type": "done", "chat_name": "Error", "sources": {}, "processing_time": 0, "error": True}
+            return
+
+        formatted_history = self._format_chat_history(chat_history or [])
+        loop = self._get_event_loop()
+
+        # -- Iterate over the async generator from sync code ---------------
+        async_gen = self.orchestrator.stream_process_query(
+            query=user_query,
+            user_id=user_id or "default",
+            chat_history=formatted_history,
+        )
+
+        result = None  # will hold the final pipeline result
+
+        while True:
+            try:
+                event = loop.run_until_complete(async_gen.__anext__())
+            except StopAsyncIteration:
+                break
+
+            if event.get("type") == "status":
+                # Forward node status to the frontend
+                yield {"type": "status", "content": event["content"]}
+            elif event.get("type") == "result":
+                result = event
+
+        # -- Fallback if stream produced no result -------------------------
+        if result is None or not result.get("success"):
+            err_msg = (
+                result.get("answer", "") if result
+                else "I'm having trouble processing your request. Please try again."
+            )
+            yield {"type": "token", "content": err_msg}
+            yield {"type": "done", "chat_name": "Error", "sources": {}, "processing_time": time.time() - start, "error": True}
+            return
+
+        metadata = result.get("metadata", {})
+        reflection = metadata.get("reflection", {})
+        reasoning = metadata.get("reasoning_result", {}) or {}
+        web_meta = metadata.get("web_search", {}) or {}
+        reasoning["web_search"] = web_meta
+
+        # -- Stream the answer word-by-word --------------------------------
+        answer = result.get("answer", "")
+        words = answer.split(" ")
+        CHUNK = 3
+        for i in range(0, len(words), CHUNK):
+            chunk_words = words[i : i + CHUNK]
+            token = " ".join(chunk_words)
+            if i > 0:
+                token = " " + token
+            yield {"type": "token", "content": token}
+
+        # -- Send metadata so the frontend can finalise --------------------
+        yield {
+            "type": "done",
+            "chat_name": metadata.get("chat_name", "New Chat"),
+            "sources": {
+                "collections_used": metadata.get("tools_used", []),
+                "documents_retrieved": 0,
+                "web_search_performed": metadata.get("web_search_performed", False),
+                "user_info_included": bool(user_id),
+                "chat_history_included": bool(formatted_history),
+                "general_tool_used": metadata.get("used_general_tool", False),
+                "reasoning": reasoning,
+                "reflection": {
+                    "score": reflection.get("score"),
+                    "was_refined": not reflection.get("is_acceptable", True),
+                },
+                "top_documents": [],
+            },
+            "processing_time": time.time() - start,
+            "error": False,
+        }
 
     # ------------------------------------------------------------------
     # Helpers

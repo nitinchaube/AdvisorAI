@@ -5,7 +5,6 @@ import {
   History,
   Star,
   BookOpen,
-  Bot,
   TrendingUp,
   Calendar,
   FileText,
@@ -13,6 +12,7 @@ import {
   Briefcase,
   GraduationCap,
 } from "lucide-react";
+import logo from "../utils/logo.png";
 
 const CompactSidebar = ({ sidebarOpen }) => {
   const navigate = useNavigate();
@@ -116,8 +116,8 @@ const CompactSidebar = ({ sidebarOpen }) => {
       {/* Logo - Only visible when full sidebar is closed */}
       {!sidebarOpen && (
         <div className="flex-shrink-0 p-3 border-b-2 border-gray-300 bg-gray-50">
-          <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center shadow-md">
-            <Bot className="w-5 h-5 text-white" />
+          <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center shadow-md overflow-hidden">
+            <img src={logo} alt="AdvisorAI" className="w-6 h-6 object-contain" />
           </div>
         </div>
       )}

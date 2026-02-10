@@ -1,9 +1,12 @@
 import os
 import json
+import logging
 import openai
 import google.generativeai as genai
 from typing import Dict, Any, Optional
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -18,12 +21,12 @@ class LLMService:
             if not self.openai_api_key:
                 raise ValueError("OPENAI_API_KEY is required when LLM_PROVIDER is set to 'openai'")
             openai.api_key = self.openai_api_key
-            print("�� Using OpenAI as LLM provider")
+            logger.info("�� Using OpenAI as LLM provider")
         elif self.provider == "gemini":
             if not self.gemini_api_key:
                 raise ValueError("GEMINI_API_KEY is required when LLM_PROVIDER is set to 'gemini'")
             genai.configure(api_key=self.gemini_api_key)
-            print("🤖 Using Google Gemini as LLM provider")
+            logger.info("🤖 Using Google Gemini as LLM provider")
         else:
             raise ValueError(f"Unsupported LLM provider: {self.provider}")
     
@@ -37,7 +40,7 @@ class LLMService:
             else:
                 raise ValueError(f"Unsupported provider: {self.provider}")
         except Exception as e:
-            print(f"❌ LLM parsing failed: {str(e)}")
+            logger.error(f"❌ LLM parsing failed: {str(e)}")
             # Fallback to basic parsing
             return self._basic_parse(text)
     
@@ -67,17 +70,17 @@ class LLMService:
         
         for model_name in gemini_models:
             try:
-                print(f"🔄 Trying Gemini model: {model_name}")
+                logger.info(f"🔄 Trying Gemini model: {model_name}")
                 model = genai.GenerativeModel(model_name)
                 response = model.generate_content(prompt)
                 
                 if response.text:
                     content = response.text
-                    print(f" Successfully used Gemini model: {model_name}")
+                    logger.info(f" Successfully used Gemini model: {model_name}")
                     return self._parse_json_response(content)
                     
             except Exception as e:
-                print(f" Model {model_name} failed: {str(e)}")
+                logger.error(f" Model {model_name} failed: {str(e)}")
                 continue
         
         # If all models fail, raise an exception
@@ -146,8 +149,8 @@ class LLMService:
             # Parse JSON
             return json.loads(content)
         except json.JSONDecodeError as e:
-            print(f"JSON parsing error: {e}")
-            print(f"Raw content: {content}")
+            logger.error(f"JSON parsing error: {e}")
+            logger.debug(f"Raw content: {content}")
             # Return basic structure if JSON parsing fails
             return self._basic_parse("")
     

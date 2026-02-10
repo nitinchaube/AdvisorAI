@@ -4,13 +4,11 @@ import { useAuth } from "../contexts/AuthContext";
 import logo from "../utils/logo.png";
 import {
   User,
-  Settings,
   LogOut,
   Menu,
   X,
   Crown,
   Shield,
-  BookOpen,
   GraduationCap,
   Edit,
   ChevronRight,
@@ -77,7 +75,7 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
             className="flex items-center space-x-3 hover:scale-105 transition-all duration-300"
           >
             <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg hover:shadow-xl transition-all duration-300 border-2 border-white/10 overflow-hidden">
-              <img src={logo} alt="AdvisorAI Logo" className="w-6 h-6 object-contain filter brightness-0 invert" />
+              <img src={logo} alt="AdvisorAI Logo" className="w-6 h-6 object-contain" />
             </div>
             <div>
               <h1 className="text-xl font-bold text-white">
@@ -282,19 +280,6 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
                     </button>
                   )}
 
-                  <button className="w-full flex items-center space-x-3 px-6 py-3 text-sm text-slate-300 hover:bg-white/10 transition-all duration-300 hover:text-white group mx-2 rounded-xl">
-                    <div className="p-2 bg-white/10 rounded-lg group-hover:bg-white/20 transition-all duration-300 group-hover:scale-110">
-                      <BookOpen className="w-4 h-4" />
-                    </div>
-                    <span className="font-medium">My Courses</span>
-                  </button>
-
-                  <button className="w-full flex items-center space-x-3 px-6 py-3 text-sm text-slate-300 hover:bg-white/10 transition-all duration-300 hover:text-white group mx-2 rounded-xl">
-                    <div className="p-2 bg-white/10 rounded-lg group-hover:bg-white/20 transition-all duration-300 group-hover:scale-110">
-                      <Settings className="w-4 h-4" />
-                    </div>
-                    <span className="font-medium">Settings</span>
-                  </button>
                   {isAdmin() && (
                     <Link
                       to="/admin"
