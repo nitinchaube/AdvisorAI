@@ -11,6 +11,7 @@ from firebase_admin import auth
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from datetime import timedelta, datetime
 import json
+import threading
 from resume_processor import ResumeProcessor
 # Replace RAG service with chatbot integration
 from chatbot_integration import get_chatbot_integration
@@ -93,9 +94,9 @@ CORS(app,
 # Initialize Resume Processor
 try:
     resume_processor = ResumeProcessor()
-    print("  Resume processor initialized")
+    logger.info("Resume processor initialized")
 except Exception as e:
-    print(f"  Resume processor initialization failed: {e}")
+    logger.error(f"Resume processor initialization failed: {e}")
     resume_processor = None
 
 # Initialize Firebase Admin SDK using Application Default Credentials (ADC).
@@ -104,6 +105,65 @@ except Exception as e:
 if not firebase_admin._apps:
     firebase_admin.initialize_app()
     logger.info("Firebase Admin SDK initialized with Application Default Credentials")
+
+# ────────────────────────────────────────────────────────────
+# Background Job Scraper (runs in a daemon thread)
+# Completely isolated — any crash here will NOT affect the API.
+# ────────────────────────────────────────────────────────────
+_scraper_status = {
+    "enabled": False,
+    "last_run": None,
+    "last_status": "not started",
+    "last_error": None,
+    "runs": 0,
+    "interval_hours": 0,
+}
+
+def _run_scraper_loop():
+    """Background loop that scrapes jobs & internships every N hours."""
+    interval_hours = float(os.environ.get('SCRAPER_INTERVAL_HOURS', '2'))
+    interval_seconds = interval_hours * 3600
+    _scraper_status["interval_hours"] = interval_hours
+
+    # Lazy-import so the scraper module is only loaded when enabled
+    try:
+        from github_jobs_unified_scraper import UnifiedGitHubScraper
+        scraper = UnifiedGitHubScraper()
+    except Exception as exc:
+        logger.error("Scraper import/init failed — disabling: %s", exc)
+        _scraper_status["last_status"] = f"init failed: {exc}"
+        _scraper_status["last_error"] = str(exc)
+        return  # thread exits, app keeps running
+
+    logger.info("Scraper thread started — interval: every %.1f hours", interval_hours)
+
+    while True:
+        try:
+            logger.info("Scraper: starting run #%d …", _scraper_status["runs"] + 1)
+            scraper.scrape_all_repositories()
+            _scraper_status["runs"] += 1
+            _scraper_status["last_run"] = datetime.utcnow().isoformat() + "Z"
+            _scraper_status["last_status"] = "success"
+            _scraper_status["last_error"] = None
+            logger.info("Scraper: run #%d completed ✓", _scraper_status["runs"])
+        except Exception as exc:
+            _scraper_status["last_status"] = "error"
+            _scraper_status["last_error"] = str(exc)
+            logger.error("Scraper: run failed — %s. Will retry next cycle.", exc)
+
+        # Sleep until the next cycle
+        time.sleep(interval_seconds)
+
+
+# Start the scraper thread only when enabled
+_scraper_enabled = os.environ.get('SCRAPER_ENABLED', 'true').lower() in ('true', '1', 'yes')
+if _scraper_enabled:
+    _scraper_status["enabled"] = True
+    _scraper_thread = threading.Thread(target=_run_scraper_loop, daemon=True)
+    _scraper_thread.start()
+    logger.info("Background job scraper ENABLED (daemon thread)")
+else:
+    logger.info("Background job scraper DISABLED (set SCRAPER_ENABLED=true to enable)")
 
 # Utility function to convert MongoDB documents for JSON serialization
 
@@ -294,7 +354,7 @@ def debug_text_extraction():
     """Debug text extraction from resume file"""
     try:
         user_id = g.user['uid']
-        print(f"🔍 Debug text extraction for user: {user_id}")
+        logger.debug(f"Debug text extraction for user: {user_id}")
         
         if 'resume' not in request.files:
             return jsonify({"error": "No file provided"}), 400
@@ -662,7 +722,7 @@ def upload_and_parse_resume():
     try:
         # Get current user ID from the token
         user_id = g.user['uid']
-        print(f"🔑 Processing resume upload for user: {user_id}")
+        logger.info(f"Processing resume upload for user: {user_id}")
         
         if 'resume' not in request.files:
             return jsonify({"error": "No file provided"}), 400
@@ -690,7 +750,7 @@ def upload_and_parse_resume():
         filename = f"{user_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{file.filename}"
         file_path = os.path.join(upload_dir, filename)
         file.save(file_path)
-        print(f"📁 File saved: {file_path}")
+        logger.info(f"File saved: {file_path}")
         
         # Process resume
         if resume_processor:
@@ -724,7 +784,7 @@ def upload_and_parse_resume():
             return jsonify({"error": "Resume processor not available"}), 500
             
     except Exception as e:
-        print(f"  Resume upload error: {str(e)}")
+        logger.error(f"Resume upload error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -750,7 +810,7 @@ def get_user_profile():
                 }), 200
             else:
                 # If user doesn't exist in MongoDB, create a minimal profile
-                print(f"⚠️ User {user_id} not found in MongoDB, creating minimal profile")
+                logger.warning(f"User {user_id} not found in MongoDB, creating minimal profile")
                 try:
                     # Get user record from Firebase
                     firebase_user = auth.get_user(user_id)
@@ -767,20 +827,20 @@ def get_user_profile():
                         'emailVerified': firebase_user.email_verified
                     }
                     mongo_db.users.insert_one(minimal_user_doc)
-                    print(f"✅ Created minimal profile for user {user_id}")
+                    logger.info(f"Created minimal profile for user {user_id}")
                     
                     return jsonify({
                         "success": True,
                         "profile": minimal_user_doc
                     }), 200
                 except Exception as create_error:
-                    print(f"❌ Failed to create minimal profile: {create_error}")
+                    logger.error(f"Failed to create minimal profile: {create_error}")
                     return jsonify({"error": "User profile creation failed"}), 500
         else:
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"  Get profile error: {str(e)}")
+        logger.error(f"Get profile error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 # Update user profile (uses verify_email_optional so unverified users can complete their profile)
@@ -820,7 +880,7 @@ def update_user_profile():
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"  Update profile error: {str(e)}")
+        logger.error(f"Update profile error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 # Public portfolio endpoint by user ID
@@ -854,7 +914,7 @@ def get_public_profile(user_id):
         else:
             return jsonify({"success": False, "error": "Database not available"}), 500
     except Exception as e:
-        print(f"  Get public profile error: {str(e)}")
+        logger.error(f"Get public profile error: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 # Public portfolio endpoint by portfolio name
@@ -888,7 +948,7 @@ def get_portfolio_by_name(portfolio_name):
         else:
             return jsonify({"success": False, "error": "Database not available"}), 500
     except Exception as e:
-        print(f"  Get portfolio by name error: {str(e)}")
+        logger.error(f"Get portfolio by name error: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 # Chat endpoints
@@ -906,7 +966,7 @@ def chat_query():
         if not query.strip():
             return jsonify({"error": "Query is required"}), 400
         
-        print(f"🔍 Processing chat query for user {user_id} in session {session_id}: {query}")
+        logger.info(f"Processing chat query for user {user_id} in session {session_id}: {query}")
         
         # Get chatbot integration service
         chatbot_service = get_chatbot_integration()
@@ -920,22 +980,22 @@ def chat_query():
         
         # Extract chat name from the result if available
         chat_name = result.get('chat_name', 'New Chat')
-        print(f"📝 Backend: Extracted chat_name: '{chat_name}' from result")
-        print(f"📝 Backend: Full result keys: {list(result.keys())}")
+        logger.info(f"Backend: Extracted chat_name: '{chat_name}' from result")
+        logger.debug(f"Backend: Full result keys: {list(result.keys())}")
         if 'metadata' in result:
-            print(f"📝 Backend: Metadata keys: {list(result['metadata'].keys())}")
+            logger.debug(f"Backend: Metadata keys: {list(result['metadata'].keys())}")
             if 'chat_name' in result['metadata']:
-                print(f"📝 Backend: chat_name in metadata: '{result['metadata']['chat_name']}'")
+                logger.info(f"Backend: chat_name in metadata: '{result['metadata']['chat_name']}'")
         
         # Also check if chat_name is in metadata
         if 'metadata' in result and 'chat_name' in result['metadata']:
             metadata_chat_name = result['metadata']['chat_name']
-            print(f"📝 Backend: Found chat_name in metadata: '{metadata_chat_name}'")
+            logger.info(f"Backend: Found chat_name in metadata: '{metadata_chat_name}'")
             if metadata_chat_name != 'New Chat':
                 chat_name = metadata_chat_name
-                print(f"📝 Backend: Using metadata chat_name: '{chat_name}'")
+                logger.info(f"Backend: Using metadata chat_name: '{chat_name}'")
         
-        print(f"📝 Backend: Final chat_name to be used: '{chat_name}'")
+        logger.info(f"Backend: Final chat_name to be used: '{chat_name}'")
         
         # Save messages to session document if available and session_id provided
         if mongo_db is not None and result.get('response') and session_id:
@@ -997,20 +1057,20 @@ def chat_query():
                     # Update chat name if it's still "New Chat" and we have a better name
                     if session_data.get('title') == 'New Chat' and chat_name != 'New Chat':
                         update_data['title'] = chat_name
-                        print(f"📝 Backend: Updating chat title from 'New Chat' to: '{chat_name}'")
-                        print(f"📝 Backend: Session data before update: {session_data.get('title')}")
-                        print(f"📝 Backend: New chat_name: '{chat_name}'")
+                        logger.info(f"Backend: Updating chat title from 'New Chat' to: '{chat_name}'")
+                        logger.debug(f"Backend: Session data before update: {session_data.get('title')}")
+                        logger.info(f"Backend: New chat_name: '{chat_name}'")
                     else:
-                        print(f"📝 Backend: Not updating title. Current: '{session_data.get('title')}', New: '{chat_name}'")
+                        logger.info(f"Backend: Not updating title. Current: '{session_data.get('title')}', New: '{chat_name}'")
                     
                     mongo_db.chat_sessions.replace_one({'_id': ObjectId(session_id)}, update_data)
                     
-                    print(f"💾 Chat messages saved to session {session_id} for user {user_id}")
+                    logger.info(f"Chat messages saved to session {session_id} for user {user_id}")
                 else:
-                    print(f"  Session {session_id} not found")
+                    logger.warning(f"Session {session_id} not found")
                     
             except Exception as e:
-                print(f"  Error saving chat messages to session: {e}")
+                logger.error(f"Error saving chat messages to session: {e}")
                 # Don't fail the request if session saving fails
         
         # Also save to legacy chat_history for backward compatibility
@@ -1033,7 +1093,7 @@ def chat_query():
                 }
                 mongo_db.chat_history.insert_one(chat_doc)
             except Exception as e:
-                print(f"  Error saving to legacy chat_history: {e}")
+                logger.error(f"Error saving to legacy chat_history: {e}")
         
         # Prepare response
         response_data = {
@@ -1045,13 +1105,13 @@ def chat_query():
             "chat_name": chat_name
         }
         
-        print(f"📝 Backend: Sending response with chat_name: '{chat_name}'")
-        print(f"📝 Backend: Full response data: {response_data}")
+        logger.info(f"Backend: Sending response with chat_name: '{chat_name}'")
+        logger.debug(f"Backend: Full response data: {response_data}")
         
         return jsonify(response_data), 200
         
     except Exception as e:
-        print(f"  Chat query error: {str(e)}")
+        logger.error(f"Chat query error: {str(e)}")
         return jsonify({
             "success": False,
             "error": str(e),
@@ -1061,51 +1121,120 @@ def chat_query():
 @app.route('/api/chat/stream', methods=['POST'])
 @verify_token
 def chat_stream():
-    """Stream chat response"""
+    """Stream chat response via Server-Sent Events.
+
+    The generator emits three kinds of events:
+      • {"type":"status","content":"…"}   – thinking / processing indicator
+      • {"type":"token","content":"…"}    – a chunk of the answer text
+      • {"type":"done", …metadata…}       – signals completion, carries sources/chat_name
+    """
     try:
         user_id = g.user['uid']
         data = request.get_json()
         query = data.get('query', '')
         chat_history = data.get('chat_history', [])
-        
+        session_id = data.get('session_id')
+
         if not query.strip():
             return jsonify({"error": "Query is required"}), 400
-        
-        print(f"🌊 Streaming chat response for user {user_id}: {query}")
-        
+
+        logger.info(f"Streaming chat response for user {user_id} session {session_id}: {query}")
+
+        # We need to collect the full answer + metadata inside the generator
+        # so we can persist the session after the stream finishes.
+        _collected = {"answer": "", "meta": {}}
+
         def generate():
             try:
-                for token in get_chatbot_integration().stream_query(
+                for event in get_chatbot_integration().stream_query(
                     user_query=query,
                     user_id=user_id,
-                    chat_history=chat_history
+                    chat_history=chat_history,
                 ):
-                    yield f"data: {json.dumps({'token': token})}\n\n"
-                
-                yield f"data: {json.dumps({'done': True})}\n\n"
-                
+                    yield f"data: {json.dumps(event)}\n\n"
+
+                    # accumulate answer text
+                    if event.get("type") == "token":
+                        _collected["answer"] += event.get("content", "")
+                    elif event.get("type") == "done":
+                        _collected["meta"] = event
+
             except Exception as e:
-                error_data = json.dumps({'error': str(e)})
-                yield f"data: {error_data}\n\n"
-        
-        # Use the request's Origin header if it's in allowed origins, otherwise use first allowed origin
-        request_origin = request.headers.get('Origin', '')
-        allowed_origin = request_origin if request_origin in CORS_ORIGINS else (CORS_ORIGINS[0] if CORS_ORIGINS else '*')
-        
-        return Response(
+                yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+
+        response = Response(
             generate(),
-            mimetype='text/plain',
+            mimetype='text/event-stream',
             headers={
                 'Cache-Control': 'no-cache',
                 'Connection': 'keep-alive',
-                'Access-Control-Allow-Origin': allowed_origin,
-                'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-                'Access-Control-Allow-Credentials': 'true'
+                'X-Accel-Buffering': 'no',
             }
         )
-        
+
+        # --- After the response is sent, persist the session ----
+        @response.call_on_close
+        def _persist():
+            full_answer = _collected["answer"].strip()
+            meta = _collected["meta"]
+            chat_name = meta.get("chat_name", "New Chat")
+
+            if not full_answer or not session_id:
+                return
+
+            # Save to session document
+            if mongo_db is not None:
+                try:
+                    # Find session by _id (ObjectId) and verify it belongs to the user
+                    session_data = mongo_db.chat_sessions.find_one(
+                        {"_id": ObjectId(session_id), "user_id": user_id}
+                    )
+                    if session_data:
+                        messages = session_data.get("messages", [])
+                        messages.append({
+                            'id': f"user_{int(time.time() * 1000)}",
+                            'role': 'user',
+                            'content': query,
+                            'timestamp': datetime.now().isoformat(),
+                        })
+                        messages.append({
+                            'id': f"ai_{int(time.time() * 1000)}",
+                            'role': 'assistant',
+                            'content': full_answer,
+                            'timestamp': datetime.now().isoformat(),
+                            'sources': meta.get("sources", {}),
+                        })
+                        update = {
+                            **session_data,
+                            'messages': messages,
+                            'last_updated': datetime.now(),
+                            'message_count': len(messages),
+                        }
+                        if chat_name != "New Chat" and session_data.get("title") in (None, "New Chat"):
+                            update["title"] = chat_name
+                        mongo_db.chat_sessions.update_one(
+                            {"_id": session_data["_id"]}, {"$set": update}
+                        )
+                except Exception as e:
+                    logger.error(f"Stream: session persist error: {e}")
+
+                # Legacy chat_history collection
+                try:
+                    mongo_db.chat_history.insert_one({
+                        'user_id': user_id,
+                        'query': query,
+                        'response': full_answer,
+                        'timestamp': datetime.now(),
+                        'sources': meta.get("sources", {}),
+                        'session_id': session_id,
+                    })
+                except Exception as e:
+                    logger.error(f"Stream: legacy save error: {e}")
+
+        return response
+
     except Exception as e:
-        print(f"  Chat stream error: {str(e)}")
+        logger.error(f"Chat stream error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/chat/sessions', methods=['GET'])
@@ -1139,7 +1268,7 @@ def get_chat_sessions():
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"  Get chat sessions error: {str(e)}")
+        logger.error(f"Get chat sessions error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/chat/sessions', methods=['POST'])
@@ -1173,7 +1302,7 @@ def create_chat_session():
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"  Create chat session error: {str(e)}")
+        logger.error(f"Create chat session error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/chat/sessions/<session_id>', methods=['GET'])
@@ -1203,7 +1332,7 @@ def get_chat_session_messages(session_id):
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"  Get chat session messages error: {str(e)}")
+        logger.error(f"Get chat session messages error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/chat/sessions/<session_id>', methods=['PUT'])
@@ -1244,7 +1373,7 @@ def update_chat_session(session_id):
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"  Update chat session error: {str(e)}")
+        logger.error(f"Update chat session error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/chat/sessions/<session_id>', methods=['DELETE'])
@@ -1276,7 +1405,7 @@ def delete_chat_session(session_id):
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"  Delete chat session error: {str(e)}")
+        logger.error(f"Delete chat session error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/chat/history', methods=['GET'])
@@ -1305,7 +1434,7 @@ def get_chat_history():
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"  Get chat history error: {str(e)}")
+        logger.error(f"Get chat history error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/rag/stats', methods=['GET'])
@@ -1322,7 +1451,7 @@ def get_rag_stats():
         }), 200
         
     except Exception as e:
-        print(f"  RAG stats error: {str(e)}")
+        logger.error(f"RAG stats error: {str(e)}")
         return jsonify({
             "success": False,
             "error": str(e)
@@ -1366,7 +1495,7 @@ def get_user_chat_history():
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"  Get user chat history error: {str(e)}")
+        logger.error(f"Get user chat history error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/courses', methods=['GET'])
@@ -1699,11 +1828,11 @@ def sync_course_to_chroma(course_id, course_data):
             content = json.dumps(course_data)
             metadata = {'title': course_data.get('Course Title', ''), 'code': course_data.get('Course Code', '')}
             collection.upsert(ids=[course_id], documents=[content], metadatas=[metadata])
-            print(f"✅ Course {course_id} synced to Chroma")
+            logger.info(f"Course {course_id} synced to Chroma")
         else:
-            print(f"⚠️  Chroma collection 'AllCourseRelatedData' not available")
+            logger.warning(f"Chroma collection 'AllCourseRelatedData' not available")
     except Exception as e:
-        print(f"❌ Error syncing course {course_id} to Chroma: {e}")
+        logger.error(f"Error syncing course {course_id} to Chroma: {e}")
 
 def delete_from_chroma(course_id):
     """Delete course data from Chroma vector database"""
@@ -1711,11 +1840,11 @@ def delete_from_chroma(course_id):
         collection = get_chatbot_integration().load_vector_store('AllCourseRelatedData')
         if collection:
             collection.delete(ids=[course_id])
-            print(f"✅ Course {course_id} deleted from Chroma")
+            logger.info(f"Course {course_id} deleted from Chroma")
         else:
-            print(f"⚠️  Chroma collection 'AllCourseRelatedData' not available")
+            logger.warning(f"Chroma collection 'AllCourseRelatedData' not available")
     except Exception as e:
-        print(f"❌ Error deleting course {course_id} from Chroma: {e}")
+        logger.error(f"Error deleting course {course_id} from Chroma: {e}")
 
 @app.route('/api/admin/courses', methods=['GET'])
 @admin_required
@@ -1920,7 +2049,7 @@ def fix_profile_completion():
             return jsonify({"success": False, "error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"  Fix profile completion error: {str(e)}")
+        logger.error(f"Fix profile completion error: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/chat/feedback', methods=['POST'])
@@ -1958,9 +2087,9 @@ def submit_feedback():
                     {'messages.id': message_id},
                     {'$set': {'messages.$.feedback': feedback}}
                 )
-                print(f"✅ Feedback saved for message {message_id}: {feedback}")
+                logger.info(f"Feedback saved for message {message_id}: {feedback}")
             except Exception as e:
-                print(f"⚠️  Could not update message in chat_sessions: {e}")
+                logger.warning(f"Could not update message in chat_sessions: {e}")
         
         return jsonify({
             "success": True,
@@ -1969,7 +2098,7 @@ def submit_feedback():
         }), 200
         
     except Exception as e:
-        print(f"❌ Feedback submission error: {str(e)}")
+        logger.error(f"Feedback submission error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 # Job and Internship Search API Endpoints
@@ -2354,6 +2483,57 @@ def test_cors():
         'method': request.method
     })
 
+# ── Scraper endpoints ──
+@app.route('/api/scraper/status', methods=['GET'])
+def scraper_status():
+    """Check the background job scraper's health (no auth required)."""
+    return jsonify({
+        "success": True,
+        "scraper": _scraper_status,
+    })
+
+@app.route('/api/admin/scraper/run', methods=['POST'])
+@verify_token
+def admin_trigger_scraper():
+    """Manually trigger a job scraper run (admin only)."""
+    try:
+        user_id = g.user['uid']
+        if mongo_db is not None:
+            user_doc = mongo_db.users.find_one({'uid': user_id})
+            if not user_doc or user_doc.get('role') != 'admin':
+                return jsonify({"success": False, "error": "Admin access required"}), 403
+        else:
+            return jsonify({"success": False, "error": "Database not available"}), 500
+
+        # Run the scraper in a one-shot background thread so the request returns immediately
+        def _one_shot_scrape():
+            try:
+                from github_jobs_unified_scraper import UnifiedGitHubScraper
+                scraper = UnifiedGitHubScraper()
+                scraper.scrape_all_repositories()
+                _scraper_status["runs"] += 1
+                _scraper_status["last_run"] = datetime.utcnow().isoformat() + "Z"
+                _scraper_status["last_status"] = "success (manual)"
+                _scraper_status["last_error"] = None
+                logger.info("Scraper: manual run triggered by admin %s completed ✓", user_id)
+            except Exception as exc:
+                _scraper_status["last_status"] = "error (manual)"
+                _scraper_status["last_error"] = str(exc)
+                logger.error("Scraper: manual run failed — %s", exc)
+
+        t = threading.Thread(target=_one_shot_scrape, daemon=True)
+        t.start()
+
+        logger.info("Admin %s triggered manual scraper run", user_id)
+        return jsonify({
+            "success": True,
+            "message": "Scraper started. Check /api/scraper/status for progress.",
+        })
+
+    except Exception as e:
+        logger.error(f"Admin trigger scraper error: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
 # User Management Admin API Endpoints
 @app.route('/api/admin/users', methods=['GET'])
 @verify_token
@@ -2393,7 +2573,7 @@ def get_all_users():
             return jsonify({"success": False, "error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"  Get all users error: {str(e)}")
+        logger.error(f"Get all users error: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/admin/users/<user_uid>', methods=['GET'])
@@ -2426,7 +2606,7 @@ def get_user_details(user_uid):
             return jsonify({"success": False, "error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"  Get user details error: {str(e)}")
+        logger.error(f"Get user details error: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/admin/users/<user_uid>', methods=['PUT'])
@@ -2474,9 +2654,9 @@ def update_user_admin(user_uid):
                             'admin': new_role == 'admin'
                         }
                         auth.set_custom_user_claims(user_uid, custom_claims)
-                        print(f"✅ Firebase custom claims updated for user {user_uid}: {custom_claims}")
+                        logger.info(f"Firebase custom claims updated for user {user_uid}: {custom_claims}")
                     except Exception as firebase_error:
-                        print(f"⚠️  Firebase custom claims update failed: {firebase_error}")
+                        logger.error(f"Firebase custom claims update failed: {firebase_error}")
                         # Continue with MongoDB update even if Firebase fails
                 
                 return jsonify({
@@ -2493,7 +2673,7 @@ def update_user_admin(user_uid):
             return jsonify({"success": False, "error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"  Update user admin error: {str(e)}")
+        logger.error(f"Update user admin error: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/admin/users/<user_uid>', methods=['DELETE'])
@@ -2546,7 +2726,7 @@ def delete_user_admin(user_uid):
             return jsonify({"success": False, "error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"  Delete user admin error: {str(e)}")
+        logger.error(f"Delete user admin error: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/admin/users/<user_uid>/role', methods=['PUT'])
@@ -2594,9 +2774,9 @@ def update_user_role(user_uid):
                     'admin': new_role == 'admin'
                 }
                 auth.set_custom_user_claims(user_uid, custom_claims)
-                print(f"✅ Firebase custom claims updated for user {user_uid}: {custom_claims}")
+                logger.info(f"Firebase custom claims updated for user {user_uid}: {custom_claims}")
             except Exception as firebase_error:
-                print(f"⚠️  Firebase custom claims update failed: {firebase_error}")
+                logger.error(f"Firebase custom claims update failed: {firebase_error}")
                 # Continue with MongoDB update even if Firebase fails
                 # But log the error for investigation
             
@@ -2609,7 +2789,7 @@ def update_user_role(user_uid):
             return jsonify({"success": False, "error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"  Update user role error: {str(e)}")
+        logger.error(f"Update user role error: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/admin/sync-firebase-claims', methods=['POST'])
@@ -2649,15 +2829,15 @@ def sync_firebase_claims():
                             }
                             auth.set_custom_user_claims(user_uid, custom_claims)
                             synced_count += 1
-                            print(f"✅ Synced Firebase claims for user {user_uid}: {custom_claims}")
+                            logger.info(f"Synced Firebase claims for user {user_uid}: {custom_claims}")
                         else:
-                            print(f"ℹ️  Firebase claims already in sync for user {user_uid}")
+                            logger.info(f"ℹFirebase claims already in sync for user {user_uid}")
                             
                 except Exception as user_error:
                     failed_count += 1
                     error_msg = f"Failed to sync user {user.get('uid', 'unknown')}: {str(user_error)}"
                     errors.append(error_msg)
-                    print(f"❌ {error_msg}")
+                    logger.error(f"{error_msg}")
             
             return jsonify({
                 "success": True,
@@ -2671,22 +2851,16 @@ def sync_firebase_claims():
             return jsonify({"success": False, "error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"  Sync Firebase claims error: {str(e)}")
+        logger.error(f"Sync Firebase claims error: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 if __name__ == '__main__':
+    # This block only runs for local development (python app.py).
+    # In production, gunicorn imports the `app` object directly.
     port = int(os.environ.get('PORT', 5003))
     host = os.environ.get('APP_HOST', '0.0.0.0')
-    debug = os.environ.get('DEBUG', 'false').lower() in ('true', '1', 'yes')
-    
-    print(f"🚀 Starting AdvisorAI backend server on {host}:{port}")
-    print(f"📡 API Base URL: http://{host}:{port}/api")
-    print(f"⚙️  Environment: {os.environ.get('FLASK_ENV', 'development')}")
-    print(f"🐛 Debug mode: {debug}")
-    print(f"🔍 Job search endpoints:")
-    print(f"   - GET /api/jobs")
-    print(f"   - GET /api/internships") 
-    print(f"   - GET /api/jobs/stats")
-    print(f"   - GET /api/internships/stats")
-    print(f"🧪 Test CORS: http://{host}:{port}/api/test-cors")
+    debug = os.environ.get('FLASK_ENV', 'development') != 'production'
+
+    logger.info("Starting AdvisorAI backend on %s:%s", host, port)
+    logger.info("Environment: %s | Debug: %s", os.environ.get('FLASK_ENV', 'development'), debug)
     app.run(debug=debug, host=host, port=port)

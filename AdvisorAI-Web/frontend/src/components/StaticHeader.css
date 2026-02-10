@@ -61,7 +61,6 @@
   width: 1.5rem;
   height: 1.5rem;
   object-fit: contain;
-  filter: brightness(0) invert(1); /* Makes the logo white */
   display: block;
 }
 

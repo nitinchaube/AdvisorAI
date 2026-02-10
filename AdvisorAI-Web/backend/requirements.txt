@@ -1,32 +1,67 @@
+# ============================================================
+# AdvisorAI Backend - Python Dependencies
+# ============================================================
+
+# ----- Web Framework -----
 Flask
 Flask-CORS
 Flask-Session
 Flask-JWT-Extended
+gunicorn
+
+# ----- Auth & Security -----
 firebase-admin
 python-dotenv
 PyJWT
-requests
 Werkzeug
+
+# ----- Database -----
+pymongo[srv]
+
+# ----- HTTP -----
+requests
+
+# ----- Document Processing -----
 PyPDF2
 PyMuPDF
 python-docx
+
+# ----- LLM Providers -----
 openai
 google-generativeai
+
+# ----- LangChain / LangGraph -----
 langchain
+langchain-core
 langchain-openai
 langchain-google-genai
+langchain-anthropic
 langchain-community
+langchain-huggingface
+langgraph
+
+# ----- Configuration -----
+pydantic-settings
+
+# ----- Vector Database -----
 chromadb==0.5.23
+
+# ----- Embeddings / ML -----
+# CPU-only PyTorch (saves ~1.5 GB in Docker image)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
 sentence-transformers
 transformers
 huggingface-hub
+
+# ----- Web Scraping -----
 beautifulsoup4
+lxml
+selenium
+
+# ----- NLP & Data -----
 nltk
 scikit-learn
 scipy
-torch
-torchvision
-selenium
-schedule
 pandas
-lxml
+schedule

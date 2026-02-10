@@ -9,10 +9,10 @@ import {
   Eye,
   EyeOff,
   ArrowRight,
-  Shield,
 } from "lucide-react";
 
 import StaticHeader from "./StaticHeader";
+import logo from "../utils/logo.png";
 import BenefitsSection from "./common/BenefitsSection";
 import BottomSection from "./common/BottomSection";
 import "./Login.css";
@@ -225,7 +225,7 @@ const Login = () => {
             <div className="footer-brand">
               <div className="footer-logo">
                 <div className="footer-logo-icon-wrapper">
-                  <Shield className="footer-logo-icon" />
+                  <img src={logo} alt="AdvisorAI Logo" className="footer-logo-icon" style={{ width: '1.5rem', height: '1.5rem', objectFit: 'contain' }} />
                 </div>
                 <span>AdvisorAI</span>
               </div>

@@ -7,8 +7,6 @@ import {
   BookOpen,
   Bot,
   TrendingUp,
-  Calendar,
-  FileText,
   Brain,
   Sparkles,
   Briefcase,
@@ -82,20 +80,6 @@ const Sidebar = () => {
       icon: TrendingUp,
       description: "View your academic insights",
       path: "/analytics",
-    },
-    {
-      id: 'schedule',
-      label: 'Schedule',
-      icon: Calendar,
-      description: 'Plan your academic calendar',
-      path: '/schedule'
-    },
-    {
-      id: "documents",
-      label: "Documents",
-      icon: FileText,
-      description: "Manage your academic files",
-      path: "/documents",
     },
   ];
 
