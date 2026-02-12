@@ -54,10 +54,10 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
   };
 
   return (
-    <header className="bg-gradient-to-r from-slate-800 to-slate-700 backdrop-blur-xl border-b border-slate-600/20 px-5 py-4 shadow-2xl sticky top-0 z-50">
+    <header className="bg-gradient-to-r from-slate-800 to-slate-700 backdrop-blur-xl border-b border-slate-600/20 px-3 sm:px-5 py-3 sm:py-4 shadow-2xl sticky top-0 z-50">
       <div className="flex items-center justify-between w-full">
         {/* Left side - Menu button and title */}
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-2 sm:space-x-4">
           <button
             onClick={onMenuToggle}
             className="p-2 rounded-xl hover:bg-white/10 transition-all duration-300 hover:shadow-lg hover:scale-105 border border-white/10"
@@ -72,12 +72,12 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
 
           <Link
             to="/"
-            className="flex items-center space-x-3 hover:scale-105 transition-all duration-300"
+            className="flex items-center space-x-2 sm:space-x-3 hover:scale-105 transition-all duration-300"
           >
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg hover:shadow-xl transition-all duration-300 border-2 border-white/10 overflow-hidden">
-              <img src={logo} alt="AdvisorAI Logo" className="w-6 h-6 object-contain" />
+            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg hover:shadow-xl transition-all duration-300 border-2 border-white/10 overflow-hidden flex-shrink-0">
+              <img src={logo} alt="AdvisorAI Logo" className="w-5 h-5 sm:w-6 sm:h-6 object-contain" />
             </div>
-            <div>
+            <div className="hidden sm:block">
               <h1 className="text-xl font-bold text-white">
                 Advisor<span className="bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">AI</span>
               </h1>
@@ -86,34 +86,30 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
         </div>
 
         {/* Right side - Portfolio button and User menu */}
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-2 sm:space-x-4">
           {/* Portfolio Button */}
           {userProfile?.portfolioName ? (
             <a
               href={`/portfolio/${userProfile.portfolioName}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="group relative flex items-center space-x-2.5 px-5 py-2.5 text-slate-200 hover:text-white font-medium transition-all duration-300 hover:scale-105"
+              className="group relative flex items-center space-x-2.5 px-3 sm:px-5 py-2 sm:py-2.5 text-slate-200 hover:text-white font-medium transition-all duration-300 hover:scale-105"
             >
-              {/* Subtle underline effect */}
               <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-blue-400 to-purple-400 group-hover:w-full transition-all duration-300"></div>
-              
-              {/* Button content */}
               <div className="relative flex items-center space-x-2">
                 <Briefcase className="w-4 h-4 group-hover:scale-110 transition-transform duration-300" />
-                <span className="text-sm">View Portfolio</span>
+                <span className="text-sm hidden sm:inline">View Portfolio</span>
               </div>
             </a>
           ) : (
             <button
               onClick={() => navigate("/profile-completion")}
-              className="group relative flex items-center space-x-2.5 px-5 py-2.5 text-slate-400 hover:text-slate-300 font-medium transition-all duration-300 cursor-pointer"
+              className="group relative flex items-center space-x-2.5 px-3 sm:px-5 py-2 sm:py-2.5 text-slate-400 hover:text-slate-300 font-medium transition-all duration-300 cursor-pointer"
               title="Complete your profile to get a portfolio"
             >
-              {/* Button content */}
               <div className="relative flex items-center space-x-2">
                 <Briefcase className="w-4 h-4" />
-                <span className="text-sm">Set Portfolio</span>
+                <span className="text-sm hidden sm:inline">Set Portfolio</span>
               </div>
             </button>
           )}

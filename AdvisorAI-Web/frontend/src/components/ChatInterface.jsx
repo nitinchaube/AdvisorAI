@@ -583,14 +583,14 @@ const ChatInterface = ({
   return (
     <div className="h-full w-full flex flex-col bg-white">
       {/* Header */}
-      <div className="flex-shrink-0 p-6 border-b border-slate-200 bg-white">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-cyan-600 rounded-xl flex items-center justify-center shadow-md border border-blue-300/30">
-            <Bot className="w-6 h-6 text-white" />
+      <div className="flex-shrink-0 px-4 py-3 sm:p-6 border-b border-slate-200 bg-white">
+        <div className="flex items-center space-x-2 sm:space-x-3">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-blue-400 to-cyan-600 rounded-xl flex items-center justify-center shadow-md border border-blue-300/30 flex-shrink-0">
+            <Bot className="w-4 h-4 sm:w-6 sm:h-6 text-white" />
           </div>
-          <div className="flex-1">
-            <h2 className="text-xl font-bold text-slate-800">{sessionTitle}</h2>
-            <p className="text-sm text-slate-600 font-medium">Ask me anything about courses, professors, academic planning</p>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-base sm:text-xl font-bold text-slate-800 truncate">{sessionTitle}</h2>
+            <p className="text-xs sm:text-sm text-slate-600 font-medium hidden sm:block">Ask me anything about courses, professors, academic planning</p>
           </div>
           <div className="flex items-center space-x-3">
             <div className="flex items-center space-x-2">
@@ -622,25 +622,25 @@ const ChatInterface = ({
       </div>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-6 bg-slate-50/30">
-        <div className="max-w-4xl mx-auto space-y-6">
+      <div className="flex-1 overflow-y-auto px-3 py-4 sm:p-6 bg-slate-50/30">
+        <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6">
           {messages.map((message) => (
               <div
                 key={message.id}
                 className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
               >
-                <div className={`flex items-start space-x-3 max-w-3xl ${
+                <div className={`flex items-start space-x-2 sm:space-x-3 max-w-[90%] sm:max-w-3xl ${
                   message.type === 'user' ? 'flex-row-reverse space-x-reverse' : ''
                 }`}>
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                  <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
                     message.type === 'user' 
                       ? 'bg-gradient-to-br from-blue-500 to-purple-600 border border-blue-300/30' 
                       : 'bg-gradient-to-br from-blue-400 to-cyan-600 border border-blue-300/30'
                   }`}>
                     {message.type === 'user' ? (
-                      <User className="w-4 h-4 text-white" />
+                      <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
                     ) : (
-                      <Bot className="w-4 h-4 text-white" />
+                      <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
                     )}
                   </div>
                   
@@ -836,25 +836,25 @@ const ChatInterface = ({
       )}
 
       {/* Input Area */}
-      <div className="flex-shrink-0 p-6 border-t border-slate-200 bg-white">
+      <div className="flex-shrink-0 px-3 py-3 sm:p-6 border-t border-slate-200 bg-white">
         <div className="max-w-4xl mx-auto">
-          <div className="flex items-end space-x-3">
+          <div className="flex items-end space-x-2 sm:space-x-3">
             <div className="flex-1 relative">
               <textarea
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder={currentSessionId ? "Ask me anything about stevens ..." : "Start a new chat to begin..."}
-                className="w-full pl-4 pr-12 py-3 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-none bg-white transition-all duration-200 shadow-sm"
+                placeholder={currentSessionId ? "Ask me anything about Stevens ..." : "Start a new chat to begin..."}
+                className="w-full pl-3 sm:pl-4 pr-10 sm:pr-12 py-2.5 sm:py-3 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-none bg-white transition-all duration-200 shadow-sm text-sm sm:text-base"
                 rows="1"
-                style={{ minHeight: '48px', maxHeight: '120px' }}
+                style={{ minHeight: '44px', maxHeight: '120px' }}
                 disabled={isTyping || isStreaming || !currentSessionId}
               />
-              <div className="absolute right-3 bottom-3 flex items-center space-x-2">
-                <button className="p-1 text-slate-400 hover:text-slate-600 transition-colors duration-200">
+              <div className="absolute right-2 sm:right-3 bottom-2.5 sm:bottom-3 flex items-center space-x-1 sm:space-x-2">
+                <button className="p-1 text-slate-400 hover:text-slate-600 transition-colors duration-200 hidden sm:block">
                   <Paperclip className="w-4 h-4" />
                 </button>
-                <button className="p-1 text-slate-400 hover:text-slate-600 transition-colors duration-200">
+                <button className="p-1 text-slate-400 hover:text-slate-600 transition-colors duration-200 hidden sm:block">
                   <Mic className="w-4 h-4" />
                 </button>
               </div>
@@ -862,9 +862,9 @@ const ChatInterface = ({
             <button
               onClick={handleSendMessage}
               disabled={!inputMessage.trim() || isTyping || isStreaming || !currentSessionId}
-              className="p-3 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 disabled:from-slate-300 disabled:to-slate-400 text-white rounded-xl transition-all duration-200 shadow-md hover:shadow-lg disabled:shadow-none disabled:cursor-not-allowed hover:scale-105 border border-blue-300/30"
+              className="p-2.5 sm:p-3 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 disabled:from-slate-300 disabled:to-slate-400 text-white rounded-xl transition-all duration-200 shadow-md hover:shadow-lg disabled:shadow-none disabled:cursor-not-allowed hover:scale-105 border border-blue-300/30 flex-shrink-0"
             >
-              <Send className="w-5 h-5" />
+              <Send className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
           </div>
           

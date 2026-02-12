@@ -18,7 +18,8 @@ const Dashboard = () => {
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [currentSessionTitle, setCurrentSessionTitle] = useState("New Chat");
   const [chatHistoryOpen, setChatHistoryOpen] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true); // Sidebar is open by default
+  // Sidebar hidden on mobile by default, open on desktop
+  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
   const [activeTab, setActiveTab] = useState("chat");
   const [sessionInitialized, setSessionInitialized] = useState(false);
   const [selectedCourseId, setSelectedCourseId] = useState(null);
@@ -419,15 +420,23 @@ const Dashboard = () => {
 
       {/* Main Content Area - Between Header and Footer */}
       <div className="flex-1 flex relative overflow-hidden">
-        {/* Sidebar - Between header and footer */}
+        {/* Mobile sidebar overlay backdrop */}
         {sidebarOpen && (
-          <div className="flex-shrink-0 z-40 relative">
+          <div
+            className="fixed inset-0 bg-black/30 z-30 md:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+
+        {/* Sidebar - fixed overlay on mobile, static on desktop */}
+        {sidebarOpen && (
+          <div className="fixed md:relative top-0 left-0 h-full z-40 flex-shrink-0 pt-[65px] md:pt-0">
             <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
           </div>
         )}
 
         {/* Content - Takes remaining space */}
-        <div className="flex-1 relative overflow-hidden">{renderContent()}</div>
+        <div className="flex-1 relative overflow-hidden w-full">{renderContent()}</div>
       </div>
 
       {/* Fixed Footer */}
