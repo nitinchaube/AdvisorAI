@@ -193,6 +193,10 @@ def verify_token(f):
     """
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # Skip authentication for OPTIONS requests (CORS preflight)
+        if request.method == 'OPTIONS':
+            return f(*args, **kwargs)
+        
         id_token = None
         if 'Authorization' in request.headers and request.headers['Authorization'].startswith('Bearer '):
             id_token = request.headers['Authorization'].split('Bearer ')[1]
@@ -275,6 +279,10 @@ def verify_token(f):
 def verify_email_optional(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # Skip authentication for OPTIONS requests (CORS preflight)
+        if request.method == 'OPTIONS':
+            return f(*args, **kwargs)
+        
         try:
             # Get token from Authorization header
             auth_header = request.headers.get('Authorization')

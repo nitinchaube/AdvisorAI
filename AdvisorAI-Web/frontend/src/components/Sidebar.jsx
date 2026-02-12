@@ -92,7 +92,7 @@ const Sidebar = () => {
   const activeTab = getActiveTab();
 
   return (
-    <div className="h-full w-80 bg-gradient-to-br from-white via-slate-50 to-blue-50/30 backdrop-blur-xl border-r border-slate-200/60 shadow-xl flex flex-col">
+    <div className="h-full w-72 sm:w-80 bg-gradient-to-br from-white via-slate-50 to-blue-50/30 backdrop-blur-xl border-r border-slate-200/60 shadow-xl flex flex-col">
       {/* Navigation */}
       <div className="flex-1 overflow-y-auto" ref={sidebarRef}>
         <nav className="p-6">

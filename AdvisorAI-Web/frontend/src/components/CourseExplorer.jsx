@@ -14,57 +14,67 @@ import { apiService } from "../services/api";
 
 // --- Card Components ---
 const ProfessorCard = ({ professor, renderStars, onSelectCourse }) => (
-  <div className="bg-white/90 backdrop-blur-sm p-6 rounded-2xl border border-gray-200/50 hover:shadow-xl transition-all duration-300 group flex flex-col min-h-[280px]">
+  <div className="bg-white/90 backdrop-blur-sm p-4 sm:p-6 rounded-2xl border border-gray-200/50 hover:shadow-xl transition-all duration-300 group flex flex-col min-h-[260px]">
     <div className="flex-1 flex flex-col">
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex-1">
-          <h3 className="font-bold text-gray-900 text-lg group-hover:text-blue-600 transition-colors duration-200">
+      {/* Header: Name + badges left, rating right */}
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="flex-1 min-w-0">
+          <h3 className="font-bold text-gray-900 text-base sm:text-lg group-hover:text-blue-600 transition-colors duration-200 truncate">
             {professor.name}
           </h3>
-          <div className="flex items-center space-x-2 mt-2">
-            <span className="px-3 py-1 bg-gradient-to-r from-orange-100 to-red-100 text-orange-700 text-xs font-semibold rounded-full">
+          <div className="flex flex-wrap items-center gap-1.5 mt-2">
+            <span className="px-2 sm:px-3 py-1 bg-gradient-to-r from-orange-100 to-red-100 text-orange-700 text-xs font-semibold rounded-full">
               {professor.title || "Professor"}
             </span>
             {professor.department && (
-              <span className="px-3 py-1 bg-gray-100 text-gray-600 text-xs font-medium rounded-full">
+              <span className="px-2 sm:px-3 py-1 bg-gray-100 text-gray-600 text-xs font-medium rounded-full truncate max-w-[120px] sm:max-w-[160px]">
                 {professor.department}
               </span>
             )}
           </div>
         </div>
-        <div className="flex items-center space-x-1 ml-4">
-          {renderStars(professor.rating)}
+        {/* Rating block - vertically stacked */}
+        <div className="flex flex-col items-end flex-shrink-0">
+          <div className="flex items-center space-x-0.5">
+            {renderStars(professor.rating)}
+          </div>
+          <span className="text-lg font-bold text-gray-900 mt-0.5">
+            {professor.rating?.toFixed ? professor.rating.toFixed(1) : (professor.rating || 0)}
+          </span>
+          <span className="text-xs text-gray-500">
+            {professor.reviews || 0} reviews
+          </span>
         </div>
-        <span className="text-lg font-bold text-gray-900">
-          {professor.rating?.toFixed ? professor.rating.toFixed(1) : (professor.rating || 0)}
-        </span>
-        <span className="text-xs text-gray-500">
-          {professor.reviews || 0} reviews
-        </span>
       </div>
-      <div className="flex-1 mt-4 space-y-4 text-sm text-gray-700">
-        <div className="flex items-start">
-          <Info className="w-4 h-4 mr-3 mt-0.5 flex-shrink-0 text-gray-400" />
-          <p className="text-gray-700 leading-relaxed overflow-hidden flex-1" style={{
-            display: '-webkit-box',
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical'
-          }}>{professor.generalInfo}</p>
-        </div>
-        <div className="flex items-start">
-          <FlaskConical className="w-4 h-4 mr-3 mt-0.5 flex-shrink-0 text-gray-400" />
-          <p className="text-gray-700 leading-relaxed overflow-hidden flex-1" style={{
-            display: '-webkit-box',
-            WebkitLineClamp: 3,
-            WebkitBoxOrient: 'vertical'
-          }}>{professor.researchInfo}</p>
-        </div>
+
+      {/* Info sections */}
+      <div className="flex-1 mt-3 space-y-3 text-sm text-gray-700">
+        {professor.generalInfo && (
+          <div className="flex items-start">
+            <Info className="w-4 h-4 mr-2 sm:mr-3 mt-0.5 flex-shrink-0 text-gray-400" />
+            <p className="text-gray-700 leading-relaxed overflow-hidden flex-1" style={{
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical'
+            }}>{professor.generalInfo}</p>
+          </div>
+        )}
+        {professor.researchInfo && (
+          <div className="flex items-start">
+            <FlaskConical className="w-4 h-4 mr-2 sm:mr-3 mt-0.5 flex-shrink-0 text-gray-400" />
+            <p className="text-gray-700 leading-relaxed overflow-hidden flex-1" style={{
+              display: '-webkit-box',
+              WebkitLineClamp: 3,
+              WebkitBoxOrient: 'vertical'
+            }}>{professor.researchInfo}</p>
+          </div>
+        )}
       </div>
     </div>
-    <div className="mt-6 pt-4 border-t border-gray-100 flex justify-end">
+    <div className="mt-4 sm:mt-6 pt-3 sm:pt-4 border-t border-gray-100 flex justify-end">
       <button
         onClick={() => onSelectCourse(professor.id, 'professor')}
-        className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white font-semibold py-2 px-4 rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl"
+        className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white font-semibold py-2 px-4 rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl text-sm"
       >
         View Details
       </button>
@@ -471,13 +481,13 @@ const CourseExplorer = ({ onSelectCourse }) => {
               </select>
             </div>
           </div>
-          <div className="mb-8">
-            <div className="flex flex-wrap gap-3">
+          <div className="mb-6 sm:mb-8">
+            <div className="flex flex-wrap gap-2 sm:gap-3">
               {filters.map((filter) => (
                 <button 
                   key={filter.id} 
                   onClick={() => { setActiveCategory(filter.id); setCurrentPage(1); }} 
-                  className={`px-5 py-3 rounded-xl font-semibold transition-all duration-200 text-sm whitespace-nowrap ${
+                  className={`px-3 sm:px-5 py-2 sm:py-3 rounded-xl font-semibold transition-all duration-200 text-xs sm:text-sm whitespace-nowrap ${
                     activeCategory === filter.id 
                       ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg' 
                       : 'bg-white/80 backdrop-blur-sm text-gray-600 hover:bg-white hover:shadow-md'
@@ -489,7 +499,7 @@ const CourseExplorer = ({ onSelectCourse }) => {
             </div>
           </div>
           {currentItems.length > 0 ? (
-            <div className="grid lg:grid-cols-2 gap-6 pb-8">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 pb-8">
               {currentItems.map((item) =>
                 item.category === 'course' ? (<CourseCard key={item.id} course={item} renderStars={renderStars} getDifficultyColor={getDifficultyColor} onSelectCourse={onSelectCourse} />) : (<ProfessorCard key={item.id} professor={item} renderStars={renderStars} onSelectCourse={onSelectCourse} />)
               )}

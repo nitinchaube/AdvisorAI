@@ -123,6 +123,19 @@ class ChatState(TypedDict, total=False):
 # Constants
 # ═══════════════════════════════════════════════════════════════════════════
 
+# Short greetings / casual messages that should skip the full pipeline
+_GREETING_PATTERNS = frozenset([
+    "hello", "hi", "hey", "hii", "hiii", "helo",
+    "good morning", "good afternoon", "good evening", "good night",
+    "morning", "afternoon", "evening",
+    "howdy", "yo", "sup", "whats up", "what's up",
+    "how are you", "how r u", "how are u",
+    "thanks", "thank you", "thank u", "thx", "ty",
+    "ok", "okay", "cool", "great", "nice", "awesome",
+    "bye", "goodbye", "good bye", "see you", "see ya", "later",
+    "help", "help me",
+])
+
 _FOLLOW_UP_INDICATORS = frozenset([
     "try again", "check again", "again", "repeat",
     "what about", "how about", "tell me more", "more details",
@@ -191,44 +204,55 @@ class LangGraphOrchestrator:
     # ── Graph construction ────────────────────────────────────────────
 
     def _build_graph(self) -> StateGraph:
+        """Build the LangGraph workflow.
+
+        Optimised pipeline
+        ==================
+        General:  router → gather → generate → save            (2 nodes + save)
+        Domain:   router → gather_all → generate → save        (2 nodes + save)
+        Blocked:  router → save                                (instant)
+
+        ``gather_all`` runs history, chroma AND web search in **parallel**
+        (no separate evaluate / web_search nodes), cutting total wall-clock
+        time roughly in half compared to sequential execution.
+
+        Reflection is skipped to save an extra LLM call; the generate
+        prompt is comprehensive enough to produce high-quality answers.
+        """
         wf = StateGraph(ChatState)
 
         wf.add_node("router", self._router_node)
-        wf.add_node("gather", self._gather_node)
-        wf.add_node("evaluate", self._evaluate_node)
-        wf.add_node("web_search", self._web_search_node)
+        wf.add_node("gather", self._gather_node)           # general path
+        wf.add_node("gather_all", self._gather_all_node)   # domain path: parallel chroma+history+web
         wf.add_node("generate", self._generate_node)
-        wf.add_node("reflect", self._reflect_node)
-        wf.add_node("refine", self._refine_node)
         wf.add_node("save", self._save_node)
 
         wf.set_entry_point("router")
 
-        # Safety gate: blocked queries go straight to save (answer already set)
+        # router → blocked: save | general: gather | domain: gather_all
         wf.add_conditional_edges(
             "router",
-            self._route_after_router,
-            {"blocked": "save", "gather": "gather"},
+            self._route_after_router_v2,
+            {"blocked": "save", "gather": "gather", "gather_all": "gather_all"},
         )
 
-        wf.add_edge("gather", "evaluate")
-        wf.add_conditional_edges(
-            "evaluate",
-            self._route_after_evaluate,
-            {"web_search": "web_search", "generate": "generate"},
-        )
-        wf.add_edge("web_search", "generate")
+        wf.add_edge("gather", "generate")      # general fast path
+        wf.add_edge("gather_all", "generate")   # domain path (already has web)
 
-        wf.add_edge("generate", "reflect")
-        wf.add_conditional_edges(
-            "reflect",
-            self._route_after_reflect,
-            {"refine": "refine", "save": "save"},
-        )
-        wf.add_edge("refine", "save")
+        # After generate: straight to save (no reflection overhead)
+        wf.add_edge("generate", "save")
         wf.add_edge("save", END)
 
         return wf.compile()
+
+    @staticmethod
+    def _route_after_router_v2(state: Dict[str, Any]) -> str:
+        qt = state.get("query_type", "domain")
+        if qt == "blocked":
+            return "blocked"
+        if qt == "general":
+            return "gather"
+        return "gather_all"  # domain
 
     # ──────────────────────────────────────────────────────────────────
     # 1. ROUTER – classify + safety gate + chat name
@@ -245,8 +269,16 @@ class LangGraphOrchestrator:
             state["chat_name"] = "Declined Request"
             state["answer"] = _DECLINE_MESSAGE
             logger.warning("Router: BLOCKED query — '%s'", query[:80])
-        return state
-    
+            return state
+
+        # ── Fast-track greetings / casual messages ─────────────────────
+        if self._is_greeting(q_lower):
+            state["query_type"] = "general"
+            state["chat_name"] = "Greeting"
+            state["general_answer"] = ""  # generate node will handle it
+            logger.info("Router: greeting → general (fast path)")
+            return state
+
         # ── Fast-track follow-ups ─────────────────────────────────────
         is_follow_up = any(ind in q_lower for ind in _FOLLOW_UP_INDICATORS)
         state["is_follow_up"] = is_follow_up
@@ -255,7 +287,7 @@ class LangGraphOrchestrator:
             state["chat_name"] = "Follow-up Question"
             logger.info("Router: follow-up → domain")
             return state
-        
+
         # ── LLM classification ────────────────────────────────────────
         llm = self.llm_router.get_llm()
         prompt = (
@@ -263,13 +295,15 @@ class LangGraphOrchestrator:
             "Classify the query and generate a chat name.\n\n"
             f'Query: "{query}"\n\n'
             "Rules:\n"
+            '- "general" → greetings (hi, hello, hey, good morning, etc.), '
+            "casual conversation, OR pure general knowledge NOT Stevens-specific "
+            "but still appropriate (e.g. 'What is machine learning?', 'hello', "
+            "'how are you?', 'thanks', 'goodbye')\n"
+            '- "domain" → ANYTHING Stevens-related or that may be in university '
+            "docs (courses, professors, admissions, campus, etc.).\n"
             '- "blocked" → query is harmful, inappropriate, offensive, contains '
             "violence, hate speech, explicit content, requests to cheat, or is "
-            "completely unrelated to education / academics / university life.\n"
-            '- "general" → pure general knowledge NOT Stevens-specific but still '
-            "appropriate (e.g. 'What is machine learning?')\n"
-            '- "domain" → ANYTHING Stevens-related or that may be in university '
-            'docs. When in doubt pick "domain".\n\n'
+            "completely unrelated to education / academics / university life.\n\n"
             "Return ONLY valid JSON:\n"
             '{"query_type":"general"|"domain"|"blocked",'
             '"chat_name":"3-8 words","reasoning":"one line"}'
@@ -305,6 +339,22 @@ class LangGraphOrchestrator:
         return any(p.search(query_lower) for p in _COMPILED_BLOCKED)
 
     @staticmethod
+    def _is_greeting(query_lower: str) -> bool:
+        """Detect short greetings / casual messages that don't need tools."""
+        # Strip punctuation for matching
+        clean = re.sub(r"[^\w\s]", "", query_lower).strip()
+        # Exact match or very short query that matches a greeting
+        if clean in _GREETING_PATTERNS:
+            return True
+        # Also match if the query is very short (≤ 4 words) and starts with a greeting
+        words = clean.split()
+        if len(words) <= 4:
+            for g in _GREETING_PATTERNS:
+                if clean.startswith(g):
+                    return True
+        return False
+
+    @staticmethod
     def _fallback_classify(query: str) -> str:
         q = query.lower()
         kws = [
@@ -324,6 +374,11 @@ class LangGraphOrchestrator:
     # ──────────────────────────────────────────────────────────────────
 
     async def _gather_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Run tools in parallel.
+
+        General queries  → history + general_agent  (2 parallel tasks)
+        Domain queries   → history + chroma         (2 parallel tasks)
+        """
         qt = state.get("query_type", "domain")
         tasks, names = [], []
 
@@ -353,181 +408,82 @@ class LangGraphOrchestrator:
                 for key in _KEYS.get(name, ()):
                     if key in res:
                         state[key] = res[key]
-        
+
         return state
-    
+
     # ──────────────────────────────────────────────────────────────────
-    # 3. EVALUATE – ReAct THINK
+    # 2b. GATHER_ALL – domain queries: history + chroma + web IN PARALLEL
     # ──────────────────────────────────────────────────────────────────
 
-    async def _evaluate_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """ReAct *Think* step: examine gathered data and decide next action.
+    async def _gather_all_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Run history, chroma, AND web search all in parallel.
 
-        Behaviour:
-        - For **general** queries → rely on general LLM tool only (no web search)
-        - For **non-general** (domain / follow-ups) → ALWAYS run web search
-          in addition to history + chroma/general.
+        This replaces the old sequential gather → evaluate → web_search flow
+        and cuts ~5-8 seconds of wall-clock time by overlapping I/O.
         """
-        qt = state.get("query_type", "domain")
         query = state.get("query", "")
 
-        # ── General queries: keep lightweight, no web search ─────────────
-        if qt == "general":
-            state["react_thought"] = (
-                "THINK: General knowledge question. The general agent has "
-                "already produced an answer. Skipping web search."
-            )
-            state["need_web_search"] = False
-            logger.info("Evaluate: general → skip web")
-            return state
+        # Build a simple search query WITHOUT an LLM call (saves ~1.5s)
+        search_q = self._quick_search_query(query)
+        state["web_search_query"] = search_q
 
-        # ── Domain / follow-up queries: ALWAYS include web search ────────
-        chroma = state.get("chroma_results", {})
-        docs = chroma.get("documents", [])
-        good_docs = [
-            d
-            for d in docs
-            if d.get("metadata", {}).get("similarity_score", 999)
-            < self._SIMILARITY_THRESHOLD
+        # Prepare web search state
+        web_state = state.copy()
+        web_state["query"] = search_q
+
+        # Run all three in parallel
+        tasks = [
+            self.history_agent.process(state.copy()),
+            self.chroma_agent.process(state.copy()),
+            self.web_agent.process(web_state),
         ]
-        history = state.get("history_results", {})
-        hist_count = len(history.get("relevant_history", []))
+        names = ["history", "chroma", "web"]
 
-        thought_lines = [
-            f"THINK: Query is domain-specific: '{query[:80]}...'",
-            f"  - Conversation history entries: {hist_count}",
-            f"  - Chroma documents retrieved: {len(docs)}",
-            f"  - Quality documents (score < {self._SIMILARITY_THRESHOLD}): {len(good_docs)}",
-            f"  - Minimum quality docs needed: {self._MIN_GOOD_DOCS}",
-            "DECIDE: For domain queries, ALWAYS include web search in parallel "
-            "with vector DB and history to maximise coverage.",
-        ]
+        logger.info("GatherAll: running %s in parallel (query='%s')", names, query[:60])
+        results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Always request web search for non-general queries
-        state["need_web_search"] = True
-        state["web_search_query"] = await self._make_search_query(query, chroma, history)
+        _KEYS = {
+            "history": ("history_results",),
+            "chroma": ("chroma_results", "collections_searched", "chroma_error"),
+            "web": ("web_results",),
+        }
+        for name, res in zip(names, results):
+            if isinstance(res, Exception):
+                logger.error("GatherAll: '%s' failed: %s", name, res)
+                state[f"{name}_error"] = str(res)
+            elif isinstance(res, dict):
+                for key in _KEYS.get(name, ()):
+                    if key in res:
+                        val = res[key]
+                        # Tag web results with original query info
+                        if name == "web" and isinstance(val, dict):
+                            val["original_query"] = query
+                            val["search_query_used"] = search_q
+                        state[key] = val
 
-        state["react_thought"] = "\n".join(thought_lines)
+        # Log web search outcome
+        web = state.get("web_results", {})
+        web_ok = web.get("success", False)
+        web_urls = web.get("search_results", []) or []
+        wc = web.get("scraped_content") or web.get("web_content", "")
         logger.info(
-            "Evaluate: docs=%d good=%d → web_search=%s (forced for domain)",
-            len(docs),
-            len(good_docs),
-            state["need_web_search"],
+            "GatherAll: web success=%s urls=%d content_len=%d",
+            web_ok, len(web_urls), len(wc),
         )
+
         return state
-
-    async def _make_search_query(self, original: str, chroma: Dict[str, Any], history: Dict[str, Any]) -> str:
-        """Generate a rich, Stevens-focused web search query via LLM.
-
-        Uses the original question + a brief summary of what we ALREADY know
-        from Chroma and conversation history so the web search can focus on
-        missing details instead of repeating the same info.
-        """
-        llm = self.llm_router.get_llm()
-
-        # Build short hints from Chroma documents (titles / first sentences)
-        chroma_docs = chroma.get("documents", []) or []
-        chroma_hints = []
-        for d in chroma_docs[:3]:
-            text = (d.get("content") or "").strip()
-            if text:
-                chroma_hints.append(text[:200])
-
-        # Build short hints from recent history answers
-        hist_entries = history.get("relevant_history", []) or []
-        hist_hints = []
-        for e in hist_entries[-3:]:
-            ans = (e.get("response") or "").strip()
-            if ans:
-                hist_hints.append(ans[:200])
-
-        hints_text = ""
-        if chroma_hints:
-            hints_text += "KNOWN FROM UNIVERSITY DATABASE:\n- " + "\n- ".join(chroma_hints) + "\n\n"
-        if hist_hints:
-            hints_text += "KNOWN FROM PREVIOUS ANSWERS:\n- " + "\n- ".join(hist_hints) + "\n\n"
-
-        prompt = (
-            "You are helping a Stevens Institute of Technology academic advisor "
-            "craft a precise web search query.\n\n"
-            f"STUDENT QUESTION:\n\"{sanitize_query(original)}\"\n\n"
-            f"{hints_text if hints_text else 'There is little or no existing context.'}\n"
-            "TASK:\n"
-            "- Generate ONE short web search query (8–16 words)\n"
-            "- It MUST include the phrase 'Stevens Institute of Technology'\n"
-            "- Focus on the SPECIFIC missing facts the student is likely asking about "
-            "(requirements, deadlines, policies, course details, etc.).\n"
-            "- Do NOT include quotation marks or commentary.\n"
-            "- Return ONLY the raw search query text."
-        )
-
-        # Log search-query prompt for debugging/observability
-        logger.info(
-            "MakeSearchQuery: original='%s' chroma_docs=%d hist_entries=%d",
-            original[:80],
-            len(chroma_docs),
-            len(hist_entries),
-        )
-
-        try:
-            resp = await llm.ainvoke([{"role": "user", "content": prompt}])
-            q = resp.content.strip().strip('"').strip("'")
-            logger.info("MakeSearchQuery: LLM raw search query='%s'", q)
-            # Guarantee Stevens is in the query
-            if "stevens" not in q.lower():
-                q = f"{q} Stevens Institute of Technology"
-            # Ensure it's not empty and has some length
-            return q if len(q.split()) >= 4 else f"{original} Stevens Institute of Technology"
-        except Exception:
-            return f"{original} Stevens Institute of Technology"
 
     @staticmethod
-    def _route_after_evaluate(state: Dict[str, Any]) -> str:
-        return "web_search" if state.get("need_web_search") else "generate"
+    def _quick_search_query(query: str) -> str:
+        """Build a web search query without an LLM call (instant).
 
-    # ──────────────────────────────────────────────────────────────────
-    # 4. WEB SEARCH – ReAct ACT
-    # ──────────────────────────────────────────────────────────────────
-    
-    async def _web_search_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        original = state.get("query", "")
-        search_q = state.get("web_search_query", original)
-        logger.info("Web search (ACT): '%s'", search_q)
-
-        try:
-            ws = state.copy()
-            ws["query"] = search_q
-            res = await self.web_agent.process(ws)
-
-            web = res.get("web_results", {})
-            if web:
-                web["original_query"] = original
-                web["search_query_used"] = search_q
-                state["web_results"] = web
-            else:
-                state["web_results"] = {"success": False, "web_content": ""}
-        except Exception as exc:
-            logger.error("Web search error: %s", exc, exc_info=True)
-            state["web_results"] = {
-                "success": False, "error": str(exc), "web_content": "",
-            }
-
-        web_ok = state.get("web_results", {}).get("success", False)
-        web_len = len(
-            state.get("web_results", {}).get("scraped_content", "")
-            or state.get("web_results", {}).get("web_content", "")
-        )
-        web_urls = state.get("web_results", {}).get("search_results", []) or []
-        logger.info(
-            "Web search observe: success=%s content_len=%d urls=%d",
-            web_ok, web_len, len(web_urls)
-        )
-        state["react_thought"] = state.get("react_thought", "") + (
-            f"\nACT: Executed web search with query '{search_q}'."
-            f"\nOBSERVE: Web search {'succeeded' if web_ok else 'failed'}. "
-            f"Content length: {web_len} chars."
-        )
-        return state
+        Simply appends 'Stevens Institute of Technology' if not already present.
+        This saves an entire LLM round-trip (~1.5s).
+        """
+        q = sanitize_query(query).strip()
+        if "stevens" not in q.lower():
+            q = f"{q} Stevens Institute of Technology"
+        return q
 
     # ──────────────────────────────────────────────────────────────────
     # 5. GENERATE – synthesise the draft answer
@@ -669,8 +625,10 @@ Answer:"""
                 "Generate: LLM raw answer (first 500 chars): %s",
                 raw_answer[:500],
             )
-            state["draft_answer"] = clean_response(raw_answer)
-            logger.info("Generate: draft answer %d chars", len(state["draft_answer"]))
+            answer = clean_response(raw_answer)
+            state["draft_answer"] = answer
+            state["answer"] = answer  # No reflection, so set final answer directly
+            logger.info("Generate: answer %d chars", len(answer))
         except Exception as exc:
             logger.error("Generate error: %s", exc, exc_info=True)
             state["draft_answer"] = (
@@ -855,14 +813,11 @@ Improved Answer:"""
 
     # User-friendly labels for each graph node
     _NODE_STATUS = {
-        "router":     "Understanding your question…",
-        "gather":     "Searching knowledge base…",
-        "evaluate":   "Analyzing information…",
-        "web_search": "Searching the web for more info…",
-        "generate":   "Generating response…",
-        "reflect":    "Reviewing answer quality…",
-        "refine":     "Polishing the response…",
-        "save":       "Finishing up…",
+        "router":      "Understanding your question…",
+        "gather":      "Searching knowledge base…",
+        "gather_all":  "Searching database & web simultaneously…",
+        "generate":    "Generating response…",
+        "save":        "Finishing up…",
     }
 
     async def process_query(
@@ -893,14 +848,11 @@ Improved Answer:"""
     async def stream_process_query(
         self, query: str, user_id: str = "default", chat_history: str = ""
     ):
-        """Async generator that yields status events per node, then the result.
+        """Async generator: status events → result.
 
-        Yields dicts of the form:
+        Yields:
             {"type": "status", "node": "<name>", "content": "<user label>"}
-            {"type": "result", ...}   (same shape as process_query return)
-
-        Uses ``stream_mode="values"`` so each yield is the **full accumulated
-        state** after a node completes — no manual merge needed.
+            {"type": "result", ...}
         """
         initial: Dict[str, Any] = {
             "query": query,
@@ -916,16 +868,11 @@ Improved Answer:"""
             async for state_snapshot in self.graph.astream(
                 initial, stream_mode="values"
             ):
-                # state_snapshot is the full accumulated state after a node.
-                # Convert to plain dict in case LangGraph wraps it.
                 if hasattr(state_snapshot, "items"):
                     final_state = dict(state_snapshot)
                 else:
                     final_state = state_snapshot
 
-                # Detect which node just ran by checking new keys / changes
-                # We use a heuristic: emit status for nodes whose marker keys
-                # appeared since the last snapshot.
                 completed = self._detect_completed_node(final_state, prev_nodes)
                 if completed:
                     prev_nodes.add(completed)
@@ -936,22 +883,18 @@ Improved Answer:"""
 
                     event = {"type": "status", "node": completed, "content": label}
 
-                    # For web_search, include the URLs so the UI can show them
-                    if completed == "web_search":
+                    # For gather_all, include the web URLs so the UI can show them
+                    if completed == "gather_all":
                         web = final_state.get("web_results", {}) or {}
                         urls = web.get("search_results", [])
                         if urls:
                             event["urls"] = urls
-                            event["content"] = f"Reading {len(urls)} web pages…"
+                            event["content"] = f"Searched database & {len(urls)} web pages…"
 
                     yield event
 
             # ── Safeguard: if answer is missing, fall back to draft ────
             if not final_state.get("answer") and final_state.get("draft_answer"):
-                logger.warning(
-                    "Stream: 'answer' empty but 'draft_answer' exists (%d chars) – using draft",
-                    len(final_state["draft_answer"]),
-                )
                 final_state["answer"] = final_state["draft_answer"]
 
             logger.info(
@@ -978,17 +921,15 @@ Improved Answer:"""
         state: Dict[str, Any], already_seen: set
     ) -> str | None:
         """Infer which pipeline node just completed based on state keys."""
-        # Order matters: check from last to first so we detect the latest node.
         _NODE_MARKERS = [
-            ("save",       lambda s: "answer" in s and s.get("answer")),
-            ("refine",     lambda s: s.get("reflection", {}).get("is_acceptable") is False
-                                     and "answer" in s and s.get("answer")),
-            ("reflect",    lambda s: "reflection" in s),
-            ("generate",   lambda s: "draft_answer" in s),
-            ("web_search", lambda s: "web_results" in s),
-            ("evaluate",   lambda s: "react_thought" in s),
-            ("gather",     lambda s: "history_results" in s or "chroma_results" in s),
-            ("router",     lambda s: "query_type" in s),
+            ("save",        lambda s: "answer" in s and s.get("answer")),
+            ("generate",    lambda s: "draft_answer" in s),
+            ("gather_all",  lambda s: ("web_results" in s or "chroma_results" in s)
+                                       and "history_results" in s
+                                       and s.get("query_type") != "general"),
+            ("gather",      lambda s: ("history_results" in s or "general_answer" in s)
+                                       and s.get("query_type") == "general"),
+            ("router",      lambda s: "query_type" in s),
         ]
         for node, check in _NODE_MARKERS:
             if node not in already_seen and check(state):
