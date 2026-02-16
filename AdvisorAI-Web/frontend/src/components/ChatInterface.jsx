@@ -252,6 +252,7 @@ const ChatInterface = ({
   const [sessionInitialized, setSessionInitialized] = useState(false);
   const [thinkingStatus, setThinkingStatus] = useState('Thinking…');
   const [thinkingUrls, setThinkingUrls] = useState([]);
+  const [thinkingSources, setThinkingSources] = useState(null); // Perplexity-style source summary
   const messagesEndRef = useRef(null);
 
   // Copy message content to clipboard
@@ -438,6 +439,7 @@ const ChatInterface = ({
     setIsStreaming(false);
     setThinkingStatus('Thinking…');
     setThinkingUrls([]);
+    setThinkingSources(null);
     setShowSources(false);
     setCurrentSources(null);
 
@@ -504,6 +506,9 @@ const ChatInterface = ({
           setThinkingStatus(status);
           if (event && event.urls) {
             setThinkingUrls(event.urls);
+          }
+          if (event && event.sources) {
+            setThinkingSources(event.sources);
           }
         },
 
@@ -733,26 +738,85 @@ const ChatInterface = ({
             ))
           }
           
-          {/* Thinking indicator – shows live pipeline steps + URLs */}
+          {/* Perplexity-style thinking indicator with progressive sources */}
           {isTyping && !isStreaming && (
             <div className="flex justify-start">
-              <div className="flex items-start space-x-3">
-                <div className="w-8 h-8 bg-gradient-to-br from-blue-400 to-cyan-600 rounded-full flex items-center justify-center border border-blue-300/30">
-                  <Bot className="w-4 h-4 text-white" />
+              <div className="flex items-start space-x-2 sm:space-x-3">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 bg-gradient-to-br from-blue-400 to-cyan-600 rounded-full flex items-center justify-center border border-blue-300/30 flex-shrink-0">
+                  <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
                 </div>
-                <div className="px-4 py-3 bg-white rounded-2xl border border-slate-200/60 shadow-sm min-w-[220px] max-w-md">
-                  {/* Status line */}
+                <div className="px-4 py-3 bg-white rounded-2xl border border-slate-200/60 shadow-sm min-w-[240px] max-w-lg">
+                  {/* Status line with spinner */}
                   <div className="flex items-center space-x-3">
-                    <div className="relative w-5 h-5 flex-shrink-0">
+                    <div className="relative w-4 h-4 flex-shrink-0">
                       <div className="absolute inset-0 rounded-full border-2 border-blue-200"></div>
                       <div className="absolute inset-0 rounded-full border-2 border-blue-500 border-t-transparent animate-spin"></div>
                     </div>
-                    <span className="text-sm text-slate-600 font-medium animate-pulse">
+                    <span className="text-sm text-slate-700 font-medium">
                       {thinkingStatus}
                     </span>
                   </div>
-                  {/* Web URLs being fetched */}
-                  {thinkingUrls.length > 0 && (
+
+                  {/* Sources found (Perplexity-style) */}
+                  {thinkingSources && (
+                    <div className="mt-3 pt-3 border-t border-slate-100">
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Sources</p>
+                      <div className="space-y-1.5">
+                        {thinkingSources.database_docs > 0 && (
+                          <div className="flex items-center space-x-2 text-xs">
+                            <span className="w-4 h-4 rounded bg-green-100 flex items-center justify-center flex-shrink-0">
+                              <span className="text-green-600 text-[10px]">✓</span>
+                            </span>
+                            <span className="text-slate-600">
+                              University Database — <span className="font-medium text-slate-800">{thinkingSources.database_docs} docs</span>
+                            </span>
+                          </div>
+                        )}
+                        {thinkingSources.history_entries > 0 && (
+                          <div className="flex items-center space-x-2 text-xs">
+                            <span className="w-4 h-4 rounded bg-blue-100 flex items-center justify-center flex-shrink-0">
+                              <span className="text-blue-600 text-[10px]">✓</span>
+                            </span>
+                            <span className="text-slate-600">
+                              Chat History — <span className="font-medium text-slate-800">{thinkingSources.history_entries} conversations</span>
+                            </span>
+                          </div>
+                        )}
+                        {thinkingSources.web_urls?.length > 0 && (
+                          <div className="space-y-1">
+                            <div className="flex items-center space-x-2 text-xs">
+                              <span className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 ${thinkingSources.web_success ? 'bg-green-100' : 'bg-amber-100'}`}>
+                                <span className={`text-[10px] ${thinkingSources.web_success ? 'text-green-600' : 'text-amber-600'}`}>
+                                  {thinkingSources.web_success ? '✓' : '!'}
+                                </span>
+                              </span>
+                              <span className="text-slate-600">
+                                Web Search — <span className="font-medium text-slate-800">{thinkingSources.web_urls.length} pages</span>
+                              </span>
+                            </div>
+                            {/* Individual URL list */}
+                            <div className="ml-6 space-y-0.5">
+                              {thinkingSources.web_urls.map((url, idx) => {
+                                let host;
+                                try { host = new URL(url).hostname.replace('www.', ''); }
+                                catch { host = url; }
+                                return (
+                                  <a key={idx} href={url} target="_blank" rel="noopener noreferrer"
+                                     className="flex items-center space-x-1.5 text-[11px] text-blue-500 hover:text-blue-700 hover:underline">
+                                    <span className="text-slate-300">↗</span>
+                                    <span className="truncate max-w-[200px]">{host}</span>
+                                  </a>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Fallback: show URLs if sources not yet available */}
+                  {!thinkingSources && thinkingUrls.length > 0 && (
                     <div className="mt-2 pt-2 border-t border-slate-100 space-y-1">
                       {thinkingUrls.map((url, idx) => {
                         let displayUrl;

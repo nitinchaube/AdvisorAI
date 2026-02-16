@@ -189,9 +189,8 @@ class ChatbotIntegrationService:
                      chat_history: List[Dict] = None):
         """Generator that yields SSE-style dicts: status → tokens → done.
 
-        Uses the orchestrator's ``stream_process_query`` so the frontend
-        receives a live status update after every pipeline node completes,
-        then streams the final answer word-by-word.
+        Tokens now arrive directly from the LLM streaming (true streaming)
+        instead of waiting for the full answer then word-chunking.
         """
         start = time.time()
 
@@ -203,14 +202,13 @@ class ChatbotIntegrationService:
         formatted_history = self._format_chat_history(chat_history or [])
         loop = self._get_event_loop()
 
-        # -- Iterate over the async generator from sync code ---------------
         async_gen = self.orchestrator.stream_process_query(
             query=user_query,
             user_id=user_id or "default",
             chat_history=formatted_history,
         )
 
-        result = None  # will hold the final pipeline result
+        result = None
 
         while True:
             try:
@@ -218,20 +216,26 @@ class ChatbotIntegrationService:
             except StopAsyncIteration:
                 break
 
-            if event.get("type") == "status":
-                # Forward node status to the frontend
-                yield {"type": "status", "content": event["content"]}
-            elif event.get("type") == "result":
+            etype = event.get("type")
+            if etype == "status":
+                yield {"type": "status", "content": event.get("content", ""),
+                       "node": event.get("node"), "urls": event.get("urls"),
+                       "sources": event.get("sources")}
+            elif etype == "token":
+                # Forward LLM tokens directly to frontend (true streaming)
+                yield {"type": "token", "content": event.get("content", "")}
+            elif etype == "result":
                 result = event
 
-        # -- Fallback if stream produced no result -------------------------
+        # -- Fallback if no result -------------------------------------------
         if result is None or not result.get("success"):
             err_msg = (
                 result.get("answer", "") if result
                 else "I'm having trouble processing your request. Please try again."
             )
             yield {"type": "token", "content": err_msg}
-            yield {"type": "done", "chat_name": "Error", "sources": {}, "processing_time": time.time() - start, "error": True}
+            yield {"type": "done", "chat_name": "Error", "sources": {},
+                   "processing_time": time.time() - start, "error": True}
             return
 
         metadata = result.get("metadata", {})
@@ -240,18 +244,6 @@ class ChatbotIntegrationService:
         web_meta = metadata.get("web_search", {}) or {}
         reasoning["web_search"] = web_meta
 
-        # -- Stream the answer word-by-word --------------------------------
-        answer = result.get("answer", "")
-        words = answer.split(" ")
-        CHUNK = 3
-        for i in range(0, len(words), CHUNK):
-            chunk_words = words[i : i + CHUNK]
-            token = " ".join(chunk_words)
-            if i > 0:
-                token = " " + token
-            yield {"type": "token", "content": token}
-
-        # -- Send metadata so the frontend can finalise --------------------
         yield {
             "type": "done",
             "chat_name": metadata.get("chat_name", "New Chat"),
