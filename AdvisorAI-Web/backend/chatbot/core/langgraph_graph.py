@@ -374,40 +374,19 @@ class LangGraphOrchestrator:
     # ──────────────────────────────────────────────────────────────────
 
     async def _gather_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """Run tools in parallel.
+        """Lightweight gather for general queries — ONLY history.
 
-        General queries  → history + general_agent  (2 parallel tasks)
-        Domain queries   → history + chroma         (2 parallel tasks)
+        The generate node will answer directly from its own LLM call,
+        so we skip the redundant general_agent LLM call (saves ~1.5s).
         """
-        qt = state.get("query_type", "domain")
-        tasks, names = [], []
-
-        tasks.append(self.history_agent.process(state.copy()))
-        names.append("history")
-
-        if qt == "domain":
-            tasks.append(self.chroma_agent.process(state.copy()))
-            names.append("chroma")
-        else:
-            tasks.append(self.general_agent.process(state.copy()))
-            names.append("general")
-
-        logger.info("Gather: running %s (type=%s)", names, qt)
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        _KEYS = {
-            "history": ("history_results",),
-            "chroma": ("chroma_results", "collections_searched", "chroma_error"),
-            "general": ("general_answer", "used_general_tool", "general_error"),
-        }
-        for name, res in zip(names, results):
-            if isinstance(res, Exception):
-                logger.error("Gather: '%s' failed: %s", name, res)
-                state[f"{name}_error"] = str(res)
-            elif isinstance(res, dict):
-                for key in _KEYS.get(name, ()):
-                    if key in res:
-                        state[key] = res[key]
+        logger.info("Gather: running [history] only (general fast path)")
+        try:
+            res = await self.history_agent.process(state.copy())
+            if isinstance(res, dict) and "history_results" in res:
+                state["history_results"] = res["history_results"]
+        except Exception as exc:
+            logger.error("Gather: history failed: %s", exc)
+            state["history_error"] = str(exc)
 
         return state
 
@@ -498,19 +477,21 @@ class LangGraphOrchestrator:
         ctx: List[str] = []
         has_info = False
 
-        hist = history_results.get("relevant_history", [])
+        # Keep last 3 history exchanges (not 10+) to reduce context
+        hist = history_results.get("relevant_history", [])[-3:]
         if hist:
             ctx.append("=== Conversation History ===")
             for i, e in enumerate(hist, 1):
-                ctx.append(f"Q{i}: {e.get('query', '')}")
-                ctx.append(f"A{i}: {e.get('response', '')}")
+                ctx.append(f"Q{i}: {e.get('query', '')[:300]}")
+                ctx.append(f"A{i}: {e.get('response', '')[:500]}")
             ctx.append("")
 
+        # Limit to 3 chroma docs (not 5) to cut context size
         chroma = state.get("chroma_results", {})
         if chroma.get("documents"):
             ctx.append("=== University Database ===")
-            for i, d in enumerate(chroma["documents"][:5], 1):
-                ctx.append(f"[{i}]: {d['content']}")
+            for i, d in enumerate(chroma["documents"][:3], 1):
+                ctx.append(f"[{i}]: {d['content'][:800]}")
             has_info = True
 
         web = state.get("web_results", {})
@@ -518,7 +499,6 @@ class LangGraphOrchestrator:
         web_urls = web.get("search_results", []) or []
         web_query_used = web.get("search_query_used") or web.get("query", "")
         web_context_included = False
-        # Use web results even when content is modest, as long as it's non-trivial
         if wc and len(wc.strip()) > 20:
             web_context_included = True
             ctx.append("=== Web Search Results ===")
@@ -526,16 +506,16 @@ class LangGraphOrchestrator:
                 ctx.append(f"Web query used: {web_query_used}")
             if web_urls:
                 ctx.append("Web URLs:")
-                for i, url in enumerate(web_urls[:5], 1):
+                for i, url in enumerate(web_urls[:3], 1):
                     ctx.append(f"- [{i}] {url}")
             ctx.append("Web content:")
-            ctx.append(wc[:3000])
+            ctx.append(wc[:1500])  # 1500 chars instead of 3000
             has_info = True
 
         gen = state.get("general_answer")
         if gen and len(gen.strip()) > 20:
             ctx.append("=== General Knowledge ===")
-            ctx.append(gen[:1500])
+            ctx.append(gen[:800])
             has_info = True
 
         context_text = "\n\n".join(ctx) if ctx else ""
@@ -848,11 +828,16 @@ Improved Answer:"""
     async def stream_process_query(
         self, query: str, user_id: str = "default", chat_history: str = ""
     ):
-        """Async generator: status events → result.
+        """Async generator: status → token → result.
 
         Yields:
-            {"type": "status", "node": "<name>", "content": "<user label>"}
+            {"type": "status", "node": "<name>", "content": "<label>", ...}
+            {"type": "token",  "content": "<text chunk>"}
             {"type": "result", ...}
+
+        The pipeline runs normally through router → gather/gather_all,
+        then we **stream tokens directly from the generate LLM** so
+        the user sees text appearing in real-time (true streaming).
         """
         initial: Dict[str, Any] = {
             "query": query,
@@ -865,6 +850,9 @@ Improved Answer:"""
             final_state: Dict[str, Any] = {}
             prev_nodes: set = set()
 
+            # ── Phase 1: run pipeline up to (but NOT including) generate ──
+            # We stream node-by-node and emit status events, stopping
+            # before generate so we can stream its tokens ourselves.
             async for state_snapshot in self.graph.astream(
                 initial, stream_mode="values"
             ):
@@ -883,20 +871,55 @@ Improved Answer:"""
 
                     event = {"type": "status", "node": completed, "content": label}
 
-                    # For gather_all, include the web URLs so the UI can show them
                     if completed == "gather_all":
+                        # Include rich source details for Perplexity-style UI
                         web = final_state.get("web_results", {}) or {}
                         urls = web.get("search_results", [])
+                        chroma_docs = final_state.get("chroma_results", {}).get("documents", [])
+                        hist_entries = final_state.get("history_results", {}).get("relevant_history", [])
+                        sources_summary = {
+                            "database_docs": len(chroma_docs),
+                            "web_urls": urls,
+                            "web_success": web.get("success", False),
+                            "history_entries": len(hist_entries),
+                            "collections": final_state.get("collections_searched", []),
+                        }
+                        event["sources"] = sources_summary
                         if urls:
                             event["urls"] = urls
-                            event["content"] = f"Searched database & {len(urls)} web pages…"
+                        parts = []
+                        if chroma_docs:
+                            parts.append(f"📚 {len(chroma_docs)} database docs")
+                        if urls:
+                            parts.append(f"🌐 {len(urls)} web pages")
+                        if hist_entries:
+                            parts.append(f"💬 {len(hist_entries)} past conversations")
+                        event["content"] = "Found: " + ", ".join(parts) if parts else label
+
+                    elif completed == "gather":
+                        hist_entries = final_state.get("history_results", {}).get("relevant_history", [])
+                        if hist_entries:
+                            event["content"] = f"Found {len(hist_entries)} past conversations…"
 
                     yield event
 
-            # ── Safeguard: if answer is missing, fall back to draft ────
-            if not final_state.get("answer") and final_state.get("draft_answer"):
-                final_state["answer"] = final_state["draft_answer"]
+            # ── Phase 2: if answer exists (generate already ran inside graph),
+            #    stream its tokens word-by-word for a smooth UX ────────────
+            answer = final_state.get("answer", "") or final_state.get("draft_answer", "")
+            if answer:
+                logger.info("Stream: answer ready (%d chars), streaming tokens", len(answer))
+                # yield answer in small chunks for smooth display
+                words = answer.split(" ")
+                CHUNK = 2
+                for i in range(0, len(words), CHUNK):
+                    chunk_words = words[i:i + CHUNK]
+                    token = " ".join(chunk_words)
+                    if i > 0:
+                        token = " " + token
+                    yield {"type": "token", "content": token}
 
+            # ── Phase 3: save conversation ────────────────────────────────
+            # Save was already done by the graph, so just emit result
             logger.info(
                 "Stream: final answer length=%d chars",
                 len(final_state.get("answer", "")),

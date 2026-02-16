@@ -3,7 +3,7 @@ import PageLayout from "./PageLayout";
 import RatingPage from "./RatingPage";
 
 const RatingsPageComponent = () => {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
 
   const handleMenuToggle = () => {
     setSidebarOpen(!sidebarOpen);
