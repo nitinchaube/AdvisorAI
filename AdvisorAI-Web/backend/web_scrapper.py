@@ -297,36 +297,40 @@ def scrape_top3(query, num_results=5, api_key=None):
         return []
 
     logger.info(f"Scraping {len(urls)} URLs: {urls}")
-    
-    results = []
-    for i, url in enumerate(urls, 1):
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                      "AppleWebKit/537.36 (KHTML, like Gecko) "
+                      "Chrome/122.0.0.0 Safari/537.36"
+    }
+
+    # Fetch all URLs in parallel using threads (no sleep between requests)
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def _fetch_one(url):
         try:
-            logger.info(f"Fetching content from {i}/{len(urls)}: {url}")
-            
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                              "AppleWebKit/537.36 (KHTML, like Gecko) "
-                              "Chrome/122.0.0.0 Safari/537.36"
-            }
-            
-            resp = requests.get(url, timeout=15, headers=headers)
+            resp = requests.get(url, timeout=10, headers=headers)
             resp.raise_for_status()
-            
             text = clean_html(resp.text)
             if text:
-                results.append({"url": url, "content": text[:3000]})
-                logger.info(f"Successfully extracted {len(text)} characters")
-            else:
-                results.append({"url": url, "content": "No text content found"})
-                logger.info("No text content found")
-            
-            # Random delay between requests
-            time.sleep(random.uniform(0.5, 1.5))
-            
+                logger.info(f"Successfully extracted {len(text)} chars from {url}")
+                return {"url": url, "content": text[:3000]}
+            logger.info(f"No text content from {url}")
+            return {"url": url, "content": "No text content found"}
         except Exception as e:
             logger.error(f"Failed to fetch {url}: {e}")
-            results.append({"url": url, "content": f"Failed to fetch: {e}"})
-    
+            return {"url": url, "content": f"Failed to fetch: {e}"}
+
+    results = []
+    with ThreadPoolExecutor(max_workers=min(len(urls), 5)) as pool:
+        futures = {pool.submit(_fetch_one, url): url for url in urls}
+        for future in as_completed(futures):
+            results.append(future.result())
+
+    # Maintain original URL order
+    url_order = {url: i for i, url in enumerate(urls)}
+    results.sort(key=lambda r: url_order.get(r["url"], 999))
+
     return results
 
 
