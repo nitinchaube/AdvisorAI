@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { apiService } from "../services/api";
+import { storage } from "../config/firebase";
+import { getDownloadURL, ref, uploadBytes, deleteObject } from "firebase/storage";
 import {
   Upload,
   FileText,
@@ -60,10 +62,15 @@ const ProfileCompletion = () => {
   const [showFeatures, setShowFeatures] = useState(false);
   const [editingField, setEditingField] = useState(null);
   const [formData, setFormData] = useState({});
+  const [profileImageUploading, setProfileImageUploading] = useState(false);
   const [uploadStep, setUploadStep] = useState(0); // 0: Select, 1: Processing, 2: Complete
   const [loadingExistingProfile, setLoadingExistingProfile] = useState(true); // Start with loading
+  const [portfolioNameChecking, setPortfolioNameChecking] = useState(false);
+  const [portfolioNameAvailable, setPortfolioNameAvailable] = useState(null);
+  const [portfolioNameCheckTimeout, setPortfolioNameCheckTimeout] = useState(null);
 
   const fileInputRef = useRef();
+  const profilePictureInputRef = useRef();
   const containerRef = useRef();
   const { currentUser, userProfile, markProfileCompleted } = useAuth();
   const navigate = useNavigate();
@@ -250,6 +257,31 @@ const ProfileCompletion = () => {
         ...prev,
         [fieldName]: sanitizedValue,
       }));
+
+      // Clear existing timeout
+      if (portfolioNameCheckTimeout) {
+        clearTimeout(portfolioNameCheckTimeout);
+      }
+
+      // Only check if name is valid (3+ chars)
+      if (sanitizedValue.length >= 3) {
+        // Debounce: wait 500ms after user stops typing
+        const timeoutId = setTimeout(async () => {
+          try {
+            setPortfolioNameChecking(true);
+            const response = await apiService.checkPortfolioNameAvailability(sanitizedValue);
+            setPortfolioNameAvailable(response.available);
+          } catch (error) {
+            console.error("Portfolio name check failed:", error);
+            setPortfolioNameAvailable(null);
+          } finally {
+            setPortfolioNameChecking(false);
+          }
+        }, 500);
+        setPortfolioNameCheckTimeout(timeoutId);
+      } else {
+        setPortfolioNameAvailable(null);
+      }
     } else {
       setFormData((prev) => ({
         ...prev,
@@ -258,11 +290,123 @@ const ProfileCompletion = () => {
     }
   };
 
+  const handleProfilePictureSelect = async (event) => {
+    const selectedFile = event.target.files?.[0];
+    if (!selectedFile) return;
+
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+    const maxSizeBytes = 5 * 1024 * 1024; // 5MB
+
+    if (!allowedTypes.includes(selectedFile.type)) {
+      setError("Please upload a JPG, PNG, or WEBP image.");
+      event.target.value = "";
+      return;
+    }
+
+    if (selectedFile.size > maxSizeBytes) {
+      setError("Profile picture must be less than 5MB.");
+      event.target.value = "";
+      return;
+    }
+
+    if (!currentUser?.uid) {
+      setError("You need to be signed in to upload a profile picture.");
+      event.target.value = "";
+      return;
+    }
+
+    // Use fixed filename to automatically replace old profile picture
+    const fileExtension = selectedFile.name.split('.').pop().toLowerCase();
+    const objectPath = `profile-pictures/${currentUser.uid}/profile.${fileExtension}`;
+
+    try {
+      setProfileImageUploading(true);
+      setError("");
+
+      // Delete old profile picture if it exists and has a different extension
+      if (formData.profilePicture) {
+        try {
+          const oldPath = new URL(formData.profilePicture).pathname.split('/o/')[1]?.split('?')[0];
+          if (oldPath) {
+            const decodedOldPath = decodeURIComponent(oldPath);
+            const oldRef = ref(storage, decodedOldPath);
+            // Only delete if different path (different extension)
+            if (decodedOldPath !== objectPath) {
+              await deleteObject(oldRef);
+              console.log("Deleted old profile picture:", decodedOldPath);
+            }
+          }
+        } catch (deleteError) {
+          // Old file might not exist or already deleted - non-fatal, continue
+          console.warn("Could not delete old profile picture:", deleteError);
+        }
+      }
+
+      const storageRef = ref(storage, objectPath);
+      await uploadBytes(storageRef, selectedFile);
+      const downloadUrl = await getDownloadURL(storageRef);
+
+      setFormData((prev) => ({
+        ...prev,
+        profilePicture: downloadUrl,
+      }));
+      setSuccess("Profile picture uploaded successfully.");
+      setTimeout(() => setSuccess(""), 2500);
+    } catch (uploadError) {
+      console.error("Profile picture upload failed:", uploadError);
+      setError("Failed to upload profile picture. Please try again.");
+    } finally {
+      setProfileImageUploading(false);
+      event.target.value = "";
+    }
+  };
+
+  const handleRemoveProfilePicture = async () => {
+    if (!formData.profilePicture) return;
+
+    try {
+      // Extract storage path from download URL and delete the file
+      const oldPath = new URL(formData.profilePicture).pathname.split('/o/')[1]?.split('?')[0];
+      if (oldPath) {
+        const decodedOldPath = decodeURIComponent(oldPath);
+        const oldRef = ref(storage, decodedOldPath);
+        await deleteObject(oldRef);
+        console.log("Deleted profile picture:", decodedOldPath);
+      }
+    } catch (deleteError) {
+      console.warn("Could not delete profile picture from storage:", deleteError);
+      // Continue anyway - we'll clear the URL from the database
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      profilePicture: "",
+    }));
+    setSuccess("Profile picture removed.");
+    setTimeout(() => setSuccess(""), 2500);
+  };
+
   // This function handles both saving a new profile and updating an existing one.
   const handleSaveOrUpdateProfile = async () => {
     try {
       setParsing(true);
       setError("");
+
+      // Validate portfolio name before saving
+      if (formData.portfolioName) {
+        if (formData.portfolioName.length < 3) {
+          setError("Portfolio name must be at least 3 characters.");
+          setParsing(false);
+          return;
+        }
+        
+        // Check one more time before saving (in case state is stale)
+        if (portfolioNameAvailable === false) {
+          setError("Portfolio name is already taken. Please choose another.");
+          setParsing(false);
+          return;
+        }
+      }
 
       const isUpdating = userProfile?.profileCompleted;
       const response = await apiService.saveUserProfile(formData);
@@ -411,6 +555,7 @@ const ProfileCompletion = () => {
   // Modern input/textarea style
   const inputStyle = {
     width: "100%",
+    maxWidth: "100%",
     fontSize: "1.08rem",
     padding: "0.7em 1.1em",
     borderRadius: 10,
@@ -421,6 +566,7 @@ const ProfileCompletion = () => {
     boxShadow: "0 1px 4px rgba(102,126,234,0.06)",
     outline: "none",
     transition: "border-color 0.18s, box-shadow 0.18s",
+    boxSizing: "border-box",
   };
   const inputFocusStyle = {
     border: "1.5px solid #38bdf8",
@@ -446,6 +592,9 @@ const ProfileCompletion = () => {
     transition: "box-shadow 0.18s, border-color 0.18s",
     minWidth: 0,
     overflow: "hidden",
+    boxSizing: "border-box",
+    wordWrap: "break-word",
+    overflowWrap: "break-word",
   };
   const removeBtnStyle = {
     background: "#fff0f0",
@@ -719,9 +868,35 @@ const ProfileCompletion = () => {
                       placeholder="Enter your portfolio name (e.g., john-doe)"
                       className="field-input"
                     />
-                    <div className="field-help">
+                    <div className="field-help" style={{ marginTop: "0.5rem" }}>
                       This will be your portfolio URL: <span className="portfolio-url">localhost:3000/portfolio/{formData.portfolioName || 'your-name'}</span>
                     </div>
+                    {formData.portfolioName && formData.portfolioName.length >= 3 && (
+                      <div style={{ marginTop: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        {portfolioNameChecking ? (
+                          <>
+                            <Loader2 className="loading-spinner" size={16} />
+                            <span style={{ fontSize: "0.9rem", color: "#64748b" }}>Checking availability...</span>
+                          </>
+                        ) : portfolioNameAvailable === true ? (
+                          <>
+                            <CheckCircle size={16} style={{ color: "#10b981" }} />
+                            <span style={{ fontSize: "0.9rem", color: "#10b981", fontWeight: 500 }}>✓ Available</span>
+                          </>
+                        ) : portfolioNameAvailable === false ? (
+                          <>
+                            <AlertCircle size={16} style={{ color: "#ef4444" }} />
+                            <span style={{ fontSize: "0.9rem", color: "#ef4444", fontWeight: 500 }}>✗ Already taken</span>
+                          </>
+                        ) : null}
+                      </div>
+                    )}
+                    {formData.portfolioName && formData.portfolioName.length < 3 && (
+                      <div style={{ marginTop: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <AlertCircle size={16} style={{ color: "#f59e0b" }} />
+                        <span style={{ fontSize: "0.9rem", color: "#f59e0b" }}>Minimum 3 characters required</span>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="view-mode">
@@ -737,6 +912,85 @@ const ProfileCompletion = () => {
                     )}
                   </div>
                 )}
+              </div>
+            </div>
+
+            {/* --- GitHub and LinkedIn fields --- */}
+            <div className="form-field profile-card-field">
+              <div className="field-header">
+                <div className="field-icon">
+                  <User />
+                </div>
+                <h3 className="field-title">Profile Picture</h3>
+              </div>
+              <div className="field-content">
+                <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
+                  <div
+                    style={{
+                      width: 88,
+                      height: 88,
+                      borderRadius: "50%",
+                      overflow: "hidden",
+                      background: "linear-gradient(135deg, #e2e8f0, #cbd5e1)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                      border: "3px solid #e2e8f0",
+                    }}
+                  >
+                    {formData.profilePicture ? (
+                      <img
+                        src={formData.profilePicture}
+                        alt="Profile preview"
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      />
+                    ) : (
+                      <User size={30} color="#475569" />
+                    )}
+                  </div>
+                  <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      className="upload-btn secondary-btn"
+                      onClick={() => profilePictureInputRef.current?.click()}
+                      disabled={profileImageUploading}
+                    >
+                      {profileImageUploading ? (
+                        <>
+                          <Loader2 className="loading-spinner" />
+                          Uploading...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="btn-icon" />
+                          {formData.profilePicture ? "Change Photo" : "Upload Photo"}
+                        </>
+                      )}
+                    </button>
+                    {formData.profilePicture && (
+                      <button
+                        type="button"
+                        className="back-btn secondary-btn"
+                        onClick={handleRemoveProfilePicture}
+                        disabled={profileImageUploading}
+                      >
+                        <Trash2 className="btn-icon" />
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <p className="field-help" style={{ marginTop: "0.75rem" }}>
+                  Upload a JPG, PNG, or WEBP image up to 5MB.
+                </p>
+                <input
+                  ref={profilePictureInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handleProfilePictureSelect}
+                  style={{ display: "none" }}
+                />
               </div>
             </div>
 
@@ -848,6 +1102,7 @@ const ProfileCompletion = () => {
                     "resumeText",
                     "github",
                     "linkedin",
+                    "profilePicture",
                     "profileCompleted",
                     "portfolioName",
                     "id",

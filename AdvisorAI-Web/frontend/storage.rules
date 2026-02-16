@@ -1,0 +1,27 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isImageContentType() {
+      return request.resource.contentType.matches('image/(jpeg|png|webp)');
+    }
+
+    function underMaxSize() {
+      return request.resource.size < 5 * 1024 * 1024;
+    }
+
+    // Users can upload/update/delete only their own profile pictures.
+    match /profile-pictures/{userId}/{fileName} {
+      allow read: if true;
+      allow create, update, delete: if isSignedIn() && request.auth.uid == userId && isImageContentType() && underMaxSize();
+    }
+
+    // Deny all other storage paths by default.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
