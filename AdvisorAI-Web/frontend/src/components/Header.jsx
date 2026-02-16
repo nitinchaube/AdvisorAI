@@ -122,8 +122,8 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
             >
               {/* Profile Avatar with Status */}
               <div className="relative">
-                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center shadow-lg group-hover:shadow-xl transition-all duration-300 border-2 border-white/10">
-                  <User className="w-6 h-6 text-white" />
+                <div className="w-9 h-9 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center shadow-lg group-hover:shadow-xl transition-all duration-300 border-2 border-white/10">
+                  <User className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                 </div>
               </div>
 
@@ -148,7 +148,7 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
             {/* Enhanced Dropdown Menu */}
             {showUserMenu && (
               <div
-                className="absolute right-0 mt-3 w-80 max-h-[80vh] bg-gradient-to-br from-slate-800/95 via-slate-700/90 to-slate-600/95 backdrop-blur-2xl rounded-3xl shadow-2xl border border-slate-500/20 py-6 z-50 overflow-y-auto overflow-x-hidden"
+                className="absolute right-0 mt-3 w-[calc(100vw-2rem)] sm:w-80 max-w-80 max-h-[80vh] bg-gradient-to-br from-slate-800/95 via-slate-700/90 to-slate-600/95 backdrop-blur-2xl rounded-3xl shadow-2xl border border-slate-500/20 py-6 z-50 overflow-y-auto overflow-x-hidden"
                 style={{ pointerEvents: "auto" }}
               >
                 {/* Background decoration */}
@@ -169,8 +169,8 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
                 <div className="relative px-6 py-4 border-b border-slate-500/20">
                   <div className="flex items-center space-x-4">
                     <div className="relative">
-                      <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center shadow-xl ring-4 ring-white/10 border-2 border-white/10">
-                        <User className="w-8 h-8 text-white" />
+                      <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center shadow-xl ring-4 ring-white/10 border-2 border-white/10">
+                        <User className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
                       </div>
                       <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-gradient-to-r from-emerald-400 to-teal-500 rounded-full border-3 border-slate-800 shadow-lg animate-pulse"></div>
                     </div>
