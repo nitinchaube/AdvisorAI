@@ -93,6 +93,7 @@ const PortfolioView = () => {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [profileImageLoadFailed, setProfileImageLoadFailed] = useState(false);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -113,6 +114,10 @@ const PortfolioView = () => {
     };
     fetchProfile();
   }, [portfolioName]);
+
+  useEffect(() => {
+    setProfileImageLoadFailed(false);
+  }, [profile?.profilePicture]);
 
   // Theme system - with fallback loading state
   const userTheme = profile?.portfolioTheme || "slate";
@@ -525,12 +530,21 @@ const PortfolioView = () => {
                 transition={{ delay: 0.6, duration: 0.8, ease: "easeOut" }}
               >
                 <div
-                  className={`w-80 h-80 lg:w-96 lg:h-96 rounded-2xl bg-gradient-to-br from-slate-50 to-slate-300 flex items-center justify-center text-6xl lg:text-7xl font-bold ${themeClasses.textSecondary} shadow-2xl relative overflow-hidden`}
+                  className={`w-80 h-80 lg:w-96 lg:h-96 rounded-full bg-gradient-to-br from-slate-50 to-slate-300 flex items-center justify-center text-6xl lg:text-7xl font-bold ${themeClasses.textSecondary} shadow-2xl relative overflow-hidden`}
                 >
                   <div className="absolute inset-0 bg-gradient-to-br from-white/20 to-transparent"></div>
-                  <span className="relative z-10">
-                    {getInitials(profile.fullName)}
-                  </span>
+                  {profile.profilePicture && !profileImageLoadFailed ? (
+                    <img
+                      src={profile.profilePicture}
+                      alt={`${profile.fullName || "User"} profile`}
+                      className="relative z-10 w-full h-full object-cover"
+                      onError={() => setProfileImageLoadFailed(true)}
+                    />
+                  ) : (
+                    <span className="relative z-10">
+                      {getInitials(profile.fullName)}
+                    </span>
+                  )}
                 </div>
 
                 {/* Floating Elements */}
