@@ -8,7 +8,7 @@ const ChatPage = () => {
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [currentSessionTitle, setCurrentSessionTitle] = useState("New Chat");
   const [chatHistoryOpen, setChatHistoryOpen] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
   const [sessionInitialized, setSessionInitialized] = useState(false);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
 

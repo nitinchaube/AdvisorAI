@@ -5,7 +5,7 @@ import { apiService } from "../services/api";
 
 const ChatHistoryPage = () => {
   const [currentSessionId, setCurrentSessionId] = useState(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
 
   const handleMenuToggle = () => {
     setSidebarOpen(!sidebarOpen);
