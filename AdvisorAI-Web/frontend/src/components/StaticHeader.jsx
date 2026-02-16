@@ -1,6 +1,6 @@
-import React from "react";
+import React, { useState } from "react";
 import { NavLink } from "react-router-dom";
-import { ArrowRight, LayoutDashboard, User, LogOut } from "lucide-react";
+import { ArrowRight, LayoutDashboard, User, LogOut, Menu, X } from "lucide-react";
 import "./StaticHeader.css";
 import { useNavigate } from "react-router-dom";
 import logo from "../utils/logo.png";
@@ -14,6 +14,7 @@ const StaticHeader = ({
 }) => {
 
   const navigate = useNavigate();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   
   return (
     <header className={`static-header-section ${className}`}>
@@ -26,20 +27,29 @@ const StaticHeader = ({
             <span className="static-logo-text">Advisor<span className="static-logo-highlight">AI</span></span>
           </div>
         </div>
+
+        {/* Hamburger button — visible only on mobile via CSS */}
+        <button
+          className="static-hamburger-btn"
+          onClick={() => setMobileMenuOpen((prev) => !prev)}
+          aria-label="Toggle menu"
+        >
+          {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+        </button>
         
-        <div className="static-nav-actions">
+        <div className={`static-nav-actions ${mobileMenuOpen ? "mobile-open" : ""}`}>
           {currentUser ? (
             // Authenticated user actions
             <>
-              <NavLink to="/dashboard" className="static-nav-link">
+              <NavLink to="/dashboard" className="static-nav-link" onClick={() => setMobileMenuOpen(false)}>
                 <LayoutDashboard className="static-nav-icon" />
                 Dashboard
               </NavLink>
-              <NavLink to="/profile-completion" className="static-nav-link">
+              <NavLink to="/profile-completion" className="static-nav-link" onClick={() => setMobileMenuOpen(false)}>
                 <User className="static-nav-icon" />
                 Profile
               </NavLink>
-              <button onClick={onLogout} className="static-nav-link">
+              <button onClick={() => { onLogout?.(); setMobileMenuOpen(false); }} className="static-nav-link">
                 <LogOut className="static-nav-icon" />
                 Log Out
               </button>
@@ -48,12 +58,12 @@ const StaticHeader = ({
             // Non-authenticated user actions
             <>
               {showSignIn && (
-                <NavLink to="/login" className="static-nav-link">
+                <NavLink to="/login" className="static-nav-link" onClick={() => setMobileMenuOpen(false)}>
                   Sign In
                 </NavLink>
               )}
               {showSignUp && (
-                <NavLink to="/signup" className="static-nav-button">
+                <NavLink to="/signup" className="static-nav-button" onClick={() => setMobileMenuOpen(false)}>
                   Get Started
                   <ArrowRight className="static-button-icon" />
                 </NavLink>
@@ -62,6 +72,11 @@ const StaticHeader = ({
           )}
         </div>
       </nav>
+
+      {/* Overlay to close menu when tapping outside */}
+      {mobileMenuOpen && (
+        <div className="static-mobile-overlay" onClick={() => setMobileMenuOpen(false)} />
+      )}
     </header>
   );
 };

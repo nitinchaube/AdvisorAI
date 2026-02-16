@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import PageLayout from "./PageLayout";
 
 const PlannerPage = () => {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
 
   const handleMenuToggle = () => {
     setSidebarOpen(!sidebarOpen);

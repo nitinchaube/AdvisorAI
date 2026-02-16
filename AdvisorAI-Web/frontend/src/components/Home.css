@@ -588,6 +588,10 @@
     font-size: 2.5rem;
   }
   
+  .cta-title {
+    font-size: 2.5rem;
+  }
+  
   .footer-main {
     grid-template-columns: 1fr;
     gap: 3rem;
@@ -601,12 +605,23 @@
   
   .hero-section {
     padding: 6rem 1rem 2.5rem;
-    min-height: 80vh;
+    min-height: auto;
     margin-top: 0;
   }
   
   .hero-title {
-    font-size: 2.75rem;
+    font-size: 2.5rem;
+  }
+  
+  .hero-description {
+    font-size: 1.1rem;
+    margin-bottom: 2rem;
+  }
+  
+  .hero-badge {
+    font-size: 0.8rem;
+    padding: 0.625rem 1.25rem;
+    margin-bottom: 1.75rem;
   }
   
   .hero-actions {
@@ -620,15 +635,35 @@
     width: 100%;
     max-width: 350px;
     margin: 0 auto;
+    font-size: 1rem;
+    padding: 1rem 1.75rem;
   }
   
   .how-it-works-section,
   .cta-section {
-    padding: 4rem 1rem;
+    padding: 3.5rem 1rem;
   }
   
   .section-title {
-    font-size: 2.25rem;
+    font-size: 2rem;
+  }
+  
+  .section-subtitle {
+    font-size: 1.05rem;
+  }
+  
+  .cta-title {
+    font-size: 2rem;
+  }
+  
+  .cta-description {
+    font-size: 1.05rem;
+    margin-bottom: 2rem;
+  }
+  
+  .cta-button {
+    padding: 1rem 2rem;
+    font-size: 1rem;
   }
   
   .steps-container {
@@ -639,43 +674,91 @@
     flex-direction: column;
     text-align: center;
     gap: 1.5rem;
+    padding: 2rem 1.5rem;
   }
   
   .footer {
     padding: 3rem 1rem 1.5rem;
   }
+  
+  .footer-main {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+  }
+  
+  .footer-links {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 2rem;
+  }
+  
+  .footer-bottom {
+    flex-direction: column;
+    gap: 1rem;
+    text-align: center;
+  }
 }
 
 @media (max-width: 480px) {
-  .logo-container {
-    gap: 0.75rem;
+  .hero-section {
+    padding: 5rem 0.75rem 2rem;
   }
   
-  .logo-icon-wrapper {
+  .hero-title {
+    font-size: 2rem;
+  }
+  
+  .hero-description {
+    font-size: 1rem;
+  }
+  
+  .primary-button,
+  .secondary-button {
+    font-size: 0.95rem;
+    padding: 0.875rem 1.5rem;
+    max-width: 100%;
+  }
+  
+  .section-title {
+    font-size: 1.75rem;
+  }
+  
+  .cta-title {
+    font-size: 1.75rem;
+  }
+  
+  .cta-description {
+    font-size: 0.95rem;
+  }
+  
+  .step-item {
+    padding: 1.5rem 1rem;
+  }
+  
+  .step-number {
     width: 3rem;
     height: 3rem;
+    font-size: 1.25rem;
   }
   
-  .logo-icon {
-    width: 1.75rem;
-    height: 1.75rem;
+  .step-content h3 {
+    font-size: 1.2rem;
   }
   
-  .logo-text {
-    font-size: 1.5rem;
+  .footer-links {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
   }
   
-  .nav-actions {
-    gap: 1rem;
+  .footer-brand {
+    max-width: 100%;
   }
   
-  .nav-link {
-    padding: 0.75rem 1.25rem;
-    font-size: 0.9rem;
+  .how-it-works-section,
+  .cta-section {
+    padding: 2.5rem 0.75rem;
   }
   
-  .nav-button {
-    padding: 0.875rem 1.75rem;
-    font-size: 0.9rem;
+  .section-header {
+    margin-bottom: 2rem;
   }
 } 
