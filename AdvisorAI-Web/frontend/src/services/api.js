@@ -566,6 +566,14 @@ class ApiService {
       headers: { "Content-Type": "application/json" },
     });
   }
+
+  // Check if portfolio name is available
+  async checkPortfolioNameAvailability(portfolioName) {
+    return this.makeRequest(`/check-portfolio-name/${portfolioName}`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 }
 
 const apiService = new ApiService(auth);
