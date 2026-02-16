@@ -19,7 +19,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { apiService } from "../services/api";
 
 const AnalyticsPage = () => {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
   const { currentUser } = useAuth();
