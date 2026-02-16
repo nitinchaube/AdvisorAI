@@ -555,6 +555,7 @@ const ProfileCompletion = () => {
   // Modern input/textarea style
   const inputStyle = {
     width: "100%",
+    maxWidth: "100%",
     fontSize: "1.08rem",
     padding: "0.7em 1.1em",
     borderRadius: 10,
@@ -565,6 +566,7 @@ const ProfileCompletion = () => {
     boxShadow: "0 1px 4px rgba(102,126,234,0.06)",
     outline: "none",
     transition: "border-color 0.18s, box-shadow 0.18s",
+    boxSizing: "border-box",
   };
   const inputFocusStyle = {
     border: "1.5px solid #38bdf8",
@@ -590,6 +592,9 @@ const ProfileCompletion = () => {
     transition: "box-shadow 0.18s, border-color 0.18s",
     minWidth: 0,
     overflow: "hidden",
+    boxSizing: "border-box",
+    wordWrap: "break-word",
+    overflowWrap: "break-word",
   };
   const removeBtnStyle = {
     background: "#fff0f0",

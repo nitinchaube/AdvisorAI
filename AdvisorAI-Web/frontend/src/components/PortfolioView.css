@@ -1,0 +1,188 @@
+/* Portfolio View Mobile Optimizations */
+
+/* Reduce section padding on mobile */
+@media (max-width: 768px) {
+  /* Hero section adjustments */
+  .portfolio-hero {
+    padding-top: 3rem !important;
+    padding-bottom: 3rem !important;
+    min-height: auto !important;
+  }
+
+  /* Hero grid - proper centering on mobile */
+  .portfolio-hero .grid {
+    text-align: center;
+  }
+
+  /* Avatar should be centered with minimal margin */
+  .portfolio-avatar {
+    margin: 0 auto 1rem auto !important;
+  }
+
+  /* Center all hero content on mobile */
+  .portfolio-hero .space-y-4,
+  .portfolio-hero .space-y-2 {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  /* CTA buttons should be centered and stack */
+  .portfolio-hero .flex-wrap {
+    justify-content: center;
+  }
+
+  /* Section spacing - reduce from py-20 to py-8 */
+  section {
+    padding-top: 2rem !important;
+    padding-bottom: 2rem !important;
+  }
+
+  /* Section headers - reduce margin */
+  .section-header {
+    margin-bottom: 1.5rem !important;
+  }
+
+  /* Section titles - smaller on mobile */
+  .section-title {
+    font-size: 1.75rem !important;
+    margin-bottom: 0.75rem !important;
+  }
+
+  .section-subtitle {
+    font-size: 0.95rem !important;
+  }
+
+  /* Avatar - smaller on mobile */
+  .portfolio-avatar {
+    width: 200px !important;
+    height: 200px !important;
+    font-size: 3rem !important;
+  }
+
+  /* Hero text */
+  .hero-title {
+    font-size: 2.25rem !important;
+    line-height: 1.2 !important;
+  }
+
+  .hero-tagline {
+    font-size: 1rem !important;
+    line-height: 1.5 !important;
+  }
+
+  /* Cards - more compact */
+  .experience-card,
+  .project-card,
+  .education-card {
+    padding: 1.25rem !important;
+    margin-bottom: 1rem !important;
+  }
+
+  .card-title {
+    font-size: 1.25rem !important;
+    margin-bottom: 0.5rem !important;
+  }
+
+  .card-subtitle {
+    font-size: 0.95rem !important;
+  }
+
+  .card-description {
+    font-size: 0.875rem !important;
+    line-height: 1.5 !important;
+  }
+
+  /* Skills section - compact grid */
+  .skills-grid {
+    gap: 1rem !important;
+    grid-template-columns: 1fr !important; /* Single column on mobile */
+    width: 100% !important;
+  }
+
+  .skill-category-card {
+    padding: 1.25rem !important;
+  }
+
+  .skill-category-title {
+    font-size: 1.1rem !important;
+    margin-bottom: 0.75rem !important;
+  }
+
+  .skill-pill {
+    padding: 0.4rem 0.75rem !important;
+    font-size: 0.8rem !important;
+  }
+
+  /* Projects grid - single column on mobile */
+  .projects-grid {
+    grid-template-columns: 1fr !important;
+    gap: 1.5rem !important;
+  }
+
+  /* Education grid - single column */
+  .education-grid {
+    grid-template-columns: 1fr !important;
+    gap: 1.5rem !important;
+  }
+
+  /* Contact section */
+  .contact-section {
+    padding: 2rem 1rem !important;
+  }
+
+  /* Reduce icon sizes */
+  .section-icon {
+    width: 2rem !important;
+    height: 2rem !important;
+  }
+
+  /* Timeline adjustments */
+  .timeline-card {
+    margin-left: 2rem !important;
+  }
+
+  /* Social links */
+  .social-link {
+    width: 2.5rem !important;
+    height: 2.5rem !important;
+  }
+}
+
+/* Extra small devices */
+@media (max-width: 480px) {
+  section {
+    padding-top: 1.5rem !important;
+    padding-bottom: 1.5rem !important;
+  }
+
+  .section-title {
+    font-size: 1.5rem !important;
+  }
+
+  .hero-title {
+    font-size: 2rem !important;
+  }
+
+  .portfolio-avatar {
+    width: 160px !important;
+    height: 160px !important;
+    font-size: 2.5rem !important;
+  }
+
+  .experience-card,
+  .project-card,
+  .education-card,
+  .skill-category-card {
+    padding: 1rem !important;
+  }
+
+  .card-title {
+    font-size: 1.1rem !important;
+  }
+
+  .skill-pill {
+    padding: 0.35rem 0.65rem !important;
+    font-size: 0.75rem !important;
+  }
+}
