@@ -15,17 +15,17 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
 
     # Model Configuration
-    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4")
-    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
-    CLAUDE_MODEL: str = os.getenv("CLAUDE_MODEL", "claude-3-sonnet-20240229")
+    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+    CLAUDE_MODEL: str = os.getenv("CLAUDE_MODEL", "claude-3-5-haiku-20241022")
 
     # Vector Database Configuration
     VECTORDB_DIR: str = os.getenv("VECTORDB_DIR", "./VectorDB")
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
 
     # Retrieval Configuration
-    TOP_K_PER_COLLECTION: int = int(os.getenv("TOP_K_PER_COLLECTION", "5"))
-    MAX_TOTAL_DOCS: int = int(os.getenv("MAX_TOTAL_DOCS", "5"))
+    TOP_K_PER_COLLECTION: int = int(os.getenv("TOP_K_PER_COLLECTION", "3"))
+    MAX_TOTAL_DOCS: int = int(os.getenv("MAX_TOTAL_DOCS", "3"))
 
     # Web Search Configuration
     WEB_SEARCH_ENABLED: bool = os.getenv("WEB_SEARCH_ENABLED", "true").lower() == "true"
