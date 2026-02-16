@@ -1,9 +1,17 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import Header from "./Header";
 import Footer from "./Footer";
 import Sidebar from "./Sidebar";
 
 const PageLayout = ({ children, sidebarOpen, onMenuToggle }) => {
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   return (
     <div className="h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 relative overflow-hidden">
       {/* Enhanced Background decoration */}
@@ -30,9 +38,23 @@ const PageLayout = ({ children, sidebarOpen, onMenuToggle }) => {
 
       {/* Main Content Area - Between Header and Footer */}
       <div className="flex-1 flex relative overflow-hidden">
-        {/* Sidebar - Between header and footer */}
+        {/* Mobile: Sidebar as overlay with backdrop */}
+        {isMobile && sidebarOpen && (
+          <div
+            className="fixed inset-0 bg-black/40 z-30 backdrop-blur-sm"
+            onClick={onMenuToggle}
+          />
+        )}
+
+        {/* Sidebar - overlay on mobile, inline on desktop */}
         {sidebarOpen && (
-          <div className="flex-shrink-0 z-40 relative">
+          <div
+            className={
+              isMobile
+                ? "fixed top-0 left-0 h-full z-40 shadow-2xl pt-16"
+                : "flex-shrink-0 z-40 relative"
+            }
+          >
             <Sidebar />
           </div>
         )}

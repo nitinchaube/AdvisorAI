@@ -6,7 +6,7 @@ import CourseDetails from "./CourseDetails";
 import ProfessorDetails from "./ProfessorDetails";
 
 const CourseExplorerPage = () => {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
   const { professorId, courseId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
