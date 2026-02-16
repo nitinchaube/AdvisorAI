@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { getTheme, getThemeClasses } from "../utils/portfolioThemes";
+import "./PortfolioView.css";
 
 // Helper for avatar initials
 const getInitials = (name) => {
@@ -93,6 +94,7 @@ const PortfolioView = () => {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [profileImageLoadFailed, setProfileImageLoadFailed] = useState(false);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -113,6 +115,10 @@ const PortfolioView = () => {
     };
     fetchProfile();
   }, [portfolioName]);
+
+  useEffect(() => {
+    setProfileImageLoadFailed(false);
+  }, [profile?.profilePicture]);
 
   // Theme system - with fallback loading state
   const userTheme = profile?.portfolioTheme || "slate";
@@ -372,7 +378,7 @@ const PortfolioView = () => {
     >
       {/* Hero Section - Asymmetrical Layout */}
       <section
-        className={`min-h-screen relative bg-gradient-to-br ${themeClasses.mainBg} via-white to-${themeClasses.mainBg} overflow-hidden`}
+        className={`portfolio-hero min-h-screen relative bg-gradient-to-br ${themeClasses.mainBg} via-white to-${themeClasses.mainBg} overflow-hidden py-8 md:py-12`}
       >
         {/* Background Elements */}
         <div
@@ -386,15 +392,70 @@ const PortfolioView = () => {
         ></div>
 
         <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
-          <div className="grid lg:grid-cols-12 gap-12 min-h-screen items-center">
-            {/* Left Column - Text Content */}
+          <div className="grid lg:grid-cols-12 gap-4 lg:gap-12 min-h-screen items-center">
+            
+            {/* Right Column - Avatar/Visual - Shows FIRST on mobile */}
             <motion.div
-              className="lg:col-span-7 space-y-8 pt-20 lg:pt-0"
+              className="lg:col-span-5 lg:order-2 flex justify-center lg:justify-end order-1"
+              variants={fadeInRight}
+              initial="hidden"
+              animate="visible"
+            >
+              <motion.div
+                className="relative"
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ delay: 0.6, duration: 0.8, ease: "easeOut" }}
+              >
+                <div
+                  className={`portfolio-avatar w-48 h-48 sm:w-60 sm:h-60 md:w-80 md:h-80 lg:w-96 lg:h-96 rounded-full bg-gradient-to-br from-slate-50 to-slate-300 flex items-center justify-center text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold ${themeClasses.textSecondary} shadow-2xl relative overflow-hidden`}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-white/20 to-transparent"></div>
+                  {profile.profilePicture && !profileImageLoadFailed ? (
+                    <img
+                      src={profile.profilePicture}
+                      alt={`${profile.fullName || "User"} profile`}
+                      className="relative z-10 w-full h-full object-cover"
+                      onError={() => setProfileImageLoadFailed(true)}
+                    />
+                  ) : (
+                    <span className="relative z-10">
+                      {getInitials(profile.fullName)}
+                    </span>
+                  )}
+                </div>
+
+                {/* Floating Elements */}
+                <motion.div
+                  className={`absolute -top-4 -right-4 w-8 h-8 ${themeClasses.accent} rounded-full`}
+                  animate={{ y: [0, -10, 0] }}
+                  transition={{
+                    duration: 3,
+                    repeat: Infinity,
+                    ease: "easeInOut",
+                  }}
+                />
+                <motion.div
+                  className={`absolute -bottom-2 -left-2 w-6 h-6 ${themeClasses.secondaryBg} rounded-full`}
+                  animate={{ y: [0, -15, 0] }}
+                  transition={{
+                    duration: 4,
+                    repeat: Infinity,
+                    ease: "easeInOut",
+                    delay: 1,
+                  }}
+                />
+              </motion.div>
+            </motion.div>
+
+            {/* Left Column - Text Content - Shows SECOND on mobile */}
+            <motion.div
+              className="lg:col-span-7 lg:order-1 space-y-4 md:space-y-6 lg:space-y-8 pt-0 lg:pt-0 order-2"
               variants={fadeInLeft}
               initial="hidden"
               animate="visible"
             >
-              <div className="space-y-4">
+              <div className="space-y-2 md:space-y-4">
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -405,7 +466,7 @@ const PortfolioView = () => {
                 </motion.div>
 
                 <motion.h1
-                  className="text-5xl lg:text-7xl font-bold tracking-tight leading-tight"
+                  className="hero-title text-3xl sm:text-4xl md:text-5xl lg:text-7xl font-bold tracking-tight leading-tight"
                   initial={{ opacity: 0, y: 30 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.3, duration: 0.8 }}
@@ -420,7 +481,7 @@ const PortfolioView = () => {
                 </motion.h1>
 
                 <motion.p
-                  className={`text-xl lg:text-2xl ${themeClasses.textSecondary} leading-relaxed max-w-2xl`}
+                  className={`hero-tagline text-base sm:text-lg md:text-xl lg:text-2xl ${themeClasses.textSecondary} leading-relaxed max-w-2xl`}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.5, duration: 0.6 }}
@@ -431,7 +492,7 @@ const PortfolioView = () => {
 
               {/* Meta Information */}
               <motion.div
-                className={`flex flex-wrap gap-6 ${themeClasses.textMuted}`}
+                className={`flex flex-wrap gap-3 md:gap-4 lg:gap-6 ${themeClasses.textMuted} text-sm md:text-base`}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.7, duration: 0.6 }}
@@ -452,7 +513,7 @@ const PortfolioView = () => {
 
               {/* CTA Buttons */}
               <motion.div
-                className="flex flex-wrap gap-4 pt-4"
+                className="flex flex-wrap gap-3 md:gap-4 pt-2 md:pt-4"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.9, duration: 0.6 }}
@@ -481,7 +542,7 @@ const PortfolioView = () => {
 
               {/* Social Links */}
               <motion.div
-                className="flex gap-6 pt-8"
+                className="flex gap-3 md:gap-4 lg:gap-6 pt-4 md:pt-6 lg:pt-8 justify-center lg:justify-start"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 1.1, duration: 0.6 }}
@@ -510,59 +571,14 @@ const PortfolioView = () => {
                 )}
               </motion.div>
             </motion.div>
-
-            {/* Right Column - Avatar/Visual */}
-            <motion.div
-              className="lg:col-span-5 flex justify-center lg:justify-end"
-              variants={fadeInRight}
-              initial="hidden"
-              animate="visible"
-            >
-              <motion.div
-                className="relative"
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ delay: 0.6, duration: 0.8, ease: "easeOut" }}
-              >
-                <div
-                  className={`w-80 h-80 lg:w-96 lg:h-96 rounded-2xl bg-gradient-to-br from-slate-50 to-slate-300 flex items-center justify-center text-6xl lg:text-7xl font-bold ${themeClasses.textSecondary} shadow-2xl relative overflow-hidden`}
-                >
-                  <div className="absolute inset-0 bg-gradient-to-br from-white/20 to-transparent"></div>
-                  <span className="relative z-10">
-                    {getInitials(profile.fullName)}
-                  </span>
-                </div>
-
-                {/* Floating Elements */}
-                <motion.div
-                  className={`absolute -top-4 -right-4 w-8 h-8 ${themeClasses.accent} rounded-full`}
-                  animate={{ y: [0, -10, 0] }}
-                  transition={{
-                    duration: 3,
-                    repeat: Infinity,
-                    ease: "easeInOut",
-                  }}
-                />
-                <motion.div
-                  className={`absolute -bottom-2 -left-2 w-6 h-6 ${themeClasses.secondaryBg} rounded-full`}
-                  animate={{ y: [0, -15, 0] }}
-                  transition={{
-                    duration: 4,
-                    repeat: Infinity,
-                    ease: "easeInOut",
-                    delay: 1,
-                  }}
-                />
-              </motion.div>
-            </motion.div>
           </div>
         </div>
       </section>
 
       {/* About Section */}
       {profile.summary && (
-        <section className="py-20 lg:py-32 relative">
-          <div className="max-w-7xl mx-auto px-6 lg:px-8">
+        <section className="py-8 md:py-12 lg:py-20 xl:py-32 relative">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="grid lg:grid-cols-12 gap-12 items-center">
               <motion.div
                 className="lg:col-span-5"
@@ -573,7 +589,7 @@ const PortfolioView = () => {
               >
                 <div className="space-y-6">
                   <h2
-                    className={`text-4xl lg:text-5xl font-bold tracking-tight ${themeClasses.textPrimary}`}
+                    className={`section-title text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight ${themeClasses.textPrimary}`}
                   >
                     About <span className={themeClasses.textSecondary}>Me</span>
                   </h2>
@@ -592,7 +608,7 @@ const PortfolioView = () => {
               >
                 <div className="prose prose-lg prose-slate max-w-none">
                   <p
-                    className={`text-xl leading-relaxed ${themeClasses.textSecondary} font-light`}
+                    className={`card-description text-base sm:text-lg md:text-xl leading-relaxed ${themeClasses.textSecondary} font-light`}
                   >
                     {profile.summary}
                   </p>
@@ -605,18 +621,18 @@ const PortfolioView = () => {
 
       {/* Experience Section */}
       {profile.experience && profile.experience.length > 0 && (
-        <section className={`py-20 lg:py-32 ${themeClasses.cardBg}`}>
-          <div className="max-w-7xl mx-auto px-6 lg:px-8">
+        <section className={`py-8 md:py-12 lg:py-20 xl:py-32 ${themeClasses.cardBg}`}>
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             {/* Section Header */}
             <motion.div
-              className="text-center mb-20"
+              className="section-header text-center mb-8 md:mb-12 lg:mb-20"
               variants={fadeInUp}
               initial="hidden"
               whileInView="visible"
               viewport={{ once: true, margin: "-100px" }}
             >
               <h2
-                className={`text-4xl lg:text-5xl font-bold tracking-tight mb-6 ${themeClasses.textPrimary}`}
+                className={`section-title text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight mb-4 md:mb-6 ${themeClasses.textPrimary}`}
               >
                 Work{" "}
                 <span className={themeClasses.textSecondary}>Experience</span>
@@ -667,17 +683,17 @@ const PortfolioView = () => {
                       whileHover="hover"
                     >
                       <div
-                        className={`${themeClasses.cardBg} border ${themeClasses.cardBorder} rounded-2xl p-8 shadow-sm hover:shadow-xl transition-all duration-300`}
+                        className={`experience-card ${themeClasses.cardBg} border ${themeClasses.cardBorder} rounded-2xl p-4 sm:p-6 md:p-8 shadow-sm hover:shadow-xl transition-all duration-300`}
                       >
                         <div className="flex items-start justify-between mb-4">
                           <div className="flex-1">
                             <h3
-                              className={`text-2xl font-bold ${themeClasses.textPrimary} mb-2`}
+                              className={`card-title text-lg sm:text-xl md:text-2xl font-bold ${themeClasses.textPrimary} mb-2`}
                             >
                               {exp.position || exp.title}
                             </h3>
                             <p
-                              className={`text-lg font-semibold ${themeClasses.textSecondary} mb-1`}
+                              className={`card-subtitle text-base sm:text-lg font-semibold ${themeClasses.textSecondary} mb-1`}
                             >
                               {exp.company}
                             </p>
@@ -726,18 +742,18 @@ const PortfolioView = () => {
 
       {/* Projects Section */}
       {profile.projects && profile.projects.length > 0 && (
-        <section className={`py-20 lg:py-32 ${themeClasses.skillBg}`}>
-          <div className="max-w-7xl mx-auto px-6 lg:px-8">
+        <section className={`py-8 md:py-12 lg:py-20 xl:py-32 ${themeClasses.skillBg}`}>
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             {/* Section Header */}
             <motion.div
-              className="text-center mb-20"
+              className="section-header text-center mb-8 md:mb-12 lg:mb-20"
               variants={fadeInUp}
               initial="hidden"
               whileInView="visible"
               viewport={{ once: true, margin: "-100px" }}
             >
               <h2
-                className={`text-4xl lg:text-5xl font-bold tracking-tight mb-6 ${themeClasses.textPrimary}`}
+                className={`section-title text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight mb-4 md:mb-6 ${themeClasses.textPrimary}`}
               >
                 Featured{" "}
                 <span className={themeClasses.textSecondary}>Projects</span>
@@ -754,7 +770,7 @@ const PortfolioView = () => {
 
             {/* Projects Grid */}
             <motion.div
-              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 justify-items-center max-w-6xl mx-auto"
+              className="projects-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 md:gap-8 justify-items-center max-w-6xl mx-auto"
               variants={staggerContainer}
               initial="hidden"
               whileInView="visible"
@@ -767,7 +783,7 @@ const PortfolioView = () => {
                   variants={fadeInUp}
                 >
                   <motion.div
-                    className={`${themeClasses.cardBg} rounded-2xl border ${themeClasses.cardBorder} shadow-sm hover:shadow-2xl transition-all duration-500 overflow-hidden h-full w-full`}
+                    className={`project-card ${themeClasses.cardBg} rounded-2xl border ${themeClasses.cardBorder} shadow-sm hover:shadow-2xl transition-all duration-500 overflow-hidden h-full w-full`}
                     variants={cardHover}
                     whileHover="hover"
                   >
@@ -805,11 +821,11 @@ const PortfolioView = () => {
                     </div>
 
                     {/* Project Content */}
-                    <div className="p-8">
+                    <div className="p-4 sm:p-6 md:p-8">
                       <div className="flex items-start justify-between mb-4">
                         <div className="flex-1">
                           <h3
-                            className={`text-2xl font-bold ${themeClasses.textPrimary} mb-2 group-hover:${themeClasses.textSecondary} transition-colors`}
+                            className={`card-title text-lg sm:text-xl md:text-2xl font-bold ${themeClasses.textPrimary} mb-2 group-hover:${themeClasses.textSecondary} transition-colors`}
                           >
                             {proj.name || proj.title}
                           </h3>
@@ -824,7 +840,7 @@ const PortfolioView = () => {
                       </div>
 
                       <p
-                        className={`${themeClasses.textSecondary} leading-relaxed mb-6`}
+                        className={`card-description text-sm sm:text-base ${themeClasses.textSecondary} leading-relaxed mb-6`}
                       >
                         {proj.description}
                       </p>
@@ -867,18 +883,18 @@ const PortfolioView = () => {
 
       {/* Skills Section */}
       {profile.skills && profile.skills.length > 0 && (
-        <section className={`py-20 lg:py-32 ${themeClasses.cardBg}`}>
-          <div className="max-w-7xl mx-auto px-6 lg:px-8">
+        <section className={`py-8 md:py-12 lg:py-20 xl:py-32 ${themeClasses.cardBg}`}>
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             {/* Section Header */}
             <motion.div
-              className="text-center mb-20"
+              className="section-header text-center mb-8 md:mb-12 lg:mb-20"
               variants={fadeInUp}
               initial="hidden"
               whileInView="visible"
               viewport={{ once: true, margin: "-100px" }}
             >
               <h2
-                className={`text-4xl lg:text-5xl font-bold tracking-tight mb-6 ${themeClasses.textPrimary}`}
+                className={`section-title text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight mb-4 md:mb-6 ${themeClasses.textPrimary}`}
               >
                 Skills &{" "}
                 <span className={themeClasses.textSecondary}>Expertise</span>
@@ -896,7 +912,7 @@ const PortfolioView = () => {
             {/* Skills Grid */}
             <div className="flex justify-center">
               <motion.div
-                className="grid gap-8 justify-items-center"
+                className="skills-grid grid gap-4 sm:gap-6 md:gap-8 justify-items-center"
                 style={{
                   gridTemplateColumns: `repeat(${
                     Object.entries(groupedSkills).filter(
@@ -918,11 +934,11 @@ const PortfolioView = () => {
                         variants={fadeInUp}
                       >
                         <div
-                          className={`${themeClasses.skillBg} rounded-2xl p-8 h-full border ${themeClasses.skillBorder} ${themeClasses.skillBorderHover} hover:${themeClasses.cardBg} transition-all duration-300 w-full`}
+                          className={`skill-category-card ${themeClasses.skillBg} rounded-2xl p-4 sm:p-6 md:p-8 h-full border ${themeClasses.skillBorder} ${themeClasses.skillBorderHover} hover:${themeClasses.cardBg} transition-all duration-300 w-full`}
                         >
-                          <div className="mb-6">
+                          <div className="mb-4 sm:mb-6">
                             <h3
-                              className={`text-xl font-bold ${themeClasses.textPrimary} mb-2`}
+                              className={`skill-category-title text-base sm:text-lg md:text-xl font-bold ${themeClasses.textPrimary} mb-2`}
                             >
                               {category}
                             </h3>
@@ -935,7 +951,7 @@ const PortfolioView = () => {
                             {skills.map((skill, i) => (
                               <motion.span
                                 key={i}
-                                className={`px-4 py-2 ${themeClasses.skillPill} ${themeClasses.textSecondary} rounded-xl text-sm font-medium border ${themeClasses.skillPillBorder} ${themeClasses.cardBorderHover} hover:shadow-sm transition-all duration-200`}
+                                className={`skill-pill px-3 py-1.5 sm:px-4 sm:py-2 ${themeClasses.skillPill} ${themeClasses.textSecondary} rounded-xl text-xs sm:text-sm font-medium border ${themeClasses.skillPillBorder} ${themeClasses.cardBorderHover} hover:shadow-sm transition-all duration-200`}
                                 whileHover={{ scale: 1.05, y: -2 }}
                                 transition={{ duration: 0.2 }}
                               >
@@ -955,18 +971,18 @@ const PortfolioView = () => {
 
       {/* Education Section */}
       {profile.education && profile.education.length > 0 && (
-        <section className={`py-20 lg:py-32 ${themeClasses.skillBg}`}>
-          <div className="max-w-7xl mx-auto px-6 lg:px-8">
+        <section className={`py-8 md:py-12 lg:py-20 xl:py-32 ${themeClasses.skillBg}`}>
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             {/* Section Header */}
             <motion.div
-              className="text-center mb-20"
+              className="section-header text-center mb-8 md:mb-12 lg:mb-20"
               variants={fadeInUp}
               initial="hidden"
               whileInView="visible"
               viewport={{ once: true, margin: "-100px" }}
             >
               <h2
-                className={`text-4xl lg:text-5xl font-bold tracking-tight mb-6 ${themeClasses.textPrimary}`}
+                className={`section-title text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight mb-4 md:mb-6 ${themeClasses.textPrimary}`}
               >
                 Education &{" "}
                 <span className={themeClasses.textSecondary}>Learning</span>
@@ -983,7 +999,7 @@ const PortfolioView = () => {
 
             {/* Education Grid */}
             <motion.div
-              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 justify-items-center max-w-6xl mx-auto"
+              className="education-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 md:gap-8 justify-items-center max-w-6xl mx-auto"
               variants={staggerContainer}
               initial="hidden"
               whileInView="visible"
@@ -996,11 +1012,11 @@ const PortfolioView = () => {
                   variants={fadeInUp}
                 >
                   <motion.div
-                    className={`${themeClasses.cardBg} rounded-2xl border ${themeClasses.cardBorder} shadow-sm hover:shadow-xl transition-all duration-300 p-8 h-full w-full`}
+                    className={`education-card ${themeClasses.cardBg} rounded-2xl border ${themeClasses.cardBorder} shadow-sm hover:shadow-xl transition-all duration-300 p-4 sm:p-6 md:p-8 h-full w-full`}
                     variants={cardHover}
                     whileHover="hover"
                   >
-                    <div className="flex items-start justify-between mb-6">
+                    <div className="flex items-start justify-between mb-4 sm:mb-6">
                       <div
                         className={`w-16 h-16 ${themeClasses.skillBg} rounded-2xl flex items-center justify-center group-hover:${themeClasses.accent} transition-colors`}
                       >
@@ -1011,12 +1027,12 @@ const PortfolioView = () => {
                     </div>
 
                     <h3
-                      className={`text-xl font-bold ${themeClasses.textPrimary} mb-3`}
+                      className={`card-title text-lg sm:text-xl font-bold ${themeClasses.textPrimary} mb-3`}
                     >
                       {edu.degree || edu.title}
                     </h3>
                     <p
-                      className={`text-lg font-semibold ${themeClasses.textSecondary} mb-3`}
+                      className={`card-subtitle text-base sm:text-lg font-semibold ${themeClasses.textSecondary} mb-3`}
                     >
                       {edu.institution}
                     </p>
@@ -1036,7 +1052,7 @@ const PortfolioView = () => {
 
       {/* Contact Section */}
       <section
-        className={`py-20 lg:py-32 ${themeClasses.contactBg} text-white relative overflow-hidden`}
+        className={`contact-section py-12 md:py-16 lg:py-20 xl:py-32 ${themeClasses.contactBg} text-white relative overflow-hidden`}
       >
         {/* Background Elements */}
         <div className="absolute inset-0">

@@ -12,6 +12,7 @@ from flask_jwt_extended import JWTManager, create_access_token, jwt_required, ge
 from datetime import timedelta, datetime
 import json
 import threading
+from urllib.parse import urlparse
 from resume_processor import ResumeProcessor
 # Replace RAG service with chatbot integration
 from chatbot_integration import get_chatbot_integration
@@ -34,6 +35,13 @@ MONGO_URI = os.environ.get('MONGO_URI')
 MONGO_DB_NAME = os.environ.get('MONGO_DB_NAME', 'AdvisorAI')
 mongo_client = MongoClient(MONGO_URI)
 mongo_db = mongo_client[MONGO_DB_NAME]
+
+# Ensure unique index on portfolioName
+try:
+    mongo_db.users.create_index("portfolioName", unique=True, sparse=True)
+    logger.info("Ensured unique index on portfolioName")
+except Exception as e:
+    logger.warning(f"Could not create unique index on portfolioName: {e}")
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -183,6 +191,38 @@ def mongo_doc_to_json(doc):
             doc[k] = mongo_doc_to_json(v)
         return doc
     return doc
+
+
+def sanitize_profile_picture_url(profile_picture_url):
+    """
+    Validate and sanitize profile picture URL before persistence.
+    Only HTTPS Firebase/Google Cloud Storage URLs are accepted.
+    """
+    if profile_picture_url is None:
+        return None
+    if not isinstance(profile_picture_url, str):
+        raise ValueError("Profile picture must be a string URL.")
+
+    cleaned_url = profile_picture_url.strip()
+    if cleaned_url == "":
+        return ""
+    if len(cleaned_url) > 2048:
+        raise ValueError("Profile picture URL is too long.")
+
+    parsed_url = urlparse(cleaned_url)
+    if parsed_url.scheme != "https" or not parsed_url.netloc:
+        raise ValueError("Profile picture must be a valid HTTPS URL.")
+
+    host = parsed_url.netloc.lower()
+    is_google_storage_host = host in {
+        "firebasestorage.googleapis.com",
+        "storage.googleapis.com",
+    } or host.endswith(".storage.googleapis.com")
+
+    if not is_google_storage_host:
+        raise ValueError("Profile picture URL must point to Firebase/GCP Storage.")
+
+    return cleaned_url
 
 def verify_token(f):
     """Authentication decorator that requires a valid Firebase ID token AND verified email.
@@ -858,7 +898,29 @@ def update_user_profile():
     """Update user profile data"""
     try:
         user_id = g.user['uid']
-        data = request.get_json()
+        data = request.get_json() or {}
+        if not isinstance(data, dict):
+            return jsonify({"error": "Invalid profile payload"}), 400
+
+        if 'profilePicture' in data:
+            try:
+                data['profilePicture'] = sanitize_profile_picture_url(data.get('profilePicture'))
+            except ValueError as validation_error:
+                return jsonify({"error": str(validation_error)}), 400
+        
+        # Validate portfolioName uniqueness if being updated
+        if 'portfolioName' in data and data['portfolioName']:
+            portfolio_name = data['portfolioName'].strip()
+            if portfolio_name:
+                # Check if another user already has this portfolio name
+                existing_user = mongo_db.users.find_one({
+                    'portfolioName': portfolio_name,
+                    'uid': {'$ne': user_id}  # Exclude current user
+                })
+                if existing_user:
+                    return jsonify({
+                        "error": f"Portfolio name '{portfolio_name}' is already taken. Please choose another."
+                    }), 409  # 409 Conflict
         
         if mongo_db is not None:
             user_ref = mongo_db.users.find_one({'uid': user_id})
@@ -905,7 +967,7 @@ def get_public_profile(user_id):
                     'fullName', 'email', 'location', 'summary',
                     'github', 'linkedin',
                     'experience', 'education', 'skills', 'certifications', 'projects',
-                    'portfolioTheme'
+                    'portfolioTheme', 'profilePicture'
                 ]
                 public_profile = {k: profile.get(k) for k in public_fields if k in profile}
                 # For each project, only include github if present
@@ -939,7 +1001,7 @@ def get_portfolio_by_name(portfolio_name):
                     'fullName', 'email', 'location', 'summary',
                     'github', 'linkedin',
                     'experience', 'education', 'skills', 'certifications', 'projects',
-                    'portfolioTheme'
+                    'portfolioTheme', 'profilePicture'
                 ]
                 public_profile = {k: profile.get(k) for k in public_fields if k in profile}
                 # For each project, only include github if present
@@ -958,6 +1020,29 @@ def get_portfolio_by_name(portfolio_name):
     except Exception as e:
         logger.error(f"Get portfolio by name error: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
+
+# Check portfolio name availability
+@app.route('/api/check-portfolio-name/<portfolio_name>', methods=['GET'])
+def check_portfolio_name_availability(portfolio_name):
+    """Check if a portfolio name is available (public endpoint, no auth required)"""
+    try:
+        if not portfolio_name or len(portfolio_name) < 3:
+            return jsonify({
+                "available": False,
+                "error": "Portfolio name must be at least 3 characters"
+            }), 200
+        
+        if mongo_db is not None:
+            existing_user = mongo_db.users.find_one({'portfolioName': portfolio_name})
+            return jsonify({
+                "available": existing_user is None,
+                "portfolioName": portfolio_name
+            }), 200
+        else:
+            return jsonify({"error": "Database not available"}), 500
+    except Exception as e:
+        logger.error(f"Check portfolio name error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 # Chat endpoints
 @app.route('/api/chat/query', methods=['POST'])
