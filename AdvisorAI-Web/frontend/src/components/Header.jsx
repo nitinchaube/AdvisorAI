@@ -75,11 +75,18 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
             className="flex items-center space-x-2 sm:space-x-3 hover:scale-105 transition-all duration-300"
           >
             <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg hover:shadow-xl transition-all duration-300 border-2 border-white/10 overflow-hidden flex-shrink-0">
-              <img src={logo} alt="AdvisorAI Logo" className="w-5 h-5 sm:w-6 sm:h-6 object-contain" />
+              <img
+                src={logo}
+                alt="AdvisorAI Logo"
+                className="w-5 h-5 sm:w-6 sm:h-6 object-contain"
+              />
             </div>
             <div className="hidden sm:block">
               <h1 className="text-xl font-bold text-white">
-                Advisor<span className="bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">AI</span>
+                Advisor
+                <span className="bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                  AI
+                </span>
               </h1>
             </div>
           </Link>
@@ -181,7 +188,6 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
                             currentUser?.email?.split("@")[0] ||
                             "User"}
                         </h3>
-                        
                       </div>
                       <p className="text-sm text-slate-300 mb-2 truncate">
                         {currentUser?.email || "user@example.com"}
@@ -195,8 +201,6 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
                     </div>
                   </div>
                 </div>
-
-              
 
                 {/* Menu Items */}
                 <div className="relative py-2" style={{ zIndex: 10 }}>
