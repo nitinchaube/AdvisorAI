@@ -20,9 +20,9 @@ const Footer = () => {
               
               
               <a 
-                href="mailto:nitinchaube08@gmail.com" 
+                href="mailto:nchaube@stevens.edu" 
                 className="text-slate-400 hover:text-white transition-all duration-300 hover:scale-110 p-2 rounded-lg hover:bg-white/10"
-                title="Contact us at nitinchaube08@gmail.com"
+                title="Contact us"
               >
                 <Mail className="w-4 h-4" />
               </a>
