@@ -39,7 +39,7 @@ const Signup = () => {
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    e.preventDefault();sad
     
     if (!form.name || !form.email || !form.password || !form.confirmPassword) {
       setError("Please fill in all fields.");
