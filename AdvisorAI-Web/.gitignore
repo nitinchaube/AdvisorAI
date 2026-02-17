@@ -1,0 +1,39 @@
+# ============================================================
+# AdvisorAI - Git Ignore
+# ============================================================
+
+# ----- Environment / Secrets -----
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+**/serviceAccountKey*.json
+**/firebase_key*.json
+
+# ----- Python -----
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ----- Node -----
+node_modules/
+frontend/dist/
+frontend/dist-ssr/
+
+# ----- Editor -----
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# ----- Uploads (user data) -----
+backend/uploads/
+
+# ----- Logs -----
+*.log

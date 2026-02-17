@@ -24,6 +24,7 @@ import JobSearchPage from "./components/JobSearchPage.jsx";
 import InternshipSearchPage from "./components/InternshipSearchPage.jsx";
 import PlannerPage from "./components/PlannerPage.jsx";
 import EmailVerification from "./components/EmailVerification.jsx";
+import ForgotPassword from "./components/ForgotPassword.jsx";
 
 function App() {
   return (
@@ -45,6 +46,14 @@ function App() {
             element={
               <PublicRoute redirectTo="/chat">
                 <Login />
+              </PublicRoute>
+            }
+          />
+          <Route
+            path="/forgot-password"
+            element={
+              <PublicRoute redirectTo="/chat">
+                <ForgotPassword />
               </PublicRoute>
             }
           />

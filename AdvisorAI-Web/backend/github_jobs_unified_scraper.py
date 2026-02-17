@@ -16,15 +16,14 @@ import pandas as pd
 import schedule
 import shutil
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('unified_github_scraper.log'),
-        logging.StreamHandler()
-    ]
-)
+# When imported by app.py the root logger is already configured.
+# Only add a file handler here; avoid duplicate StreamHandlers.
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    logger.setLevel(logging.INFO)
+    _fh = logging.FileHandler('unified_github_scraper.log')
+    _fh.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    logger.addHandler(_fh)
 
 class UnifiedGitHubScraper:
     def __init__(self):
@@ -68,7 +67,7 @@ class UnifiedGitHubScraper:
             with open(csv_filename, 'w', newline='', encoding='utf-8') as file:
                 writer = csv.writer(file)
                 writer.writerow(headers)
-            logging.info(f"Created new CSV file: {csv_filename}")
+            logger.info(f"Created new CSV file: {csv_filename}")
 
     def fetch_readme_content(self, url, repo_name):
         """Fetch the README.md content from GitHub"""
@@ -76,10 +75,10 @@ class UnifiedGitHubScraper:
             response = requests.get(url, headers=self.headers, timeout=30)
             response.raise_for_status()
             
-            logging.info(f"Successfully fetched README.md from {repo_name}")
+            logger.info(f"Successfully fetched README.md from {repo_name}")
             return response.text
         except Exception as e:
-            logging.error(f"Failed to fetch README content from {repo_name}: {e}")
+            logger.error(f"Failed to fetch README content from {repo_name}: {e}")
             return None
 
     def parse_html_tables(self, content, repo_config):
@@ -92,17 +91,17 @@ class UnifiedGitHubScraper:
         
         # Find all HTML tables
         tables = soup.find_all('table')
-        logging.info(f"Found {len(tables)} HTML tables in {repo_config['name']}")
+        logger.info(f"Found {len(tables)} HTML tables in {repo_config['name']}")
         
         for i, table in enumerate(tables):
-            logging.info(f"Processing table {i+1} from {repo_config['name']}")
+            logger.info(f"Processing table {i+1} from {repo_config['name']}")
             
             # Find the section this table belongs to
             section_name = self.find_section_for_table(table, content)
             
             # Get all rows from the table
             rows = table.find_all('tr')
-            logging.info(f"Table {i+1} has {len(rows)} rows")
+            logger.info(f"Table {i+1} has {len(rows)} rows")
             
             # Skip header row (first row)
             for j, row in enumerate(rows[1:], 1):
@@ -111,14 +110,14 @@ class UnifiedGitHubScraper:
                     if job_data and self.is_valid_job(job_data):
                         jobs.append(job_data)
                         if j <= 3:  # Log first few successful extractions
-                            logging.info(f"Extracted: {job_data['Position Title']} at {job_data['Company']}")
+                            logger.info(f"Extracted: {job_data['Position Title']} at {job_data['Company']}")
                     elif j <= 5:  # Log first few failures for debugging
-                        logging.debug(f"Row {j} failed validation or parsing")
+                        logger.debug(f"Row {j} failed validation or parsing")
                 except Exception as e:
                     if j <= 5:  # Only log first few errors
-                        logging.debug(f"Error parsing row {j}: {e}")
+                        logger.debug(f"Error parsing row {j}: {e}")
         
-        logging.info(f"Total jobs extracted from {repo_config['name']}: {len(jobs)}")
+        logger.info(f"Total jobs extracted from {repo_config['name']}: {len(jobs)}")
         return jobs
 
     def find_section_for_table(self, table, content):
@@ -335,7 +334,7 @@ class UnifiedGitHubScraper:
             job_data['Company Industry'] = self.classify_job_by_title(job_data['Position Title'])
             
         except Exception as e:
-            logging.debug(f"Error parsing HTML row: {e}")
+            logger.debug(f"Error parsing HTML row: {e}")
             return None
         
         return job_data
@@ -490,18 +489,18 @@ class UnifiedGitHubScraper:
     def save_to_csv(self, jobs, csv_filename, repo_name):
         """Save jobs to CSV file by completely replacing the file with fresh data"""
         if not jobs:
-            logging.warning(f"No jobs to save for {repo_name}")
+            logger.warning(f"No jobs to save for {repo_name}")
             return
-        
-        # Create backup of existing file if it exists
+
+        # Keep a single latest backup so the UI can fall back if needed
         if os.path.exists(csv_filename):
-            backup_filename = f"{csv_filename}.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            backup_filename = f"{csv_filename}.backup_latest"
             try:
                 shutil.copy2(csv_filename, backup_filename)
-                logging.info(f"Created backup: {backup_filename}")
+                logger.info(f"Updated backup: {backup_filename}")
             except Exception as e:
-                logging.warning(f"Failed to create backup: {e}")
-        
+                logger.warning(f"Failed to create/update backup {backup_filename}: {e}")
+
         # Remove duplicates within the new data set (in case source has duplicates)
         unique_jobs = []
         seen_jobs = set()
@@ -529,24 +528,23 @@ class UnifiedGitHubScraper:
                 writer.writerows(unique_jobs)
             
             removed_duplicates = len(jobs) - len(unique_jobs)
-            logging.info(f"Completely replaced {csv_filename} with {len(unique_jobs)} jobs from {repo_name}")
+            logger.info(f"Completely replaced {csv_filename} with {len(unique_jobs)} jobs from {repo_name}")
             if removed_duplicates > 0:
-                logging.info(f"Removed {removed_duplicates} duplicate jobs within the source data")
+                logger.info(f"Removed {removed_duplicates} duplicate jobs within the source data")
             
             # Log statistics
             self.log_statistics(unique_jobs, repo_name)
-            
+
         except Exception as e:
-            logging.error(f"Error writing to {csv_filename}: {e}")
-            # Try to restore from backup if write failed
-            backup_files = [f for f in os.listdir('.') if f.startswith(f"{csv_filename}.backup_")]
-            if backup_files:
-                latest_backup = sorted(backup_files)[-1]
+            logger.error(f"Error writing to {csv_filename}: {e}")
+            # Try to restore from the latest backup if write failed
+            backup_filename = f"{csv_filename}.backup_latest"
+            if os.path.exists(backup_filename):
                 try:
-                    shutil.copy2(latest_backup, csv_filename)
-                    logging.info(f"Restored from backup: {latest_backup}")
+                    shutil.copy2(backup_filename, csv_filename)
+                    logger.info(f"Restored {csv_filename} from backup: {backup_filename}")
                 except Exception as restore_error:
-                    logging.error(f"Failed to restore from backup: {restore_error}")
+                    logger.error(f"Failed to restore from backup {backup_filename}: {restore_error}")
 
     def log_statistics(self, jobs, repo_name):
         """Log job statistics"""
@@ -559,9 +557,9 @@ class UnifiedGitHubScraper:
             industry = job.get('Company Industry', 'Unknown')
             industry_counts[industry] = industry_counts.get(industry, 0) + 1
         
-        logging.info(f"New jobs from {repo_name} by category:")
+        logger.info(f"New jobs from {repo_name} by category:")
         for industry, count in sorted(industry_counts.items(), key=lambda x: x[1], reverse=True):
-            logging.info(f"  {industry}: {count} jobs")
+            logger.info(f"  {industry}: {count} jobs")
 
     def fix_existing_categories(self, repo_key=None):
         """Fix categories in existing CSV files"""
@@ -573,20 +571,20 @@ class UnifiedGitHubScraper:
             repo_name = repo_config['name']
             
             if not os.path.exists(csv_filename):
-                logging.warning(f"CSV file {csv_filename} does not exist, nothing to fix")
+                logger.warning(f"CSV file {csv_filename} does not exist, nothing to fix")
                 continue
             
-            logging.info(f"Fixing job categories in {csv_filename} ({repo_name})...")
+            logger.info(f"Fixing job categories in {csv_filename} ({repo_name})...")
             
             try:
                 # Read existing CSV
                 df = pd.read_csv(csv_filename)
                 original_count = len(df)
                 
-                logging.info(f"Original categories in {original_count} jobs from {repo_name}:")
+                logger.info(f"Original categories in {original_count} jobs from {repo_name}:")
                 original_counts = df['Company Industry'].value_counts()
                 for category, count in original_counts.items():
-                    logging.info(f"  {category}: {count}")
+                    logger.info(f"  {category}: {count}")
                 
                 # Fix categories based on job titles
                 df['Company Industry'] = df['Position Title'].apply(self.classify_job_by_title)
@@ -594,15 +592,15 @@ class UnifiedGitHubScraper:
                 # Save updated CSV
                 df.to_csv(csv_filename, index=False)
                 
-                logging.info(f"Updated categories for {repo_name}:")
+                logger.info(f"Updated categories for {repo_name}:")
                 new_counts = df['Company Industry'].value_counts()
                 for category, count in new_counts.items():
-                    logging.info(f"  {category}: {count}")
+                    logger.info(f"  {category}: {count}")
                 
-                logging.info(f"Successfully updated {original_count} job categories in {csv_filename}")
+                logger.info(f"Successfully updated {original_count} job categories in {csv_filename}")
                 
             except Exception as e:
-                logging.error(f"Error fixing categories in {csv_filename}: {e}")
+                logger.error(f"Error fixing categories in {csv_filename}: {e}")
 
 
 
@@ -610,52 +608,52 @@ class UnifiedGitHubScraper:
         """Scrape a specific repository"""
         repo_config = self.repositories[repo_key]
         
-        logging.info(f"Starting scraping for {repo_config['name']}...")
+        logger.info(f"Starting scraping for {repo_config['name']}...")
         
         # Fetch README content
         content = self.fetch_readme_content(repo_config['url'], repo_config['name'])
         if not content:
-            logging.error(f"Failed to fetch README content for {repo_config['name']}")
+            logger.error(f"Failed to fetch README content for {repo_config['name']}")
             return
         
         # Parse job listings
         jobs = self.parse_html_tables(content, repo_config)
         
         if jobs:
-            logging.info(f"Successfully extracted {len(jobs)} jobs from {repo_config['name']}")
+            logger.info(f"Successfully extracted {len(jobs)} jobs from {repo_config['name']}")
             self.save_to_csv(jobs, repo_config['csv_file'], repo_config['name'])
         else:
-            logging.warning(f"No jobs extracted from {repo_config['name']}")
+            logger.warning(f"No jobs extracted from {repo_config['name']}")
 
     def scrape_all_repositories(self):
         """Scrape both repositories"""
-        logging.info("Starting unified scraping for both repositories...")
+        logger.info("Starting unified scraping for both repositories...")
         
         for repo_key in self.repositories.keys():
             self.scrape_repository(repo_key)
             
-        logging.info("Completed scraping both repositories")
+        logger.info("Completed scraping both repositories")
 
     def run_continuous(self):
         """Run scraping continuously with 2-hour intervals"""
-        logging.info("Starting continuous unified scraping (every 2 hours)")
+        logger.info("Starting continuous unified scraping (every 2 hours)")
         
         while True:
             try:
                 self.scrape_all_repositories()
-                logging.info("Waiting 2 hours before next scrape...")
+                logger.info("Waiting 2 hours before next scrape...")
                 time.sleep(7200)  # 2 hours
             except KeyboardInterrupt:
-                logging.info("Scraping stopped by user")
+                logger.info("Scraping stopped by user")
                 break
             except Exception as e:
-                logging.error(f"Error in continuous scraping: {e}")
-                logging.info("Waiting 30 minutes before retry...")
+                logger.error(f"Error in continuous scraping: {e}")
+                logger.info("Waiting 30 minutes before retry...")
                 time.sleep(1800)  # 30 minutes
 
     def run_scheduled(self):
         """Run scraping on schedule"""
-        logging.info("Starting scheduled unified scraping (every 2 hours)")
+        logger.info("Starting scheduled unified scraping (every 2 hours)")
         
         schedule.every(2).hours.do(self.scrape_all_repositories)
         

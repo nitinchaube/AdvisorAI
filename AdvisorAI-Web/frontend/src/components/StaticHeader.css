@@ -61,7 +61,6 @@
   width: 1.5rem;
   height: 1.5rem;
   object-fit: contain;
-  filter: brightness(0) invert(1); /* Makes the logo white */
   display: block;
 }
 
@@ -144,24 +143,76 @@
   height: 1.125rem;
 }
 
-/* Responsive Design */
+/* ===== Hamburger button (hidden on desktop) ===== */
+.static-hamburger-btn {
+  display: none;
+  background: none;
+  border: none;
+  color: #cbd5e1;
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 8px;
+  transition: background 0.2s;
+}
+
+.static-hamburger-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+/* ===== Mobile overlay backdrop ===== */
+.static-mobile-overlay {
+  display: none;
+}
+
+/* ===== Responsive Design ===== */
 @media (max-width: 768px) {
   .static-nav-bar {
     padding: 0.75rem 1rem;
+    flex-wrap: wrap;
   }
-  
+
   .static-logo-text {
     font-size: 1.25rem;
   }
-  
-  .static-nav-actions {
-    gap: 1rem;
+
+  /* Show hamburger on mobile */
+  .static-hamburger-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
-  
+
+  /* Hide nav actions by default on mobile */
+  .static-nav-actions {
+    display: none;
+    flex-direction: column;
+    width: 100%;
+    gap: 0.5rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid rgba(148, 163, 184, 0.2);
+    margin-top: 0.75rem;
+  }
+
+  /* Show nav actions when toggled open */
+  .static-nav-actions.mobile-open {
+    display: flex;
+  }
+
   .static-nav-link,
   .static-nav-button {
+    width: 100%;
+    justify-content: center;
     padding: 0.75rem 1rem;
     font-size: 0.875rem;
+  }
+
+  /* Show overlay */
+  .static-mobile-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: -1;
   }
 }
 
@@ -169,25 +220,21 @@
   .static-logo-container {
     gap: 0.5rem;
   }
-  
+
   .static-logo-icon-wrapper {
     width: 2rem;
     height: 2rem;
   }
-  
+
   .static-logo-icon {
     width: 1.25rem;
     height: 1.25rem;
   }
-  
+
   .static-logo-text {
     font-size: 1.125rem;
   }
-  
-  .static-nav-actions {
-    gap: 0.75rem;
-  }
-  
+
   .static-nav-link,
   .static-nav-button {
     padding: 0.625rem 0.875rem;

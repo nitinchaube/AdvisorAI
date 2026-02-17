@@ -1,0 +1,21 @@
+# Dev / editor files
+.env
+.env.example
+.env.*
+.git
+.gitignore
+.vscode
+.cursor
+__pycache__
+*.pyc
+*.pyo
+
+# Docs
+*.md
+LICENSE
+
+# Uploads (user data, not shipped)
+uploads/
+
+# Node (shouldn't be here, but just in case)
+node_modules/

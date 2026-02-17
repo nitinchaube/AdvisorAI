@@ -12,6 +12,7 @@ import {
   onAuthStateChanged,
   updateProfile,
   sendEmailVerification,
+  sendPasswordResetEmail,
 } from "firebase/auth";
 import { auth } from "../config/firebase";
 import { apiService } from "../services/api";
@@ -69,6 +70,20 @@ export function AuthProvider({ children }) {
       throw error;
     }
   }
+
+  // Forgot/ Reset password
+  async function resetPassword(email) {
+    try {
+      setError("");
+      await sendPasswordResetEmail(auth, email);
+      return true;
+    } catch (error) {
+      console.error("AuthContext: Password reset error:", error);
+      setError(error.message);
+      throw error;
+    }
+  }
+  
 
   // Send email verification
   async function sendVerificationEmail() {
@@ -276,6 +291,7 @@ export function AuthProvider({ children }) {
     signup,
     login,
     logout,
+    resetPassword,
     getIdToken,
     markProfileCompleted,
     isProfileCompleted,

@@ -35,3 +35,22 @@ body {
 .overflow-y-auto::-webkit-scrollbar-thumb:vertical {
   min-height: 30px;
 }
+
+/* Markdown content styling (ChatGPT-style) */
+.markdown-content {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.markdown-content pre {
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Droid Sans Mono', 'Source Code Pro', monospace;
+}
+
+.markdown-content code {
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Droid Sans Mono', 'Source Code Pro', monospace;
+}
+
+/* Smooth scrolling for chat messages */
+.overflow-y-auto {
+  scroll-behavior: smooth;
+}

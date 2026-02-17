@@ -7,9 +7,9 @@ import os
 import json
 import shutil
 from typing import List, Dict, Any
-from langchain.vectorstores import Chroma
-from langchain.embeddings import HuggingFaceEmbeddings
-from langchain.schema import Document
+from langchain_community.vectorstores import Chroma
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_core.documents import Document
 from dotenv import load_dotenv
 
 # Load environment variables
