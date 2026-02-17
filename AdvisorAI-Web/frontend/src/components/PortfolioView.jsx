@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { apiService } from "../services/api";
 import {
   Mail,
@@ -16,7 +16,6 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { getTheme, getThemeClasses } from "../utils/portfolioThemes";
-import logo from "../utils/logo.png";
 import "./PortfolioView.css";
 
 // Helper for avatar initials
@@ -398,13 +397,7 @@ const PortfolioView = () => {
     >
       {/* ── Sticky Navigation Bar ─────────────────────────────────────── */}
       <nav className="portfolio-navbar">
-        <div className="portfolio-navbar-inner">
-          {/* Brand → back to AdvisorAI */}
-          <Link to="/" className="portfolio-navbar-brand">
-            <img src={logo} alt="AdvisorAI" className="portfolio-navbar-logo" />
-            <span className="portfolio-navbar-name">AdvisorAI</span>
-          </Link>
-
+        <div className="portfolio-navbar-inner portfolio-navbar-inner--centered">
           {/* Section anchors */}
           <div className="portfolio-navbar-links">
             {navLinks.map((link) => (
@@ -571,14 +564,19 @@ const PortfolioView = () => {
                   </motion.a>
                 )}
 
-                <motion.button
-                  className={`inline-flex items-center px-8 py-4 border-2 ${themeClasses.accentBorder} ${themeClasses.textSecondary} rounded-lg font-semibold ${themeClasses.cardBorderHover} ${themeClasses.accentHover} transition-all duration-300`}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  <Download className="mr-2 w-4 h-4" />
-                  Resume
-                </motion.button>
+                {profile.resumeLink && (
+                  <motion.a
+                    href={profile.resumeLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`inline-flex items-center px-8 py-4 border-2 ${themeClasses.accentBorder} ${themeClasses.textSecondary} rounded-lg font-semibold ${themeClasses.cardBorderHover} ${themeClasses.accentHover} transition-all duration-300`}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <Download className="mr-2 w-4 h-4" />
+                    Resume
+                  </motion.a>
+                )}
               </motion.div>
 
               {/* Social Links */}
@@ -1185,16 +1183,10 @@ const PortfolioView = () => {
 
       {/* Footer */}
       <footer
-        className={`py-8 ${themeClasses.footerBg} text-slate-400 border-t ${themeClasses.primaryBorder}`}
+        className={`py-6 ${themeClasses.footerBg} text-slate-400 border-t ${themeClasses.primaryBorder}`}
       >
-        <div className="max-w-7xl mx-auto px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-sm">
-              © {new Date().getFullYear()} {profile.fullName}. All rights
-              reserved.
-            </p>
-            <p className="text-sm">Crafted with ❤️ and modern technology</p>
-          </div>
+        <div className="max-w-7xl mx-auto px-6 lg:px-8 flex justify-center">
+          <p className="text-sm">Powered by AdvisorAI</p>
         </div>
       </footer>
     </div>
