@@ -340,7 +340,7 @@ const JobSearchPage = () => {
                         {jobs.map((job, index) => (
                           <div
                             key={`${job.Apply || ""}-${index}`}
-                            className="job-card"
+                            className="job-card min-w-0"
                           >
                             <JobCard job={job} type={pageType} />
                           </div>
