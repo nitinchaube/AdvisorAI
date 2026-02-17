@@ -336,14 +336,37 @@ def verify_email_optional(f):
             if not decoded_token:
                 return jsonify({"error": "Invalid token"}), 401
             
+            user_id = decoded_token['uid']
+            
             # Get user from MongoDB
             if mongo_db is not None:
-                user_doc = mongo_db.users.find_one({'uid': decoded_token['uid']})
+                user_doc = mongo_db.users.find_one({'uid': user_id})
+                
+                # If user doesn't exist in MongoDB, create a minimal profile
                 if not user_doc:
-                    return jsonify({"error": "User not found"}), 404
+                    logger.warning(f"User {user_id} not found in MongoDB during verify_email_optional, creating minimal profile")
+                    try:
+                        firebase_user = auth.get_user(user_id)
+                        user_doc = {
+                            'uid': user_id,
+                            'email': firebase_user.email,
+                            'fullName': firebase_user.display_name or '',
+                            'createdAt': datetime.now(),
+                            'profileCompleted': False,
+                            'resumeData': {},
+                            'role': 'user',
+                            'emailVerified': firebase_user.email_verified
+                        }
+                        mongo_db.users.insert_one(user_doc)
+                        logger.info(f"Created minimal profile for user {user_id} in verify_email_optional")
+                    except Exception as create_error:
+                        logger.error(f"Failed to create minimal profile in verify_email_optional: {create_error}")
+                        return jsonify({"error": "User profile creation failed"}), 500
                 
                 # Store user info in g for use in the route
                 g.user = user_doc
+            else:
+                g.user = decoded_token
             
             return f(*args, **kwargs)
         except Exception as e:
@@ -805,16 +828,20 @@ def upload_and_parse_resume():
             result = resume_processor.process_resume(file_path, file.content_type)
             
             if result['success']:
-                # Update user document in Firestore
+                # Update user document in MongoDB
+                # The user document is guaranteed to exist because the decorator creates it
                 if mongo_db is not None:
                     user_ref = mongo_db.users.find_one({'uid': user_id})
                     if user_ref:
                         # Update existing document
                         user_ref['resumeData'] = result['parsedData']
-                        user_ref['profileCompleted'] = True
+                        user_ref['profileCompleted'] = False  # Don't auto-complete on upload, user needs to review
                         user_ref['lastResumeUpdate'] = datetime.now()
                         user_ref['resumeText'] = result['originalText']
                         mongo_db.users.replace_one({'uid': user_id}, user_ref)
+                    else:
+                        logger.error(f"User {user_id} not found in MongoDB after resume upload - this should not happen")
+                        return jsonify({"error": "User profile not found"}), 500
                 
                 return jsonify({
                     "success": True,
@@ -843,49 +870,19 @@ def upload_and_parse_resume():
 def get_user_profile():
     """Get user profile data"""
     try:
-        user_id = g.user['uid']
+        # User is guaranteed to exist in g.user by the decorator
+        # The decorator creates a minimal profile if it doesn't exist
+        user_doc = g.user
         
-        if mongo_db is not None:
-            user_doc = mongo_db.users.find_one({'uid': user_id})
-            if user_doc:
-                # Ensure profileCompleted field is always present
-                profile = mongo_doc_to_json(user_doc)
-                if 'profileCompleted' not in profile:
-                    profile['profileCompleted'] = False
-                return jsonify({
-                    "success": True,
-                    "profile": profile
-                }), 200
-            else:
-                # If user doesn't exist in MongoDB, create a minimal profile
-                logger.warning(f"User {user_id} not found in MongoDB, creating minimal profile")
-                try:
-                    # Get user record from Firebase
-                    firebase_user = auth.get_user(user_id)
-                    
-                    # Create minimal user document
-                    minimal_user_doc = {
-                        'uid': user_id,
-                        'email': firebase_user.email,
-                        'fullName': firebase_user.display_name or '',
-                        'createdAt': datetime.now(),
-                        'profileCompleted': False,
-                        'resumeData': {},
-                        'role': 'user',
-                        'emailVerified': firebase_user.email_verified
-                    }
-                    mongo_db.users.insert_one(minimal_user_doc)
-                    logger.info(f"Created minimal profile for user {user_id}")
-                    
-                    return jsonify({
-                        "success": True,
-                        "profile": minimal_user_doc
-                    }), 200
-                except Exception as create_error:
-                    logger.error(f"Failed to create minimal profile: {create_error}")
-                    return jsonify({"error": "User profile creation failed"}), 500
-        else:
-            return jsonify({"error": "Database not available"}), 500
+        # Ensure profileCompleted field is always present
+        profile = mongo_doc_to_json(user_doc)
+        if 'profileCompleted' not in profile:
+            profile['profileCompleted'] = False
+        
+        return jsonify({
+            "success": True,
+            "profile": profile
+        }), 200
             
     except Exception as e:
         logger.error(f"Get profile error: {str(e)}")
@@ -965,7 +962,7 @@ def get_public_profile(user_id):
                 # Only include public/important fields
                 public_fields = [
                     'fullName', 'email', 'location', 'summary',
-                    'github', 'linkedin',
+                    'github', 'linkedin', 'resumeLink',
                     'experience', 'education', 'skills', 'certifications', 'projects',
                     'portfolioTheme', 'profilePicture'
                 ]
@@ -999,7 +996,7 @@ def get_portfolio_by_name(portfolio_name):
                 # Only include public/important fields
                 public_fields = [
                     'fullName', 'email', 'location', 'summary',
-                    'github', 'linkedin',
+                    'github', 'linkedin', 'resumeLink',
                     'experience', 'education', 'skills', 'certifications', 'projects',
                     'portfolioTheme', 'profilePicture'
                 ]
