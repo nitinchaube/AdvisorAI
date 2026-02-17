@@ -114,6 +114,30 @@ const ProfileCompletion = () => {
     }
   }, [userProfile, parsedData, navigate]);
 
+  // Handler to skip resume upload and fill manually
+  const handleSkipResume = () => {
+    console.log("User chose to fill profile manually");
+    // Initialize form with basic user data
+    const manualFormData = {
+      email: currentUser?.email || "",
+      portfolioName: currentUser?.uid || "",
+      portfolioTheme: "slate",
+      fullName: "",
+      phone: "",
+      location: "",
+      summary: "",
+      skills: [],
+      experience: [],
+      education: [],
+      projects: [],
+      certifications: [],
+    };
+    setFormData(manualFormData);
+    setCurrentView(1); // Move to profile form view
+    setSuccess("You can now fill in your information manually.");
+    setTimeout(() => setSuccess(""), 3000);
+  };
+
   // Update form data when parsed data changes
   useEffect(() => {
     if (parsedData && parsedData.data) {
@@ -647,12 +671,12 @@ const ProfileCompletion = () => {
               <h2 className="upload-title">
                 {userProfile?.profileCompleted
                   ? "Update Your Resume"
-                  : "Upload Your Resume"}
+                  : "Complete Your Profile"}
               </h2>
               <p className="upload-description">
                 {userProfile?.profileCompleted
                   ? "Upload a new resume to update your profile information with the latest data"
-                  : "Drop your resume and let our advanced AI extract everything automatically"}
+                  : "Upload your resume for AI-powered extraction, or fill in your information manually"}
               </p>
             </div>
 
@@ -754,7 +778,21 @@ const ProfileCompletion = () => {
                 )}
               </button>
 
-
+              {!userProfile?.profileCompleted && (
+                <>
+                  <div className="button-separator">
+                    <span>OR</span>
+                  </div>
+                  <button
+                    className="skip-btn secondary-btn"
+                    onClick={handleSkipResume}
+                    disabled={uploading}
+                  >
+                    <Edit className="btn-icon" />
+                    Fill Manually Instead
+                  </button>
+                </>
+              )}
             </div>
 
 
@@ -786,7 +824,9 @@ const ProfileCompletion = () => {
         <div className="upload-container">
           <h1 className="page-title">Profile Information</h1>
           <p className="page-subtitle">
-            Review and edit the information extracted from your resume by our AI
+            {parsedData 
+              ? "Review and edit the information extracted from your resume by our AI"
+              : "Fill in your profile information to get started"}
           </p>
         </div>
 
@@ -796,12 +836,16 @@ const ProfileCompletion = () => {
               <h2>
                 {userProfile?.profileCompleted
                   ? "Edit Profile Information"
-                  : "Extracted Information"}
+                  : parsedData 
+                    ? "Extracted Information" 
+                    : "Your Profile Information"}
               </h2>
               <p>
                 {userProfile?.profileCompleted
                   ? "Update your profile information. All changes will be saved automatically."
-                  : "All fields have been automatically filled from your resume using advanced AI. You can edit any field by clicking on it."}
+                  : parsedData
+                    ? "All fields have been automatically filled from your resume using advanced AI. You can edit any field by clicking on it."
+                    : "Fill in your details below. You can always upload a resume later to auto-fill the information."}
               </p>
             </div>
 
@@ -816,13 +860,13 @@ const ProfileCompletion = () => {
                   Upload New Resume
                 </button>
               ) : (
-                // If profile is not complete, show back to upload
+                // If profile is not complete, show back to upload/options
                 <button
                   className="back-btn secondary-btn"
                   onClick={() => setCurrentView(0)}
                 >
                   <ArrowLeft className="btn-icon" />
-                  Back to Upload
+                  {parsedData ? "Back to Upload" : "Back to Options"}
                 </button>
               )}
             </div>
