@@ -18,11 +18,11 @@ const ThemeSelector = ({ selectedTheme, onThemeChange }) => {
         style.
       </p>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="theme-scroll-row">
         {themeOptions.map((theme) => (
           <motion.div
             key={theme.value}
-            className={`relative cursor-pointer rounded-2xl border-2 transition-all duration-300 ${
+            className={`theme-scroll-card relative cursor-pointer rounded-2xl border-2 transition-all duration-300 ${
               selectedTheme === theme.value
                 ? "border-blue-500 ring-4 ring-blue-100"
                 : "border-slate-200 hover:border-slate-300"
