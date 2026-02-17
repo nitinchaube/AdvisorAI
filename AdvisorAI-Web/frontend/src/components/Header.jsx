@@ -54,7 +54,8 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
   };
 
   return (
-    <header className="bg-gradient-to-r from-slate-800 to-slate-700 backdrop-blur-xl border-b border-slate-600/20 px-3 sm:px-5 py-3 sm:py-4 shadow-2xl sticky top-0 z-50">
+    <header className="backdrop-blur-xl border-b border-slate-600/20 px-3 sm:px-5 py-3 sm:py-4 shadow-2xl sticky top-0 z-50"
+            style={{ background: "var(--theme-header-gradient)" }}>
       <div className="flex items-center justify-between w-full">
         {/* Left side - Menu button and title */}
         <div className="flex items-center space-x-2 sm:space-x-4">
@@ -74,19 +75,15 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
             to="/"
             className="flex items-center space-x-2 sm:space-x-3 hover:scale-105 transition-all duration-300"
           >
-            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg hover:shadow-xl transition-all duration-300 border-2 border-white/10 overflow-hidden flex-shrink-0">
-              <img
-                src={logo}
-                alt="AdvisorAI Logo"
-                className="w-5 h-5 sm:w-6 sm:h-6 object-contain"
-              />
+            <div
+              className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center shadow-lg hover:shadow-xl transition-all duration-300 border-2 border-white/10 overflow-hidden flex-shrink-0"
+              style={{ background: "linear-gradient(to bottom right, var(--theme-sidebar-icon-from), var(--theme-sidebar-icon-to))" }}
+            >
+              <img src={logo} alt="AdvisorAI Logo" className="w-5 h-5 sm:w-6 sm:h-6 object-contain" />
             </div>
             <div className="hidden sm:block">
               <h1 className="text-xl font-bold text-white">
-                Advisor
-                <span className="bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                  AI
-                </span>
+                Advisor<span style={{ background: "linear-gradient(to right, var(--theme-accent-mid), var(--theme-accent-light))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>AI</span>
               </h1>
             </div>
           </Link>
@@ -102,7 +99,7 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
               rel="noopener noreferrer"
               className="group relative flex items-center space-x-2.5 px-3 sm:px-5 py-2 sm:py-2.5 text-slate-200 hover:text-white font-medium transition-all duration-300 hover:scale-105"
             >
-              <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-blue-400 to-purple-400 group-hover:w-full transition-all duration-300"></div>
+              <div className="absolute bottom-0 left-0 w-0 h-0.5 group-hover:w-full transition-all duration-300" style={{ background: "linear-gradient(to right, var(--theme-accent-mid), var(--theme-accent-light))" }}></div>
               <div className="relative flex items-center space-x-2">
                 <Briefcase className="w-4 h-4 group-hover:scale-110 transition-transform duration-300" />
                 <span className="text-sm hidden sm:inline">View Portfolio</span>
@@ -129,7 +126,7 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
             >
               {/* Profile Avatar with Status */}
               <div className="relative">
-                <div className="w-9 h-9 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center shadow-lg group-hover:shadow-xl transition-all duration-300 border-2 border-white/10">
+                <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-full flex items-center justify-center shadow-lg group-hover:shadow-xl transition-all duration-300 border-2 border-white/10" style={{ background: "linear-gradient(to bottom right, var(--theme-sidebar-icon-from), var(--theme-sidebar-icon-to))" }}>
                   <User className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                 </div>
               </div>
@@ -159,24 +156,15 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
                 style={{ pointerEvents: "auto" }}
               >
                 {/* Background decoration */}
-                <div
-                  className="absolute inset-0 bg-gradient-to-br from-blue-500/5 via-purple-500/5 to-indigo-500/5"
-                  style={{ zIndex: 1 }}
-                ></div>
-                <div
-                  className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-full blur-2xl"
-                  style={{ zIndex: 1 }}
-                ></div>
-                <div
-                  className="absolute bottom-0 left-0 w-24 h-24 bg-gradient-to-br from-indigo-500/10 to-blue-500/10 rounded-full blur-2xl"
-                  style={{ zIndex: 1 }}
-                ></div>
+                <div className="absolute inset-0 rounded-3xl" style={{ background: "linear-gradient(to bottom right, var(--theme-orb-1), var(--theme-orb-2), var(--theme-orb-3))", zIndex: 1 }}></div>
+                <div className="absolute top-0 right-0 w-32 h-32 rounded-full blur-2xl" style={{ background: "linear-gradient(to bottom right, var(--theme-orb-1), var(--theme-orb-2))", zIndex: 1 }}></div>
+                <div className="absolute bottom-0 left-0 w-24 h-24 rounded-full blur-2xl" style={{ background: "linear-gradient(to bottom right, var(--theme-orb-2), var(--theme-orb-3))", zIndex: 1 }}></div>
 
                 {/* User Profile Section */}
                 <div className="relative px-6 py-4 border-b border-slate-500/20">
                   <div className="flex items-center space-x-4">
                     <div className="relative">
-                      <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center shadow-xl ring-4 ring-white/10 border-2 border-white/10">
+                      <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full flex items-center justify-center shadow-xl ring-4 ring-white/10 border-2 border-white/10" style={{ background: "linear-gradient(to bottom right, var(--theme-sidebar-icon-from), var(--theme-sidebar-icon-to))" }}>
                         <User className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
                       </div>
                       <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-gradient-to-r from-emerald-400 to-teal-500 rounded-full border-3 border-slate-800 shadow-lg animate-pulse"></div>
