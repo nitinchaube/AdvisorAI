@@ -176,7 +176,6 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
                             currentUser?.email?.split("@")[0] ||
                             "User"}
                         </h3>
-                        
                       </div>
                       <p className="text-sm text-slate-300 mb-2 truncate">
                         {currentUser?.email || "user@example.com"}
@@ -190,8 +189,6 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
                     </div>
                   </div>
                 </div>
-
-              
 
                 {/* Menu Items */}
                 <div className="relative py-2" style={{ zIndex: 10 }}>

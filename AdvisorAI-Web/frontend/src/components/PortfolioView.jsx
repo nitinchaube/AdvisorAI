@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useParams } from "react-router-dom";
 import { apiService } from "../services/api";
 import {
@@ -11,6 +11,8 @@ import {
   ExternalLink,
   Download,
   ArrowRight,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { getTheme, getThemeClasses } from "../utils/portfolioThemes";
@@ -95,6 +97,13 @@ const PortfolioView = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [profileImageLoadFailed, setProfileImageLoadFailed] = useState(false);
+  const expScrollRef = useRef(null);
+
+  const scrollExp = (dir) => {
+    if (expScrollRef.current) {
+      expScrollRef.current.scrollBy({ left: dir * 360, behavior: "smooth" });
+    }
+  };
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -372,12 +381,37 @@ const PortfolioView = () => {
     }
   });
 
+  // Build nav links only for sections that have data
+  const navLinks = [
+    { label: "About",       href: "#about",      show: !!profile.summary },
+    { label: "Experience",  href: "#experience", show: !!(profile.experience?.length) },
+    { label: "Skills",      href: "#skills",     show: !!(profile.skills?.length) },
+    { label: "Projects",    href: "#projects",   show: !!(profile.projects?.length) },
+    { label: "Education",   href: "#education",  show: !!(profile.education?.length) },
+    { label: "Contact",     href: "#contact",    show: true },
+  ].filter((l) => l.show);
+
   return (
     <div
       className={`${themeClasses.mainBg} min-h-screen font-['Inter',system-ui,sans-serif] ${themeClasses.textPrimary}`}
     >
+      {/* ── Sticky Navigation Bar ─────────────────────────────────────── */}
+      <nav className="portfolio-navbar">
+        <div className="portfolio-navbar-inner portfolio-navbar-inner--centered">
+          {/* Section anchors */}
+          <div className="portfolio-navbar-links">
+            {navLinks.map((link) => (
+              <a key={link.href} href={link.href} className="portfolio-navbar-link">
+                {link.label}
+              </a>
+            ))}
+          </div>
+        </div>
+      </nav>
+
       {/* Hero Section - Asymmetrical Layout */}
       <section
+        id="home"
         className={`portfolio-hero min-h-screen relative bg-gradient-to-br ${themeClasses.mainBg} via-white to-${themeClasses.mainBg} overflow-hidden py-8 md:py-12`}
       >
         {/* Background Elements */}
@@ -530,14 +564,19 @@ const PortfolioView = () => {
                   </motion.a>
                 )}
 
-                <motion.button
-                  className={`inline-flex items-center px-8 py-4 border-2 ${themeClasses.accentBorder} ${themeClasses.textSecondary} rounded-lg font-semibold ${themeClasses.cardBorderHover} ${themeClasses.accentHover} transition-all duration-300`}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  <Download className="mr-2 w-4 h-4" />
-                  Resume
-                </motion.button>
+                {profile.resumeLink && (
+                  <motion.a
+                    href={profile.resumeLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`inline-flex items-center px-8 py-4 border-2 ${themeClasses.accentBorder} ${themeClasses.textSecondary} rounded-lg font-semibold ${themeClasses.cardBorderHover} ${themeClasses.accentHover} transition-all duration-300`}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <Download className="mr-2 w-4 h-4" />
+                    Resume
+                  </motion.a>
+                )}
               </motion.div>
 
               {/* Social Links */}
@@ -577,7 +616,7 @@ const PortfolioView = () => {
 
       {/* About Section */}
       {profile.summary && (
-        <section className="py-8 md:py-12 lg:py-20 xl:py-32 relative">
+        <section id="about" className="py-8 md:py-12 lg:py-20 xl:py-32 relative">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="grid lg:grid-cols-12 gap-12 items-center">
               <motion.div
@@ -621,11 +660,11 @@ const PortfolioView = () => {
 
       {/* Experience Section */}
       {profile.experience && profile.experience.length > 0 && (
-        <section className={`py-8 md:py-12 lg:py-20 xl:py-32 ${themeClasses.cardBg}`}>
+        <section id="experience" className={`py-8 md:py-12 lg:py-20 xl:py-32 ${themeClasses.cardBg}`}>
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             {/* Section Header */}
             <motion.div
-              className="section-header text-center mb-8 md:mb-12 lg:mb-20"
+              className="section-header text-center mb-8 md:mb-12 lg:mb-16"
               variants={fadeInUp}
               initial="hidden"
               whileInView="visible"
@@ -640,101 +679,89 @@ const PortfolioView = () => {
               <div
                 className={`w-20 h-1 ${themeClasses.accent} rounded-full mx-auto mb-6`}
               ></div>
-              <p
-                className={`text-xl ${themeClasses.textSecondary} max-w-2xl mx-auto`}
-              >
+              <p className={`text-xl ${themeClasses.textSecondary} max-w-2xl mx-auto`}>
                 My professional journey and the impact I've made
               </p>
             </motion.div>
 
-            {/* Timeline */}
-            <div className="relative max-w-6xl mx-auto">
-              {/* Timeline Line */}
-              <div
-                className={`absolute left-8 lg:left-1/2 lg:transform lg:-translate-x-1/2 h-full w-0.5 ${themeClasses.accent}`}
-              ></div>
+            {/* Horizontal Scroll Carousel */}
+            <div className="portfolio-exp-wrapper">
+              {/* Scroll left */}
+              {profile.experience.length > 2 && (
+                <button
+                  className="portfolio-exp-arrow portfolio-exp-arrow--left"
+                  onClick={() => scrollExp(-1)}
+                  aria-label="Scroll left"
+                >
+                  <ChevronLeft size={22} />
+                </button>
+              )}
 
-              <motion.div
-                className="space-y-12"
-                variants={staggerContainer}
-                initial="hidden"
-                whileInView="visible"
-                viewport={{ once: true, margin: "-100px" }}
-              >
+              <div className="portfolio-exp-scroll" ref={expScrollRef}>
                 {profile.experience.map((exp, idx) => (
                   <motion.div
                     key={idx}
-                    className={`relative flex flex-col lg:flex-row ${
-                      idx % 2 === 0 ? "lg:flex-row" : "lg:flex-row-reverse"
-                    } items-start lg:items-center gap-8 lg:gap-12`}
+                    className="portfolio-exp-card-wrap"
                     variants={fadeInUp}
+                    initial="hidden"
+                    whileInView="visible"
+                    viewport={{ once: true, margin: "-60px" }}
                   >
-                    {/* Timeline Dot */}
                     <div
-                      className={`absolute left-8 lg:left-1/2 lg:transform lg:-translate-x-1/2 w-4 h-4 ${themeClasses.secondaryBg} rounded-full border-4 border-white shadow-md z-10`}
-                    ></div>
-
-                    {/* Content Card */}
-                    <motion.div
-                      className={`flex-1 ml-20 lg:ml-0 ${
-                        idx % 2 === 0 ? "lg:pr-12" : "lg:pl-12"
-                      }`}
-                      variants={cardHover}
-                      whileHover="hover"
+                      className={`experience-card portfolio-exp-card ${themeClasses.cardBg} border ${themeClasses.cardBorder} rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300`}
                     >
-                      <div
-                        className={`experience-card ${themeClasses.cardBg} border ${themeClasses.cardBorder} rounded-2xl p-4 sm:p-6 md:p-8 shadow-sm hover:shadow-xl transition-all duration-300`}
-                      >
-                        <div className="flex items-start justify-between mb-4">
-                          <div className="flex-1">
-                            <h3
-                              className={`card-title text-lg sm:text-xl md:text-2xl font-bold ${themeClasses.textPrimary} mb-2`}
-                            >
-                              {exp.position || exp.title}
-                            </h3>
-                            <p
-                              className={`card-subtitle text-base sm:text-lg font-semibold ${themeClasses.textSecondary} mb-1`}
-                            >
-                              {exp.company}
-                            </p>
-                          </div>
-                          <div
-                            className={`w-12 h-12 ${themeClasses.skillBg} rounded-xl flex items-center justify-center`}
+                      {/* Card Header */}
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex-1 min-w-0 pr-3">
+                          <h3
+                            className={`card-title text-lg font-bold ${themeClasses.textPrimary} mb-1 truncate`}
                           >
-                            <Briefcase
-                              className={`w-6 h-6 ${themeClasses.textSecondary}`}
-                            />
-                          </div>
-                        </div>
-
-                        <div className="mb-6">
-                          <span
-                            className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${themeClasses.skillBg} ${themeClasses.textSecondary}`}
+                            {exp.position || exp.title}
+                          </h3>
+                          <p
+                            className={`card-subtitle text-sm font-semibold ${themeClasses.textSecondary} truncate`}
                           >
-                            {exp.period ||
-                              `${exp.startDate || ""} - ${
-                                exp.endDate || "Present"
-                              }`}
-                          </span>
+                            {exp.company}
+                          </p>
                         </div>
-
-                        <p
-                          className={`${themeClasses.textSecondary} leading-relaxed`}
+                        <div
+                          className={`w-10 h-10 flex-shrink-0 ${themeClasses.skillBg} rounded-xl flex items-center justify-center`}
                         >
+                          <Briefcase className={`w-5 h-5 ${themeClasses.textSecondary}`} />
+                        </div>
+                      </div>
+
+                      {/* Duration badge */}
+                      <div className="mb-4">
+                        <span
+                          className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${themeClasses.skillBg} ${themeClasses.textSecondary}`}
+                        >
+                          {exp.period || exp.duration ||
+                            `${exp.startDate || ""} – ${exp.endDate || "Present"}`}
+                        </span>
+                      </div>
+
+                      {/* Description — fixed height, scrollable */}
+                      <div className="portfolio-exp-desc-box">
+                        <p className={`card-description text-sm ${themeClasses.textSecondary} leading-relaxed`}>
                           {exp.description}
                         </p>
                       </div>
-                    </motion.div>
-
-                    {/* Spacer for alternating layout */}
-                    <div
-                      className={`hidden lg:block flex-1 ${
-                        idx % 2 === 0 ? "lg:pl-12" : "lg:pr-12"
-                      }`}
-                    ></div>
+                    </div>
                   </motion.div>
                 ))}
-              </motion.div>
+              </div>
+
+              {/* Scroll right */}
+              {profile.experience.length > 2 && (
+                <button
+                  className="portfolio-exp-arrow portfolio-exp-arrow--right"
+                  onClick={() => scrollExp(1)}
+                  aria-label="Scroll right"
+                >
+                  <ChevronRight size={22} />
+                </button>
+              )}
             </div>
           </div>
         </section>
@@ -742,7 +769,7 @@ const PortfolioView = () => {
 
       {/* Projects Section */}
       {profile.projects && profile.projects.length > 0 && (
-        <section className={`py-8 md:py-12 lg:py-20 xl:py-32 ${themeClasses.skillBg}`}>
+        <section id="projects" className={`py-8 md:py-12 lg:py-20 xl:py-32 ${themeClasses.skillBg}`}>
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             {/* Section Header */}
             <motion.div
@@ -783,94 +810,66 @@ const PortfolioView = () => {
                   variants={fadeInUp}
                 >
                   <motion.div
-                    className={`project-card ${themeClasses.cardBg} rounded-2xl border ${themeClasses.cardBorder} shadow-sm hover:shadow-2xl transition-all duration-500 overflow-hidden h-full w-full`}
+                    className={`project-card ${themeClasses.cardBg} rounded-2xl border ${themeClasses.cardBorder} shadow-sm hover:shadow-2xl transition-all duration-500 overflow-hidden h-full w-full flex flex-col`}
                     variants={cardHover}
                     whileHover="hover"
                   >
-                    {/* Project Image Placeholder */}
-                    <div
-                      className={`h-48 bg-gradient-to-br from-slate-50 to-slate-300 relative overflow-hidden`}
-                    >
-                      <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent"></div>
-                      <div className="absolute bottom-4 right-4 flex gap-2">
-                        {proj.github && (
-                          <motion.a
-                            href={proj.github}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className={`w-10 h-10 bg-white/90 backdrop-blur-sm rounded-lg flex items-center justify-center ${themeClasses.textSecondary} hover:${themeClasses.textPrimary} hover:bg-white transition-all duration-200`}
-                            whileHover={{ scale: 1.1 }}
-                            whileTap={{ scale: 0.95 }}
-                          >
-                            <Github size={18} />
-                          </motion.a>
-                        )}
-                        {proj.url && (
-                          <motion.a
-                            href={proj.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className={`w-10 h-10 bg-white/90 backdrop-blur-sm rounded-lg flex items-center justify-center ${themeClasses.textSecondary} hover:${themeClasses.textPrimary} hover:bg-white transition-all duration-200`}
-                            whileHover={{ scale: 1.1 }}
-                            whileTap={{ scale: 0.95 }}
-                          >
-                            <ExternalLink size={18} />
-                          </motion.a>
-                        )}
-                      </div>
-                    </div>
-
                     {/* Project Content */}
-                    <div className="p-4 sm:p-6 md:p-8">
-                      <div className="flex items-start justify-between mb-4">
-                        <div className="flex-1">
+                    <div className="p-4 sm:p-6 flex flex-col flex-1">
+                      {/* Title row */}
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex-1 min-w-0 pr-3">
                           <h3
-                            className={`card-title text-lg sm:text-xl md:text-2xl font-bold ${themeClasses.textPrimary} mb-2 group-hover:${themeClasses.textSecondary} transition-colors`}
+                            className={`card-title text-lg sm:text-xl font-bold ${themeClasses.textPrimary} mb-1 group-hover:${themeClasses.textSecondary} transition-colors`}
                           >
                             {proj.name || proj.title}
                           </h3>
                           {proj.date && (
                             <span
-                              className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${themeClasses.skillBg} ${themeClasses.textSecondary}`}
+                              className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${themeClasses.skillBg} ${themeClasses.textSecondary}`}
                             >
                               {proj.date}
                             </span>
                           )}
                         </div>
+                        {/* Quick-link icons next to title */}
+                        <div className="flex gap-2 flex-shrink-0">
+                          {proj.github && (
+                            <motion.a
+                              href={proj.github}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className={`w-9 h-9 rounded-lg border ${themeClasses.cardBorder} flex items-center justify-center ${themeClasses.textSecondary} hover:${themeClasses.textPrimary} transition-all duration-200`}
+                              whileHover={{ scale: 1.1 }}
+                              whileTap={{ scale: 0.95 }}
+                              title="GitHub"
+                            >
+                              <Github size={16} />
+                            </motion.a>
+                          )}
+                          {proj.url && (
+                            <motion.a
+                              href={proj.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className={`w-9 h-9 rounded-lg border ${themeClasses.cardBorder} flex items-center justify-center ${themeClasses.textSecondary} hover:${themeClasses.textPrimary} transition-all duration-200`}
+                              whileHover={{ scale: 1.1 }}
+                              whileTap={{ scale: 0.95 }}
+                              title="Live Demo"
+                            >
+                              <ExternalLink size={16} />
+                            </motion.a>
+                          )}
+                        </div>
                       </div>
 
-                      <p
-                        className={`card-description text-sm sm:text-base ${themeClasses.textSecondary} leading-relaxed mb-6`}
-                      >
-                        {proj.description}
-                      </p>
-
-                      {/* Project Links */}
-                      <div
-                        className={`flex gap-4 pt-4 border-t ${themeClasses.skillBorder}`}
-                      >
-                        {proj.github && (
-                          <a
-                            href={proj.github}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className={`inline-flex items-center ${themeClasses.textSecondary} hover:${themeClasses.textPrimary} font-medium transition-colors group`}
-                          >
-                            <Github className="mr-2 w-4 h-4 group-hover:scale-110 transition-transform" />
-                            GitHub
-                          </a>
-                        )}
-                        {proj.url && (
-                          <a
-                            href={proj.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className={`inline-flex items-center ${themeClasses.textSecondary} hover:${themeClasses.textPrimary} font-medium transition-colors group`}
-                          >
-                            <ExternalLink className="mr-2 w-4 h-4 group-hover:scale-110 transition-transform" />
-                            Live Demo
-                          </a>
-                        )}
+                      {/* Description — fixed height, scrollable */}
+                      <div className="portfolio-proj-desc-box flex-1">
+                        <p
+                          className={`card-description text-sm ${themeClasses.textSecondary} leading-relaxed`}
+                        >
+                          {proj.description}
+                        </p>
                       </div>
                     </div>
                   </motion.div>
@@ -883,7 +882,7 @@ const PortfolioView = () => {
 
       {/* Skills Section */}
       {profile.skills && profile.skills.length > 0 && (
-        <section className={`py-8 md:py-12 lg:py-20 xl:py-32 ${themeClasses.cardBg}`}>
+        <section id="skills" className={`py-8 md:py-12 lg:py-20 xl:py-32 ${themeClasses.cardBg}`}>
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             {/* Section Header */}
             <motion.div
@@ -947,7 +946,7 @@ const PortfolioView = () => {
                             ></div>
                           </div>
 
-                          <div className="flex flex-wrap gap-2">
+                          <div className="portfolio-skills-pill-box">
                             {skills.map((skill, i) => (
                               <motion.span
                                 key={i}
@@ -971,7 +970,7 @@ const PortfolioView = () => {
 
       {/* Education Section */}
       {profile.education && profile.education.length > 0 && (
-        <section className={`py-8 md:py-12 lg:py-20 xl:py-32 ${themeClasses.skillBg}`}>
+        <section id="education" className={`py-8 md:py-12 lg:py-20 xl:py-32 ${themeClasses.skillBg}`}>
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             {/* Section Header */}
             <motion.div
@@ -1052,6 +1051,7 @@ const PortfolioView = () => {
 
       {/* Contact Section */}
       <section
+        id="contact"
         className={`contact-section py-12 md:py-16 lg:py-20 xl:py-32 ${themeClasses.contactBg} text-white relative overflow-hidden`}
       >
         {/* Background Elements */}
@@ -1183,16 +1183,10 @@ const PortfolioView = () => {
 
       {/* Footer */}
       <footer
-        className={`py-8 ${themeClasses.footerBg} text-slate-400 border-t ${themeClasses.primaryBorder}`}
+        className={`py-6 ${themeClasses.footerBg} text-slate-400 border-t ${themeClasses.primaryBorder}`}
       >
-        <div className="max-w-7xl mx-auto px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-sm">
-              © {new Date().getFullYear()} {profile.fullName}. All rights
-              reserved.
-            </p>
-            <p className="text-sm">Crafted with ❤️ and modern technology</p>
-          </div>
+        <div className="max-w-7xl mx-auto px-6 lg:px-8 flex justify-center">
+          <p className="text-sm">Powered by AdvisorAI</p>
         </div>
       </footer>
     </div>
