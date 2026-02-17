@@ -3,7 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { apiService } from "../services/api";
 import { storage } from "../config/firebase";
-import { getDownloadURL, ref, uploadBytes, deleteObject } from "firebase/storage";
+import {
+  getDownloadURL,
+  ref,
+  uploadBytes,
+  deleteObject,
+} from "firebase/storage";
 import {
   Upload,
   FileText,
@@ -14,7 +19,6 @@ import {
   Zap,
   ArrowLeft,
   ArrowRight,
-
   Eye,
   ChevronLeft,
   ChevronRight,
@@ -46,7 +50,7 @@ import {
 } from "lucide-react";
 import "./ProfileCompletion.css";
 import ThemeSelector from "./ThemeSelector";
-import StaticHeader from "./StaticHeader";
+import ProfileHeader from "./ProfileHeader";
 
 const ProfileCompletion = () => {
   const [currentView, setCurrentView] = useState(0); // 0: Upload, 1: Profile Form
@@ -60,14 +64,15 @@ const ProfileCompletion = () => {
   const [progress, setProgress] = useState(0);
 
   const [showFeatures, setShowFeatures] = useState(false);
-  const [editingField, setEditingField] = useState(null);
   const [formData, setFormData] = useState({});
+  const [newSkill, setNewSkill] = useState("");
   const [profileImageUploading, setProfileImageUploading] = useState(false);
   const [uploadStep, setUploadStep] = useState(0); // 0: Select, 1: Processing, 2: Complete
   const [loadingExistingProfile, setLoadingExistingProfile] = useState(true); // Start with loading
   const [portfolioNameChecking, setPortfolioNameChecking] = useState(false);
   const [portfolioNameAvailable, setPortfolioNameAvailable] = useState(null);
-  const [portfolioNameCheckTimeout, setPortfolioNameCheckTimeout] = useState(null);
+  const [portfolioNameCheckTimeout, setPortfolioNameCheckTimeout] =
+    useState(null);
 
   const fileInputRef = useRef();
   const profilePictureInputRef = useRef();
@@ -87,22 +92,25 @@ const ProfileCompletion = () => {
     if (userProfile && !parsedData) {
       if (userProfile.profileCompleted) {
         console.log(
-          "ProfileCompletion: Profile is complete, loading existing data..."
+          "ProfileCompletion: Profile is complete, loading existing data...",
         );
         const initialFormData = {
           ...userProfile,
-          portfolioName: userProfile.portfolioName || userProfile.fullName?.toLowerCase().replace(/\s+/g, '-') || currentUser.uid,
+          portfolioName:
+            userProfile.portfolioName ||
+            userProfile.fullName?.toLowerCase().replace(/\s+/g, "-") ||
+            currentUser.uid,
           portfolioTheme: userProfile.portfolioTheme || "slate",
         };
         setFormData(initialFormData);
         setCurrentView(1); // Go directly to form view for editing
         setSuccess(
-          "Profile loaded. You can now edit your information or upload a new resume to update it."
+          "Profile loaded. You can now edit your information or upload a new resume to update it.",
         );
         setTimeout(() => setSuccess(""), 4000);
       } else {
         console.log(
-          "ProfileCompletion: Profile not complete, showing upload view."
+          "ProfileCompletion: Profile not complete, showing upload view.",
         );
         // User is new or hasn't completed their profile, show the upload view
         setCurrentView(0);
@@ -114,12 +122,39 @@ const ProfileCompletion = () => {
     }
   }, [userProfile, parsedData, navigate]);
 
+  // Handler to skip resume upload and fill manually
+  const handleSkipResume = () => {
+    console.log("User chose to fill profile manually");
+    // Initialize form with basic user data
+    const manualFormData = {
+      email: currentUser?.email || "",
+      portfolioName: currentUser?.uid || "",
+      portfolioTheme: "slate",
+      fullName: "",
+      phone: "",
+      location: "",
+      summary: "",
+      skills: [],
+      experience: [],
+      education: [],
+      projects: [],
+      certifications: [],
+    };
+    setFormData(manualFormData);
+    setCurrentView(1); // Move to profile form view
+    setSuccess("You can now fill in your information manually.");
+    setTimeout(() => setSuccess(""), 3000);
+  };
+
   // Update form data when parsed data changes
   useEffect(() => {
     if (parsedData && parsedData.data) {
       const parsedFormData = {
         ...parsedData.data,
-        portfolioName: parsedData.data.portfolioName || parsedData.data.fullName?.toLowerCase().replace(/\s+/g, '-') || currentUser.uid,
+        portfolioName:
+          parsedData.data.portfolioName ||
+          parsedData.data.fullName?.toLowerCase().replace(/\s+/g, "-") ||
+          currentUser.uid,
         portfolioTheme: parsedData.data.portfolioTheme || "slate",
       };
       setFormData(parsedFormData);
@@ -224,7 +259,7 @@ const ProfileCompletion = () => {
         console.log("✅ Resume parsed successfully:", response.data);
         setParsedData(response);
         setSuccess(
-          "Resume parsed successfully! Review your extracted data below."
+          "Resume parsed successfully! Review your extracted data below.",
         );
 
         setTimeout(() => {
@@ -249,10 +284,10 @@ const ProfileCompletion = () => {
       // Sanitize the portfolio name to be URL-friendly
       const sanitizedValue = value
         .toLowerCase()
-        .replace(/[^a-z0-9-]/g, '-') // Only allow letters, numbers, and hyphens
-        .replace(/-+/g, '-') // Replace multiple hyphens with single hyphen
-        .replace(/^-|-$/g, ''); // Remove leading/trailing hyphens
-      
+        .replace(/[^a-z0-9-]/g, "-") // Only allow letters, numbers, and hyphens
+        .replace(/-+/g, "-") // Replace multiple hyphens with single hyphen
+        .replace(/^-|-$/g, ""); // Remove leading/trailing hyphens
+
       setFormData((prev) => ({
         ...prev,
         [fieldName]: sanitizedValue,
@@ -269,7 +304,8 @@ const ProfileCompletion = () => {
         const timeoutId = setTimeout(async () => {
           try {
             setPortfolioNameChecking(true);
-            const response = await apiService.checkPortfolioNameAvailability(sanitizedValue);
+            const response =
+              await apiService.checkPortfolioNameAvailability(sanitizedValue);
             setPortfolioNameAvailable(response.available);
           } catch (error) {
             console.error("Portfolio name check failed:", error);
@@ -316,7 +352,7 @@ const ProfileCompletion = () => {
     }
 
     // Use fixed filename to automatically replace old profile picture
-    const fileExtension = selectedFile.name.split('.').pop().toLowerCase();
+    const fileExtension = selectedFile.name.split(".").pop().toLowerCase();
     const objectPath = `profile-pictures/${currentUser.uid}/profile.${fileExtension}`;
 
     try {
@@ -326,7 +362,9 @@ const ProfileCompletion = () => {
       // Delete old profile picture if it exists and has a different extension
       if (formData.profilePicture) {
         try {
-          const oldPath = new URL(formData.profilePicture).pathname.split('/o/')[1]?.split('?')[0];
+          const oldPath = new URL(formData.profilePicture).pathname
+            .split("/o/")[1]
+            ?.split("?")[0];
           if (oldPath) {
             const decodedOldPath = decodeURIComponent(oldPath);
             const oldRef = ref(storage, decodedOldPath);
@@ -366,7 +404,9 @@ const ProfileCompletion = () => {
 
     try {
       // Extract storage path from download URL and delete the file
-      const oldPath = new URL(formData.profilePicture).pathname.split('/o/')[1]?.split('?')[0];
+      const oldPath = new URL(formData.profilePicture).pathname
+        .split("/o/")[1]
+        ?.split("?")[0];
       if (oldPath) {
         const decodedOldPath = decodeURIComponent(oldPath);
         const oldRef = ref(storage, decodedOldPath);
@@ -374,7 +414,10 @@ const ProfileCompletion = () => {
         console.log("Deleted profile picture:", decodedOldPath);
       }
     } catch (deleteError) {
-      console.warn("Could not delete profile picture from storage:", deleteError);
+      console.warn(
+        "Could not delete profile picture from storage:",
+        deleteError,
+      );
       // Continue anyway - we'll clear the URL from the database
     }
 
@@ -399,7 +442,7 @@ const ProfileCompletion = () => {
           setParsing(false);
           return;
         }
-        
+
         // Check one more time before saving (in case state is stale)
         if (portfolioNameAvailable === false) {
           setError("Portfolio name is already taken. Please choose another.");
@@ -431,8 +474,6 @@ const ProfileCompletion = () => {
       setParsing(false);
     }
   };
-
-  
 
   const features = [
     {
@@ -467,168 +508,24 @@ const ProfileCompletion = () => {
     { number: "24/7", label: "AI Available", icon: <Users /> },
   ];
 
-  // Helper function to format field names
-  const formatFieldName = (fieldName) => {
-    return fieldName
-      .replace(/([A-Z])/g, " $1")
-      .replace(/^./, (str) => str.toUpperCase())
-      .trim();
-  };
-
-  // Helper function to get field icon
-  const getFieldIcon = (fieldName) => {
-    const iconMap = {
-      portfolioName: <User />,
-      fullName: <User />,
-      email: <Mail />,
-      phone: <Phone />,
-      location: <MapPin />,
-      summary: <FileText />,
-      experience: <Briefcase />,
-      education: <GraduationCap />,
-      skills: <Star />,
-      certifications: <Award />,
-      projects: <Target />,
-    };
-    return iconMap[fieldName] || <FileText />;
-  };
-
-  // Helper function to render field value
-  const renderFieldValue = (fieldName, value) => {
-    if (Array.isArray(value)) {
+  // Normalize a skill value (string or object) to a display string
+  const normalizeSkill = (skill) => {
+    if (typeof skill === "string") return skill;
+    if (typeof skill === "object" && skill !== null) {
       return (
-        <div className="array-field">
-          {value.map((item, index) => (
-            <div key={index} className="array-item">
-              {typeof item === "object" && item !== null ? (
-                <div className="object-item">
-                  {Object.entries(item)
-                    .filter(([key]) => 
-                      !["id", "last_resume_update", "role", " role", "uid", "updated_at", "email_verified", "emailVerified", "emailVerifiedAt", "created_at", "createdAt", "updatedAt", "lastResumeUpdate", "lastLoginAt", "firebaseSynced", "verification_required", "isAdmin", "admin", "userType", "status", "active", "verified", "lastLogin", "lastLoginTime", "timestamp", "dateCreated", "dateUpdated"].includes(key)
-                    )
-                    .map(([key, val]) => (
-                    <div key={key} className="object-field">
-                      <span className="field-label">
-                        {formatFieldName(key)}:
-                      </span>
-                      <span className="field-value">
-                        {String(val || "Not specified")}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <span className="field-value">
-                  {String(item || "Not specified")}
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
+        skill.name ||
+        skill.skill ||
+        skill.title ||
+        Object.values(skill).find((v) => typeof v === "string") ||
+        ""
       );
     }
-
-    if (typeof value === "object" && value !== null) {
-      return (
-        <div className="object-field">
-          {Object.entries(value)
-            .filter(([key]) => 
-              !["id", "last_resume_update", "role", " role", "uid", "updated_at", "email_verified", "emailVerified", "emailVerifiedAt", "created_at", "createdAt", "updatedAt", "lastResumeUpdate", "lastLoginAt", "firebaseSynced", "verification_required", "isAdmin", "admin", "userType", "status", "active", "verified", "lastLogin", "lastLoginTime", "timestamp", "dateCreated", "dateUpdated"].includes(key)
-            )
-            .map(([key, val]) => (
-            <div key={key} className="nested-field">
-              <span className="field-label">{formatFieldName(key)}:</span>
-              <span className="field-value">
-                {String(val || "Not specified")}
-              </span>
-            </div>
-          ))}
-        </div>
-      );
-    }
-
-    return (
-      <span className="field-value">{String(value || "Not specified")}</span>
-    );
-  };
-
-  // Modern input/textarea style
-  const inputStyle = {
-    width: "100%",
-    maxWidth: "100%",
-    fontSize: "1.08rem",
-    padding: "0.7em 1.1em",
-    borderRadius: 10,
-    border: "1.5px solid #d1d5db",
-    background: "#f7fafc",
-    color: "#232946",
-    marginBottom: 10,
-    boxShadow: "0 1px 4px rgba(102,126,234,0.06)",
-    outline: "none",
-    transition: "border-color 0.18s, box-shadow 0.18s",
-    boxSizing: "border-box",
-  };
-  const inputFocusStyle = {
-    border: "1.5px solid #38bdf8",
-    boxShadow: "0 2px 8px rgba(56,189,248,0.13)",
-    background: "#e0f2fe",
-  };
-  const labelStyle = {
-    fontWeight: 600,
-    color: "#232946",
-    marginBottom: 4,
-    fontSize: "1.01rem",
-    display: "block",
-  };
-  // Update projectCardStyle for better elevation and separation
-  const projectCardStyle = {
-    background: "#f8fafc",
-    borderRadius: 16,
-    boxShadow: "0 4px 24px rgba(56,189,248,0.13)",
-    padding: "1.5rem 1.2rem 1.2rem 1.2rem",
-    marginBottom: 24,
-    border: "2px solid #bae6fd",
-    position: "relative",
-    transition: "box-shadow 0.18s, border-color 0.18s",
-    minWidth: 0,
-    overflow: "hidden",
-    boxSizing: "border-box",
-    wordWrap: "break-word",
-    overflowWrap: "break-word",
-  };
-  const removeBtnStyle = {
-    background: "#fff0f0",
-    border: "1.5px solid #ef4444",
-    color: "#ef4444",
-    cursor: "pointer",
-    fontSize: 20,
-    position: "absolute",
-    top: 14,
-    right: 14,
-    borderRadius: 8,
-    padding: 6,
-    transition: "background 0.18s, border-color 0.18s, color 0.18s",
-    zIndex: 2,
-  };
-  const addBtnStyle = {
-    background: "linear-gradient(90deg, #38bdf8 0%, #06b6d4 100%)",
-    color: "#fff",
-    border: "none",
-    borderRadius: 8,
-    padding: "0.5rem 1.2rem",
-    fontWeight: 600,
-    fontSize: "1.01rem",
-    cursor: "pointer",
-    marginTop: 8,
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
+    return String(skill || "");
   };
 
   const renderUploadView = () => (
     <div className="view-container upload-view">
       <div className="content-wrapper">
-        
         {/* Stats Section */}
         <div className="stats-section">
           {stats.map((stat, index) => (
@@ -647,12 +544,12 @@ const ProfileCompletion = () => {
               <h2 className="upload-title">
                 {userProfile?.profileCompleted
                   ? "Update Your Resume"
-                  : "Upload Your Resume"}
+                  : "Complete Your Profile"}
               </h2>
               <p className="upload-description">
                 {userProfile?.profileCompleted
                   ? "Upload a new resume to update your profile information with the latest data"
-                  : "Drop your resume and let our advanced AI extract everything automatically"}
+                  : "Upload your resume for AI-powered extraction, or fill in your information manually"}
               </p>
             </div>
 
@@ -754,10 +651,22 @@ const ProfileCompletion = () => {
                 )}
               </button>
 
-
+              {!userProfile?.profileCompleted && (
+                <>
+                  <div className="button-separator">
+                    <span>OR</span>
+                  </div>
+                  <button
+                    className="skip-btn secondary-btn"
+                    onClick={handleSkipResume}
+                    disabled={uploading}
+                  >
+                    <Edit className="btn-icon" />
+                    Fill Manually Instead
+                  </button>
+                </>
+              )}
             </div>
-
-
           </div>
         </div>
 
@@ -778,15 +687,745 @@ const ProfileCompletion = () => {
     </div>
   );
 
-  // In renderProfileForm, update the field rendering for better UI/UX
-  const renderProfileForm = () => (
+  const renderProfileForm = () => {
+    // ── helpers ──────────────────────────────────────────────────────────────
+    const addSkill = () => {
+      const skill = newSkill.trim();
+      if (!skill) return;
+      const exists = (formData.skills || []).some(
+        (s) => normalizeSkill(s).toLowerCase() === skill.toLowerCase(),
+      );
+      if (!exists)
+        handleFormChange("skills", [...(formData.skills || []), skill]);
+      setNewSkill("");
+    };
+
+    const removeSkill = (idx) =>
+      handleFormChange(
+        "skills",
+        formData.skills.filter((_, i) => i !== idx),
+      );
+
+    const addItem = (field, template) =>
+      handleFormChange(field, [...(formData[field] || []), template]);
+
+    const removeItem = (field, idx) =>
+      handleFormChange(
+        field,
+        (formData[field] || []).filter((_, i) => i !== idx),
+      );
+
+    const updateItem = (field, idx, key, val) => {
+      const arr = [...(formData[field] || [])];
+      arr[idx] = { ...arr[idx], [key]: val };
+      handleFormChange(field, arr);
+    };
+
+    // ── section shell ─────────────────────────────────────────────────────────
+    const Section = ({ icon, title, color, count, children }) => (
+      <div className="pf-section">
+        <div className="pf-section-header">
+          <span className={`pf-section-icon pf-icon--${color}`}>{icon}</span>
+          <h3 className="pf-section-title">{title}</h3>
+          {count !== undefined && (
+            <span className="pf-section-badge">{count}</span>
+          )}
+        </div>
+        <div className="pf-section-body">{children}</div>
+      </div>
+    );
+
+    return (
+      <div className="pf-wrapper">
+        {/* ── Page Header ─────────────────────────────────────────────────── */}
+        <div className="pf-page-header">
+          <div className="pf-page-header-text">
+            <h1 className="pf-page-title">
+              {userProfile?.profileCompleted
+                ? "Edit Profile"
+                : "Complete Your Profile"}
+            </h1>
+            <p className="pf-page-subtitle">
+              {userProfile?.profileCompleted
+                ? "Update your profile information below"
+                : parsedData
+                  ? "Review and edit the information extracted from your resume"
+                  : "Fill in your details to get started on AdvisorAI"}
+            </p>
+          </div>
+          <button className="pf-back-btn" onClick={() => setCurrentView(0)}>
+            <ArrowLeft size={15} />
+            {userProfile?.profileCompleted
+              ? "Upload Resume"
+              : parsedData
+                ? "Back to Upload"
+                : "Back"}
+          </button>
+        </div>
+
+        {/* ── Portfolio info banner ───────────────────────────────────────── */}
+        <div className="pf-portfolio-banner">
+          <div className="pf-portfolio-banner-icon">
+            <ArrowUpRight size={16} />
+          </div>
+          <div className="pf-portfolio-banner-text">
+            <strong>
+              This information is publicly visible on your portfolio.
+            </strong>{" "}
+            Your portfolio is shared at{" "}
+            <span className="pf-portfolio-banner-url">
+              /portfolio/{formData.portfolioName || "your-name"}
+            </span>{" "}
+            and can be viewed by anyone with the link.
+          </div>
+          {formData.portfolioName && (
+            <a
+              href={`/portfolio/${formData.portfolioName}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="pf-portfolio-banner-link"
+            >
+              Preview <ArrowUpRight size={13} />
+            </a>
+          )}
+        </div>
+
+        {/* ── Sections ────────────────────────────────────────────────────── */}
+        <div className="pf-sections">
+          {/* Theme */}
+          <div className="pf-section pf-section--no-header">
+            <div className="pf-section-body">
+              <ThemeSelector
+                selectedTheme={formData.portfolioTheme || "slate"}
+                onThemeChange={(theme) =>
+                  handleFormChange("portfolioTheme", theme)
+                }
+              />
+            </div>
+          </div>
+
+          {/* Portfolio Identity */}
+          <Section
+            icon={<User size={16} />}
+            title="Portfolio Identity"
+            color="blue"
+          >
+            {/* Portfolio URL */}
+            <div className="pf-field pf-field--full">
+              <label className="pf-label">Portfolio URL</label>
+              <div className="pf-input-group">
+                <span className="pf-input-prefix">/portfolio/</span>
+                <input
+                  className="pf-input pf-input--inline"
+                  type="text"
+                  value={formData.portfolioName || ""}
+                  onChange={(e) =>
+                    handleFormChange("portfolioName", e.target.value)
+                  }
+                  placeholder="your-name"
+                />
+              </div>
+              {formData.portfolioName && formData.portfolioName.length >= 3 && (
+                <div className="pf-field-hint">
+                  {portfolioNameChecking ? (
+                    <span className="pf-hint pf-hint--neutral">
+                      <Loader2 size={11} className="spin-icon" /> Checking…
+                    </span>
+                  ) : portfolioNameAvailable === true ? (
+                    <span className="pf-hint pf-hint--success">
+                      <CheckCircle size={11} /> Available
+                    </span>
+                  ) : portfolioNameAvailable === false ? (
+                    <span className="pf-hint pf-hint--error">
+                      <AlertCircle size={11} /> Already taken
+                    </span>
+                  ) : null}
+                </div>
+              )}
+            </div>
+
+            {/* Profile Picture */}
+            <div
+              className="pf-field pf-field--full"
+              style={{ marginTop: "1.25rem" }}
+            >
+              <label className="pf-label">Profile Picture</label>
+              <div className="pf-avatar-row">
+                <div className="pf-avatar">
+                  {formData.profilePicture ? (
+                    <img src={formData.profilePicture} alt="Profile" />
+                  ) : (
+                    <User size={28} color="#94a3b8" />
+                  )}
+                </div>
+                <div className="pf-avatar-actions">
+                  <button
+                    className="pf-outline-btn"
+                    onClick={() => profilePictureInputRef.current?.click()}
+                    disabled={profileImageUploading}
+                  >
+                    {profileImageUploading ? (
+                      <>
+                        <Loader2 size={13} className="spin-icon" /> Uploading…
+                      </>
+                    ) : (
+                      <>
+                        <Upload size={13} />{" "}
+                        {formData.profilePicture ? "Change" : "Upload"}
+                      </>
+                    )}
+                  </button>
+                  {formData.profilePicture && (
+                    <button
+                      className="pf-outline-btn pf-outline-btn--danger"
+                      onClick={handleRemoveProfilePicture}
+                      disabled={profileImageUploading}
+                    >
+                      <Trash2 size={13} /> Remove
+                    </button>
+                  )}
+                </div>
+                <span className="pf-hint-text">
+                  JPG, PNG or WEBP · max 5 MB
+                </span>
+              </div>
+              <input
+                ref={profilePictureInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={handleProfilePictureSelect}
+                style={{ display: "none" }}
+              />
+            </div>
+          </Section>
+
+          {/* Basic Information */}
+          <Section
+            icon={<User size={16} />}
+            title="Basic Information"
+            color="purple"
+          >
+            <div className="pf-grid pf-grid--2">
+              <div className="pf-field">
+                <label className="pf-label">Full Name</label>
+                <input
+                  className="pf-input"
+                  type="text"
+                  value={formData.fullName || ""}
+                  onChange={(e) => handleFormChange("fullName", e.target.value)}
+                  placeholder="Jane Doe"
+                />
+              </div>
+              <div className="pf-field">
+                <label className="pf-label">Email Address</label>
+                <div className="pf-input-icon-wrap">
+                  <Mail size={14} className="pf-input-icon" />
+                  <input
+                    className="pf-input pf-input--padded"
+                    type="email"
+                    value={formData.email || ""}
+                    onChange={(e) => handleFormChange("email", e.target.value)}
+                    placeholder="you@example.com"
+                  />
+                </div>
+              </div>
+              <div className="pf-field">
+                <label className="pf-label">Phone</label>
+                <div className="pf-input-icon-wrap">
+                  <Phone size={14} className="pf-input-icon" />
+                  <input
+                    className="pf-input pf-input--padded"
+                    type="tel"
+                    value={formData.phone || ""}
+                    onChange={(e) => handleFormChange("phone", e.target.value)}
+                    placeholder="+1 (555) 000-0000"
+                  />
+                </div>
+              </div>
+              <div className="pf-field">
+                <label className="pf-label">Location</label>
+                <div className="pf-input-icon-wrap">
+                  <MapPin size={14} className="pf-input-icon" />
+                  <input
+                    className="pf-input pf-input--padded"
+                    type="text"
+                    value={formData.location || ""}
+                    onChange={(e) =>
+                      handleFormChange("location", e.target.value)
+                    }
+                    placeholder="New York, NY"
+                  />
+                </div>
+              </div>
+            </div>
+            <div
+              className="pf-field pf-field--full"
+              style={{ marginTop: "1.25rem" }}
+            >
+              <label className="pf-label">Professional Summary</label>
+              <textarea
+                className="pf-textarea"
+                value={formData.summary || ""}
+                onChange={(e) => handleFormChange("summary", e.target.value)}
+                placeholder="A brief professional summary about yourself…"
+                rows={4}
+              />
+            </div>
+          </Section>
+
+          {/* Social Links */}
+          <Section icon={<Star size={16} />} title="Social Links" color="teal">
+            <div className="pf-grid pf-grid--2">
+              <div className="pf-field">
+                <label className="pf-label">GitHub</label>
+                <div className="pf-input-icon-wrap">
+                  <Github size={14} className="pf-input-icon" />
+                  <input
+                    className="pf-input pf-input--padded"
+                    type="url"
+                    value={formData.github || ""}
+                    onChange={(e) => handleFormChange("github", e.target.value)}
+                    placeholder="https://github.com/username"
+                  />
+                </div>
+              </div>
+              <div className="pf-field">
+                <label className="pf-label">LinkedIn</label>
+                <div className="pf-input-icon-wrap">
+                  <Linkedin size={14} className="pf-input-icon" />
+                  <input
+                    className="pf-input pf-input--padded"
+                    type="url"
+                    value={formData.linkedin || ""}
+                    onChange={(e) =>
+                      handleFormChange("linkedin", e.target.value)
+                    }
+                    placeholder="https://linkedin.com/in/username"
+                  />
+                </div>
+              </div>
+              <div className="pf-field">
+                <label className="pf-label">Resume Link</label>
+                <div className="pf-input-icon-wrap">
+                  <FileText size={14} className="pf-input-icon" />
+                  <input
+                    className="pf-input pf-input--padded"
+                    type="url"
+                    value={formData.resumeLink || ""}
+                    onChange={(e) =>
+                      handleFormChange("resumeLink", e.target.value)
+                    }
+                    placeholder="https://drive.google.com/… or any public resume URL"
+                  />
+                </div>
+                <span className="pf-field-hint">
+                  A "Download Resume" button will appear on your portfolio when
+                  this is set.
+                </span>
+              </div>
+            </div>
+          </Section>
+
+          {/* Skills */}
+          <Section
+            icon={<Star size={16} />}
+            title="Skills"
+            color="orange"
+            count={(formData.skills || []).length}
+          >
+            <div className="pf-skills-cloud">
+              {(formData.skills || []).map((skill, i) => (
+                <span key={i} className="pf-skill-tag">
+                  {normalizeSkill(skill)}
+                  <button
+                    className="pf-skill-remove"
+                    onClick={() => removeSkill(i)}
+                    title="Remove"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+              <input
+                className="pf-skill-input"
+                value={newSkill}
+                onChange={(e) => setNewSkill(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addSkill();
+                  }
+                }}
+                placeholder="+ Add a skill, press Enter"
+              />
+            </div>
+            {newSkill.trim() && (
+              <button
+                className="pf-add-btn pf-add-btn--inline"
+                onClick={addSkill}
+              >
+                <PlusCircle size={14} /> Add "{newSkill.trim()}"
+              </button>
+            )}
+          </Section>
+
+          {/* Work Experience */}
+          <Section
+            icon={<Briefcase size={16} />}
+            title="Work Experience"
+            color="green"
+            count={(formData.experience || []).length}
+          >
+            {(formData.experience || []).map((exp, i) => (
+              <div key={i} className="pf-card">
+                <div className="pf-card-num">{i + 1}</div>
+                <button
+                  className="pf-card-remove"
+                  onClick={() => removeItem("experience", i)}
+                  title="Remove"
+                >
+                  <Trash2 size={13} />
+                </button>
+                <div className="pf-grid pf-grid--2">
+                  <div className="pf-field">
+                    <label className="pf-label">Job Title</label>
+                    <input
+                      className="pf-input"
+                      value={exp.title || exp.position || exp.role || ""}
+                      onChange={(e) =>
+                        updateItem("experience", i, "title", e.target.value)
+                      }
+                      placeholder="Software Engineer"
+                    />
+                  </div>
+                  <div className="pf-field">
+                    <label className="pf-label">Company</label>
+                    <input
+                      className="pf-input"
+                      value={exp.company || exp.organization || ""}
+                      onChange={(e) =>
+                        updateItem("experience", i, "company", e.target.value)
+                      }
+                      placeholder="Company Name"
+                    />
+                  </div>
+                  <div className="pf-field pf-field--full">
+                    <label className="pf-label">Duration</label>
+                    <input
+                      className="pf-input"
+                      value={exp.duration || exp.dates || ""}
+                      onChange={(e) =>
+                        updateItem("experience", i, "duration", e.target.value)
+                      }
+                      placeholder="Jan 2022 – Dec 2023"
+                    />
+                  </div>
+                </div>
+                <div
+                  className="pf-field pf-field--full"
+                  style={{ marginTop: "0.75rem" }}
+                >
+                  <label className="pf-label">Description</label>
+                  <textarea
+                    className="pf-textarea"
+                    value={exp.description || exp.summary || ""}
+                    onChange={(e) =>
+                      updateItem("experience", i, "description", e.target.value)
+                    }
+                    placeholder="Describe your responsibilities and achievements…"
+                    rows={3}
+                  />
+                </div>
+              </div>
+            ))}
+            <button
+              className="pf-add-btn"
+              onClick={() =>
+                addItem("experience", {
+                  title: "",
+                  company: "",
+                  duration: "",
+                  description: "",
+                })
+              }
+            >
+              <PlusCircle size={15} /> Add Experience
+            </button>
+          </Section>
+
+          {/* Education */}
+          <Section
+            icon={<GraduationCap size={16} />}
+            title="Education"
+            color="indigo"
+            count={(formData.education || []).length}
+          >
+            {(formData.education || []).map((edu, i) => (
+              <div key={i} className="pf-card">
+                <div className="pf-card-num">{i + 1}</div>
+                <button
+                  className="pf-card-remove"
+                  onClick={() => removeItem("education", i)}
+                  title="Remove"
+                >
+                  <Trash2 size={13} />
+                </button>
+                <div className="pf-grid pf-grid--2">
+                  <div className="pf-field">
+                    <label className="pf-label">Degree / Qualification</label>
+                    <input
+                      className="pf-input"
+                      value={edu.degree || edu.qualification || ""}
+                      onChange={(e) =>
+                        updateItem("education", i, "degree", e.target.value)
+                      }
+                      placeholder="B.Sc. Computer Science"
+                    />
+                  </div>
+                  <div className="pf-field">
+                    <label className="pf-label">Institution</label>
+                    <input
+                      className="pf-input"
+                      value={
+                        edu.institution || edu.university || edu.school || ""
+                      }
+                      onChange={(e) =>
+                        updateItem(
+                          "education",
+                          i,
+                          "institution",
+                          e.target.value,
+                        )
+                      }
+                      placeholder="University Name"
+                    />
+                  </div>
+                  <div className="pf-field">
+                    <label className="pf-label">Year / Duration</label>
+                    <input
+                      className="pf-input"
+                      value={edu.year || edu.dates || edu.graduation_year || ""}
+                      onChange={(e) =>
+                        updateItem("education", i, "year", e.target.value)
+                      }
+                      placeholder="2019 – 2023"
+                    />
+                  </div>
+                  <div className="pf-field">
+                    <label className="pf-label">GPA (optional)</label>
+                    <input
+                      className="pf-input"
+                      value={edu.gpa || edu.grade || ""}
+                      onChange={(e) =>
+                        updateItem("education", i, "gpa", e.target.value)
+                      }
+                      placeholder="3.8 / 4.0"
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+            <button
+              className="pf-add-btn"
+              onClick={() =>
+                addItem("education", {
+                  degree: "",
+                  institution: "",
+                  year: "",
+                  gpa: "",
+                })
+              }
+            >
+              <PlusCircle size={15} /> Add Education
+            </button>
+          </Section>
+
+          {/* Projects */}
+          <Section
+            icon={<Target size={16} />}
+            title="Projects"
+            color="pink"
+            count={(formData.projects || []).length}
+          >
+            {(formData.projects || []).map((proj, i) => (
+              <div key={i} className="pf-card">
+                <div className="pf-card-num">{i + 1}</div>
+                <button
+                  className="pf-card-remove"
+                  onClick={() => removeItem("projects", i)}
+                  title="Remove"
+                >
+                  <Trash2 size={13} />
+                </button>
+                <div className="pf-grid pf-grid--2">
+                  <div className="pf-field">
+                    <label className="pf-label">Project Name</label>
+                    <input
+                      className="pf-input"
+                      value={proj.name || proj.title || ""}
+                      onChange={(e) =>
+                        updateItem("projects", i, "name", e.target.value)
+                      }
+                      placeholder="My Awesome Project"
+                    />
+                  </div>
+                  <div className="pf-field">
+                    <label className="pf-label">GitHub / Link (optional)</label>
+                    <input
+                      className="pf-input"
+                      type="url"
+                      value={proj.github || proj.url || proj.link || ""}
+                      onChange={(e) =>
+                        updateItem("projects", i, "github", e.target.value)
+                      }
+                      placeholder="https://github.com/…"
+                    />
+                  </div>
+                  <div className="pf-field pf-field--full">
+                    <label className="pf-label">Technologies (optional)</label>
+                    <input
+                      className="pf-input"
+                      value={
+                        Array.isArray(proj.technologies)
+                          ? proj.technologies.join(", ")
+                          : proj.technologies || proj.tech_stack || ""
+                      }
+                      onChange={(e) =>
+                        updateItem(
+                          "projects",
+                          i,
+                          "technologies",
+                          e.target.value,
+                        )
+                      }
+                      placeholder="React, Python, PostgreSQL…"
+                    />
+                  </div>
+                </div>
+                <div
+                  className="pf-field pf-field--full"
+                  style={{ marginTop: "0.75rem" }}
+                >
+                  <label className="pf-label">Description</label>
+                  <textarea
+                    className="pf-textarea"
+                    value={proj.description || ""}
+                    onChange={(e) =>
+                      updateItem("projects", i, "description", e.target.value)
+                    }
+                    placeholder="Describe this project…"
+                    rows={3}
+                  />
+                </div>
+              </div>
+            ))}
+            <button
+              className="pf-add-btn"
+              onClick={() =>
+                addItem("projects", {
+                  name: "",
+                  description: "",
+                  github: "",
+                  technologies: "",
+                })
+              }
+            >
+              <PlusCircle size={15} /> Add Project
+            </button>
+          </Section>
+
+          {/* Certifications */}
+          <Section
+            icon={<Award size={16} />}
+            title="Certifications"
+            color="yellow"
+            count={(formData.certifications || []).length}
+          >
+            {(formData.certifications || []).map((cert, i) => (
+              <div key={i} className="pf-card pf-card--compact">
+                <button
+                  className="pf-card-remove"
+                  onClick={() => removeItem("certifications", i)}
+                  title="Remove"
+                >
+                  <Trash2 size={13} />
+                </button>
+                <div className="pf-grid pf-grid--2">
+                  <div className="pf-field">
+                    <label className="pf-label">Certification Name</label>
+                    <input
+                      className="pf-input"
+                      value={
+                        typeof cert === "string"
+                          ? cert
+                          : cert.name || cert.title || ""
+                      }
+                      onChange={(e) => {
+                        if (typeof cert === "string") {
+                          const arr = [...formData.certifications];
+                          arr[i] = e.target.value;
+                          handleFormChange("certifications", arr);
+                        } else {
+                          updateItem(
+                            "certifications",
+                            i,
+                            "name",
+                            e.target.value,
+                          );
+                        }
+                      }}
+                      placeholder="AWS Solutions Architect"
+                    />
+                  </div>
+                  <div className="pf-field">
+                    <label className="pf-label">Issuer / Date (optional)</label>
+                    <input
+                      className="pf-input"
+                      value={
+                        typeof cert === "string"
+                          ? ""
+                          : cert.issuer || cert.organization || cert.date || ""
+                      }
+                      onChange={(e) =>
+                        updateItem(
+                          "certifications",
+                          i,
+                          "issuer",
+                          e.target.value,
+                        )
+                      }
+                      placeholder="Amazon Web Services, 2023"
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+            <button
+              className="pf-add-btn"
+              onClick={() =>
+                addItem("certifications", { name: "", issuer: "" })
+              }
+            >
+              <PlusCircle size={15} /> Add Certification
+            </button>
+          </Section>
+        </div>
+      </div>
+    );
+  };
+
+  // ── dead legacy code removed ──────────────────────────────────────────────
+
+  const _legacyUnused = () => (
     <div className="view-container profile-form-view">
       <div className="content-wrapper">
         {/* Upload Container */}
         <div className="upload-container">
           <h1 className="page-title">Profile Information</h1>
           <p className="page-subtitle">
-            Review and edit the information extracted from your resume by our AI
+            {parsedData
+              ? "Review and edit the information extracted from your resume by our AI"
+              : "Fill in your profile information to get started"}
           </p>
         </div>
 
@@ -796,12 +1435,16 @@ const ProfileCompletion = () => {
               <h2>
                 {userProfile?.profileCompleted
                   ? "Edit Profile Information"
-                  : "Extracted Information"}
+                  : parsedData
+                    ? "Extracted Information"
+                    : "Your Profile Information"}
               </h2>
               <p>
                 {userProfile?.profileCompleted
                   ? "Update your profile information. All changes will be saved automatically."
-                  : "All fields have been automatically filled from your resume using advanced AI. You can edit any field by clicking on it."}
+                  : parsedData
+                    ? "All fields have been automatically filled from your resume using advanced AI. You can edit any field by clicking on it."
+                    : "Fill in your details below. You can always upload a resume later to auto-fill the information."}
               </p>
             </div>
 
@@ -816,13 +1459,13 @@ const ProfileCompletion = () => {
                   Upload New Resume
                 </button>
               ) : (
-                // If profile is not complete, show back to upload
+                // If profile is not complete, show back to upload/options
                 <button
                   className="back-btn secondary-btn"
                   onClick={() => setCurrentView(0)}
                 >
                   <ArrowLeft className="btn-icon" />
-                  Back to Upload
+                  {parsedData ? "Back to Upload" : "Back to Options"}
                 </button>
               )}
             </div>
@@ -849,7 +1492,9 @@ const ProfileCompletion = () => {
                 <button
                   className="edit-btn"
                   onClick={() =>
-                    setEditingField(editingField === "portfolioName" ? null : "portfolioName")
+                    setEditingField(
+                      editingField === "portfolioName" ? null : "portfolioName",
+                    )
                   }
                   title="Edit portfolio name"
                 >
@@ -869,42 +1514,96 @@ const ProfileCompletion = () => {
                       className="field-input"
                     />
                     <div className="field-help" style={{ marginTop: "0.5rem" }}>
-                      This will be your portfolio URL: <span className="portfolio-url">localhost:3000/portfolio/{formData.portfolioName || 'your-name'}</span>
+                      This will be your portfolio URL:{" "}
+                      <span className="portfolio-url">
+                        localhost:3000/portfolio/
+                        {formData.portfolioName || "your-name"}
+                      </span>
                     </div>
-                    {formData.portfolioName && formData.portfolioName.length >= 3 && (
-                      <div style={{ marginTop: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                        {portfolioNameChecking ? (
-                          <>
-                            <Loader2 className="loading-spinner" size={16} />
-                            <span style={{ fontSize: "0.9rem", color: "#64748b" }}>Checking availability...</span>
-                          </>
-                        ) : portfolioNameAvailable === true ? (
-                          <>
-                            <CheckCircle size={16} style={{ color: "#10b981" }} />
-                            <span style={{ fontSize: "0.9rem", color: "#10b981", fontWeight: 500 }}>✓ Available</span>
-                          </>
-                        ) : portfolioNameAvailable === false ? (
-                          <>
-                            <AlertCircle size={16} style={{ color: "#ef4444" }} />
-                            <span style={{ fontSize: "0.9rem", color: "#ef4444", fontWeight: 500 }}>✗ Already taken</span>
-                          </>
-                        ) : null}
-                      </div>
-                    )}
-                    {formData.portfolioName && formData.portfolioName.length < 3 && (
-                      <div style={{ marginTop: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                        <AlertCircle size={16} style={{ color: "#f59e0b" }} />
-                        <span style={{ fontSize: "0.9rem", color: "#f59e0b" }}>Minimum 3 characters required</span>
-                      </div>
-                    )}
+                    {formData.portfolioName &&
+                      formData.portfolioName.length >= 3 && (
+                        <div
+                          style={{
+                            marginTop: "0.5rem",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.5rem",
+                          }}
+                        >
+                          {portfolioNameChecking ? (
+                            <>
+                              <Loader2 className="loading-spinner" size={16} />
+                              <span
+                                style={{ fontSize: "0.9rem", color: "#64748b" }}
+                              >
+                                Checking availability...
+                              </span>
+                            </>
+                          ) : portfolioNameAvailable === true ? (
+                            <>
+                              <CheckCircle
+                                size={16}
+                                style={{ color: "#10b981" }}
+                              />
+                              <span
+                                style={{
+                                  fontSize: "0.9rem",
+                                  color: "#10b981",
+                                  fontWeight: 500,
+                                }}
+                              >
+                                ✓ Available
+                              </span>
+                            </>
+                          ) : portfolioNameAvailable === false ? (
+                            <>
+                              <AlertCircle
+                                size={16}
+                                style={{ color: "#ef4444" }}
+                              />
+                              <span
+                                style={{
+                                  fontSize: "0.9rem",
+                                  color: "#ef4444",
+                                  fontWeight: 500,
+                                }}
+                              >
+                                ✗ Already taken
+                              </span>
+                            </>
+                          ) : null}
+                        </div>
+                      )}
+                    {formData.portfolioName &&
+                      formData.portfolioName.length < 3 && (
+                        <div
+                          style={{
+                            marginTop: "0.5rem",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.5rem",
+                          }}
+                        >
+                          <AlertCircle size={16} style={{ color: "#f59e0b" }} />
+                          <span
+                            style={{ fontSize: "0.9rem", color: "#f59e0b" }}
+                          >
+                            Minimum 3 characters required
+                          </span>
+                        </div>
+                      )}
                   </div>
                 ) : (
                   <div className="view-mode">
                     {formData.portfolioName ? (
                       <div>
-                        <span className="field-value">{formData.portfolioName}</span>
+                        <span className="field-value">
+                          {formData.portfolioName}
+                        </span>
                         <div className="portfolio-link">
-                          <span className="portfolio-url">localhost:3000/portfolio/{formData.portfolioName}</span>
+                          <span className="portfolio-url">
+                            localhost:3000/portfolio/{formData.portfolioName}
+                          </span>
                         </div>
                       </div>
                     ) : (
@@ -924,7 +1623,14 @@ const ProfileCompletion = () => {
                 <h3 className="field-title">Profile Picture</h3>
               </div>
               <div className="field-content">
-                <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "1rem",
+                    flexWrap: "wrap",
+                  }}
+                >
                   <div
                     style={{
                       width: 88,
@@ -943,13 +1649,19 @@ const ProfileCompletion = () => {
                       <img
                         src={formData.profilePicture}
                         alt="Profile preview"
-                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                        }}
                       />
                     ) : (
                       <User size={30} color="#475569" />
                     )}
                   </div>
-                  <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
+                  <div
+                    style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}
+                  >
                     <button
                       type="button"
                       className="upload-btn secondary-btn"
@@ -964,7 +1676,9 @@ const ProfileCompletion = () => {
                       ) : (
                         <>
                           <Upload className="btn-icon" />
-                          {formData.profilePicture ? "Change Photo" : "Upload Photo"}
+                          {formData.profilePicture
+                            ? "Change Photo"
+                            : "Upload Photo"}
                         </>
                       )}
                     </button>
@@ -1052,7 +1766,7 @@ const ProfileCompletion = () => {
                   className="edit-btn"
                   onClick={() =>
                     setEditingField(
-                      editingField === "linkedin" ? null : "linkedin"
+                      editingField === "linkedin" ? null : "linkedin",
                     )
                   }
                   title="Edit field"
@@ -1132,7 +1846,7 @@ const ProfileCompletion = () => {
                     "timestamp",
                     "dateCreated",
                     "dateUpdated",
-                  ].includes(fieldName)
+                  ].includes(fieldName),
               )
               .map(([fieldName, fieldValue]) => (
                 <div
@@ -1143,9 +1857,7 @@ const ProfileCompletion = () => {
                   tabIndex={0}
                 >
                   <div className="field-header">
-                    <div className="field-icon">
-                      {getFieldIcon(fieldName)}
-                    </div>
+                    <div className="field-icon">{getFieldIcon(fieldName)}</div>
                     <h3 className="field-title">
                       {formatFieldName(fieldName)}
                     </h3>
@@ -1154,26 +1866,27 @@ const ProfileCompletion = () => {
                         className="edit-btn"
                         onClick={() =>
                           setEditingField(
-                            editingField === fieldName ? null : fieldName
+                            editingField === fieldName ? null : fieldName,
                           )
                         }
                         title="Edit field"
                       >
                         {editingField === fieldName ? <EyeOff /> : <Edit />}
                       </button>
-                      {editingField === fieldName && !Array.isArray(fieldValue) && (
-                        <button
-                          className="delete-btn"
-                          onClick={() => {
-                            // Clear the field value
-                            handleFormChange(fieldName, "");
-                            setEditingField(null);
-                          }}
-                          title="Clear field"
-                        >
-                          <Trash2 />
-                        </button>
-                      )}
+                      {editingField === fieldName &&
+                        !Array.isArray(fieldValue) && (
+                          <button
+                            className="delete-btn"
+                            onClick={() => {
+                              // Clear the field value
+                              handleFormChange(fieldName, "");
+                              setEditingField(null);
+                            }}
+                            title="Clear field"
+                          >
+                            <Trash2 />
+                          </button>
+                        )}
                     </div>
                   </div>
                   <div className="field-content">
@@ -1194,14 +1907,30 @@ const ProfileCompletion = () => {
                                   position: "relative",
                                 }}
                               >
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
-                                  <label style={{ ...labelStyle, marginBottom: 0, fontSize: "0.9rem", fontWeight: 600 }}>
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "center",
+                                    marginBottom: "0.5rem",
+                                  }}
+                                >
+                                  <label
+                                    style={{
+                                      ...labelStyle,
+                                      marginBottom: 0,
+                                      fontSize: "0.9rem",
+                                      fontWeight: 600,
+                                    }}
+                                  >
                                     {formatFieldName(fieldName)} {index + 1}
                                   </label>
                                   <button
                                     className="remove-item-btn"
                                     onClick={() => {
-                                      const newValue = fieldValue.filter((_, i) => i !== index);
+                                      const newValue = fieldValue.filter(
+                                        (_, i) => i !== index,
+                                      );
                                       handleFormChange(fieldName, newValue);
                                     }}
                                     style={{
@@ -1218,39 +1947,83 @@ const ProfileCompletion = () => {
                                     <Trash2 size={12} />
                                   </button>
                                 </div>
-                                
+
                                 {typeof item === "object" && item !== null ? (
-                                  <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      flexDirection: "column",
+                                      gap: "0.75rem",
+                                    }}
+                                  >
                                     {Object.entries(item)
-                                      .filter(([key]) => 
-                                        !["id", "last_resume_update", "role", " role", "uid", "updated_at", "email_verified", "emailVerified", "emailVerifiedAt", "created_at", "createdAt", "updatedAt", "lastResumeUpdate", "lastLoginAt", "firebaseSynced", "verification_required", "isAdmin", "admin", "userType", "status", "active", "verified", "lastLogin", "lastLoginTime", "timestamp", "dateCreated", "dateUpdated"].includes(key)
+                                      .filter(
+                                        ([key]) =>
+                                          ![
+                                            "id",
+                                            "last_resume_update",
+                                            "role",
+                                            " role",
+                                            "uid",
+                                            "updated_at",
+                                            "email_verified",
+                                            "emailVerified",
+                                            "emailVerifiedAt",
+                                            "created_at",
+                                            "createdAt",
+                                            "updatedAt",
+                                            "lastResumeUpdate",
+                                            "lastLoginAt",
+                                            "firebaseSynced",
+                                            "verification_required",
+                                            "isAdmin",
+                                            "admin",
+                                            "userType",
+                                            "status",
+                                            "active",
+                                            "verified",
+                                            "lastLogin",
+                                            "lastLoginTime",
+                                            "timestamp",
+                                            "dateCreated",
+                                            "dateUpdated",
+                                          ].includes(key),
                                       )
                                       .map(([key, val]) => (
-                                      <div key={key}>
-                                        <label style={{ ...labelStyle, fontSize: "0.8rem", marginBottom: "0.25rem" }}>
-                                          {formatFieldName(key)}
-                                        </label>
-                                        <input
-                                          type="text"
-                                          value={String(val || "")}
-                                          onChange={(e) => {
-                                            const newValue = [...fieldValue];
-                                            newValue[index] = {
-                                              ...item,
-                                              [key]: e.target.value,
-                                            };
-                                            handleFormChange(fieldName, newValue);
-                                          }}
-                                          placeholder={`Enter ${formatFieldName(key).toLowerCase()}`}
-                                          style={{
-                                            ...inputStyle,
-                                            fontSize: "0.875rem",
-                                            padding: "0.5rem 0.75rem",
-                                            marginBottom: 0,
-                                          }}
-                                        />
-                                      </div>
-                                    ))}
+                                        <div key={key}>
+                                          <label
+                                            style={{
+                                              ...labelStyle,
+                                              fontSize: "0.8rem",
+                                              marginBottom: "0.25rem",
+                                            }}
+                                          >
+                                            {formatFieldName(key)}
+                                          </label>
+                                          <input
+                                            type="text"
+                                            value={String(val || "")}
+                                            onChange={(e) => {
+                                              const newValue = [...fieldValue];
+                                              newValue[index] = {
+                                                ...item,
+                                                [key]: e.target.value,
+                                              };
+                                              handleFormChange(
+                                                fieldName,
+                                                newValue,
+                                              );
+                                            }}
+                                            placeholder={`Enter ${formatFieldName(key).toLowerCase()}`}
+                                            style={{
+                                              ...inputStyle,
+                                              fontSize: "0.875rem",
+                                              padding: "0.5rem 0.75rem",
+                                              marginBottom: 0,
+                                            }}
+                                          />
+                                        </div>
+                                      ))}
                                   </div>
                                 ) : (
                                   <textarea
@@ -1271,16 +2044,20 @@ const ProfileCompletion = () => {
                                 )}
                               </div>
                             ))}
-                            
+
                             <button
                               className="add-item-btn"
                               onClick={() => {
                                 const newValue = [...fieldValue];
                                 // If it's an object array, add a new object with default structure
-                                if (fieldValue.length > 0 && typeof fieldValue[0] === "object" && fieldValue[0] !== null) {
+                                if (
+                                  fieldValue.length > 0 &&
+                                  typeof fieldValue[0] === "object" &&
+                                  fieldValue[0] !== null
+                                ) {
                                   // Create a new object with the same structure as the first item
                                   const newItem = {};
-                                  Object.keys(fieldValue[0]).forEach(key => {
+                                  Object.keys(fieldValue[0]).forEach((key) => {
                                     newItem[key] = "";
                                   });
                                   newValue.push(newItem);
@@ -1297,7 +2074,8 @@ const ProfileCompletion = () => {
                                 marginTop: "0.5rem",
                               }}
                             >
-                              <PlusCircle size={16} /> Add {formatFieldName(fieldName)}
+                              <PlusCircle size={16} /> Add{" "}
+                              {formatFieldName(fieldName)}
                             </button>
                           </div>
                         ) : (
@@ -1318,7 +2096,7 @@ const ProfileCompletion = () => {
                                 }
                               }}
                               placeholder={`Enter ${formatFieldName(
-                                fieldName
+                                fieldName,
                               ).toLowerCase()}`}
                               style={{
                                 ...inputStyle,
@@ -1398,8 +2176,6 @@ const ProfileCompletion = () => {
                   </div>
                 </div>
               ))}
-
-
           </div>
         </div>
       </div>
@@ -1425,8 +2201,8 @@ const ProfileCompletion = () => {
         </div>
       )}
 
-      {/* Header Section - Using StaticHeader */}
-      <StaticHeader showSignIn={false} showSignUp={false} />
+      {/* Header */}
+      <ProfileHeader />
 
       {/* Main Content Area */}
       <div className="main-content">
@@ -1455,14 +2231,16 @@ const ProfileCompletion = () => {
               className="save-btn primary-btn floating"
               onClick={handleSaveOrUpdateProfile}
               disabled={parsing}
-              title={userProfile?.profileCompleted ? "Update Profile" : "Save & Complete Profile"}
+              title={
+                userProfile?.profileCompleted
+                  ? "Update Profile"
+                  : "Save & Complete Profile"
+              }
             >
               {parsing ? (
                 <>
                   <Loader2 className="loading-spinner" />
-                  {userProfile?.profileCompleted
-                    ? "Updating..."
-                    : "Saving..."}
+                  {userProfile?.profileCompleted ? "Updating..." : "Saving..."}
                 </>
               ) : (
                 <>
