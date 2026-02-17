@@ -60,8 +60,8 @@ const ProfileCompletion = () => {
   const [progress, setProgress] = useState(0);
 
   const [showFeatures, setShowFeatures] = useState(false);
-  const [editingField, setEditingField] = useState(null);
   const [formData, setFormData] = useState({});
+  const [newSkill, setNewSkill] = useState("");
   const [profileImageUploading, setProfileImageUploading] = useState(false);
   const [uploadStep, setUploadStep] = useState(0); // 0: Select, 1: Processing, 2: Complete
   const [loadingExistingProfile, setLoadingExistingProfile] = useState(true); // Start with loading
@@ -491,162 +491,14 @@ const ProfileCompletion = () => {
     { number: "24/7", label: "AI Available", icon: <Users /> },
   ];
 
-  // Helper function to format field names
-  const formatFieldName = (fieldName) => {
-    return fieldName
-      .replace(/([A-Z])/g, " $1")
-      .replace(/^./, (str) => str.toUpperCase())
-      .trim();
-  };
-
-  // Helper function to get field icon
-  const getFieldIcon = (fieldName) => {
-    const iconMap = {
-      portfolioName: <User />,
-      fullName: <User />,
-      email: <Mail />,
-      phone: <Phone />,
-      location: <MapPin />,
-      summary: <FileText />,
-      experience: <Briefcase />,
-      education: <GraduationCap />,
-      skills: <Star />,
-      certifications: <Award />,
-      projects: <Target />,
-    };
-    return iconMap[fieldName] || <FileText />;
-  };
-
-  // Helper function to render field value
-  const renderFieldValue = (fieldName, value) => {
-    if (Array.isArray(value)) {
-      return (
-        <div className="array-field">
-          {value.map((item, index) => (
-            <div key={index} className="array-item">
-              {typeof item === "object" && item !== null ? (
-                <div className="object-item">
-                  {Object.entries(item)
-                    .filter(([key]) => 
-                      !["id", "last_resume_update", "role", " role", "uid", "updated_at", "email_verified", "emailVerified", "emailVerifiedAt", "created_at", "createdAt", "updatedAt", "lastResumeUpdate", "lastLoginAt", "firebaseSynced", "verification_required", "isAdmin", "admin", "userType", "status", "active", "verified", "lastLogin", "lastLoginTime", "timestamp", "dateCreated", "dateUpdated"].includes(key)
-                    )
-                    .map(([key, val]) => (
-                    <div key={key} className="object-field">
-                      <span className="field-label">
-                        {formatFieldName(key)}:
-                      </span>
-                      <span className="field-value">
-                        {String(val || "Not specified")}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <span className="field-value">
-                  {String(item || "Not specified")}
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
-      );
+  // Normalize a skill value (string or object) to a display string
+  const normalizeSkill = (skill) => {
+    if (typeof skill === "string") return skill;
+    if (typeof skill === "object" && skill !== null) {
+      return skill.name || skill.skill || skill.title ||
+        Object.values(skill).find((v) => typeof v === "string") || "";
     }
-
-    if (typeof value === "object" && value !== null) {
-      return (
-        <div className="object-field">
-          {Object.entries(value)
-            .filter(([key]) => 
-              !["id", "last_resume_update", "role", " role", "uid", "updated_at", "email_verified", "emailVerified", "emailVerifiedAt", "created_at", "createdAt", "updatedAt", "lastResumeUpdate", "lastLoginAt", "firebaseSynced", "verification_required", "isAdmin", "admin", "userType", "status", "active", "verified", "lastLogin", "lastLoginTime", "timestamp", "dateCreated", "dateUpdated"].includes(key)
-            )
-            .map(([key, val]) => (
-            <div key={key} className="nested-field">
-              <span className="field-label">{formatFieldName(key)}:</span>
-              <span className="field-value">
-                {String(val || "Not specified")}
-              </span>
-            </div>
-          ))}
-        </div>
-      );
-    }
-
-    return (
-      <span className="field-value">{String(value || "Not specified")}</span>
-    );
-  };
-
-  // Modern input/textarea style
-  const inputStyle = {
-    width: "100%",
-    maxWidth: "100%",
-    fontSize: "1.08rem",
-    padding: "0.7em 1.1em",
-    borderRadius: 10,
-    border: "1.5px solid #d1d5db",
-    background: "#f7fafc",
-    color: "#232946",
-    marginBottom: 10,
-    boxShadow: "0 1px 4px rgba(102,126,234,0.06)",
-    outline: "none",
-    transition: "border-color 0.18s, box-shadow 0.18s",
-    boxSizing: "border-box",
-  };
-  const inputFocusStyle = {
-    border: "1.5px solid #38bdf8",
-    boxShadow: "0 2px 8px rgba(56,189,248,0.13)",
-    background: "#e0f2fe",
-  };
-  const labelStyle = {
-    fontWeight: 600,
-    color: "#232946",
-    marginBottom: 4,
-    fontSize: "1.01rem",
-    display: "block",
-  };
-  // Update projectCardStyle for better elevation and separation
-  const projectCardStyle = {
-    background: "#f8fafc",
-    borderRadius: 16,
-    boxShadow: "0 4px 24px rgba(56,189,248,0.13)",
-    padding: "1.5rem 1.2rem 1.2rem 1.2rem",
-    marginBottom: 24,
-    border: "2px solid #bae6fd",
-    position: "relative",
-    transition: "box-shadow 0.18s, border-color 0.18s",
-    minWidth: 0,
-    overflow: "hidden",
-    boxSizing: "border-box",
-    wordWrap: "break-word",
-    overflowWrap: "break-word",
-  };
-  const removeBtnStyle = {
-    background: "#fff0f0",
-    border: "1.5px solid #ef4444",
-    color: "#ef4444",
-    cursor: "pointer",
-    fontSize: 20,
-    position: "absolute",
-    top: 14,
-    right: 14,
-    borderRadius: 8,
-    padding: 6,
-    transition: "background 0.18s, border-color 0.18s, color 0.18s",
-    zIndex: 2,
-  };
-  const addBtnStyle = {
-    background: "linear-gradient(90deg, #38bdf8 0%, #06b6d4 100%)",
-    color: "#fff",
-    border: "none",
-    borderRadius: 8,
-    padding: "0.5rem 1.2rem",
-    fontWeight: 600,
-    fontSize: "1.01rem",
-    cursor: "pointer",
-    marginTop: 8,
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
+    return String(skill || "");
   };
 
   const renderUploadView = () => (
@@ -816,8 +668,588 @@ const ProfileCompletion = () => {
     </div>
   );
 
-  // In renderProfileForm, update the field rendering for better UI/UX
-  const renderProfileForm = () => (
+  const renderProfileForm = () => {
+    // ── helpers ──────────────────────────────────────────────────────────────
+    const addSkill = () => {
+      const skill = newSkill.trim();
+      if (!skill) return;
+      const exists = (formData.skills || []).some(
+        (s) => normalizeSkill(s).toLowerCase() === skill.toLowerCase()
+      );
+      if (!exists) handleFormChange("skills", [...(formData.skills || []), skill]);
+      setNewSkill("");
+    };
+
+    const removeSkill = (idx) =>
+      handleFormChange("skills", formData.skills.filter((_, i) => i !== idx));
+
+    const addItem = (field, template) =>
+      handleFormChange(field, [...(formData[field] || []), template]);
+
+    const removeItem = (field, idx) =>
+      handleFormChange(field, (formData[field] || []).filter((_, i) => i !== idx));
+
+    const updateItem = (field, idx, key, val) => {
+      const arr = [...(formData[field] || [])];
+      arr[idx] = { ...arr[idx], [key]: val };
+      handleFormChange(field, arr);
+    };
+
+    // ── section shell ─────────────────────────────────────────────────────────
+    const Section = ({ icon, title, color, count, children }) => (
+      <div className="pf-section">
+        <div className="pf-section-header">
+          <span className={`pf-section-icon pf-icon--${color}`}>{icon}</span>
+          <h3 className="pf-section-title">{title}</h3>
+          {count !== undefined && (
+            <span className="pf-section-badge">{count}</span>
+          )}
+        </div>
+        <div className="pf-section-body">{children}</div>
+      </div>
+    );
+
+    return (
+    <div className="pf-wrapper">
+      {/* ── Page Header ─────────────────────────────────────────────────── */}
+      <div className="pf-page-header">
+        <div className="pf-page-header-text">
+          <h1 className="pf-page-title">
+            {userProfile?.profileCompleted ? "Edit Profile" : "Complete Your Profile"}
+          </h1>
+          <p className="pf-page-subtitle">
+            {userProfile?.profileCompleted
+              ? "Update your profile information below"
+              : parsedData
+              ? "Review and edit the information extracted from your resume"
+              : "Fill in your details to get started on AdvisorAI"}
+          </p>
+        </div>
+        <button className="pf-back-btn" onClick={() => setCurrentView(0)}>
+          <ArrowLeft size={15} />
+          {userProfile?.profileCompleted
+            ? "Upload Resume"
+            : parsedData
+            ? "Back to Upload"
+            : "Back"}
+        </button>
+      </div>
+
+      {/* ── Portfolio info banner ───────────────────────────────────────── */}
+      <div className="pf-portfolio-banner">
+        <div className="pf-portfolio-banner-icon">
+          <ArrowUpRight size={16} />
+        </div>
+        <div className="pf-portfolio-banner-text">
+          <strong>This information is publicly visible on your portfolio.</strong>
+          {" "}Your portfolio is shared at{" "}
+          <span className="pf-portfolio-banner-url">
+            /portfolio/{formData.portfolioName || "your-name"}
+          </span>
+          {" "}and can be viewed by anyone with the link.
+        </div>
+        {formData.portfolioName && (
+          <a
+            href={`/portfolio/${formData.portfolioName}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="pf-portfolio-banner-link"
+          >
+            Preview <ArrowUpRight size={13} />
+          </a>
+        )}
+      </div>
+
+      {/* ── Sections ────────────────────────────────────────────────────── */}
+      <div className="pf-sections">
+
+        {/* Theme */}
+        <div className="pf-section pf-section--no-header">
+          <div className="pf-section-body">
+            <ThemeSelector
+              selectedTheme={formData.portfolioTheme || "slate"}
+              onThemeChange={(theme) => handleFormChange("portfolioTheme", theme)}
+            />
+          </div>
+        </div>
+
+        {/* Portfolio Identity */}
+        <Section icon={<User size={16} />} title="Portfolio Identity" color="blue">
+          {/* Portfolio URL */}
+          <div className="pf-field pf-field--full">
+            <label className="pf-label">Portfolio URL</label>
+            <div className="pf-input-group">
+              <span className="pf-input-prefix">/portfolio/</span>
+              <input
+                className="pf-input pf-input--inline"
+                type="text"
+                value={formData.portfolioName || ""}
+                onChange={(e) => handleFormChange("portfolioName", e.target.value)}
+                placeholder="your-name"
+              />
+            </div>
+            {formData.portfolioName && formData.portfolioName.length >= 3 && (
+              <div className="pf-field-hint">
+                {portfolioNameChecking ? (
+                  <span className="pf-hint pf-hint--neutral">
+                    <Loader2 size={11} className="spin-icon" /> Checking…
+                  </span>
+                ) : portfolioNameAvailable === true ? (
+                  <span className="pf-hint pf-hint--success">
+                    <CheckCircle size={11} /> Available
+                  </span>
+                ) : portfolioNameAvailable === false ? (
+                  <span className="pf-hint pf-hint--error">
+                    <AlertCircle size={11} /> Already taken
+                  </span>
+                ) : null}
+              </div>
+            )}
+          </div>
+
+          {/* Profile Picture */}
+          <div className="pf-field pf-field--full" style={{ marginTop: "1.25rem" }}>
+            <label className="pf-label">Profile Picture</label>
+            <div className="pf-avatar-row">
+              <div className="pf-avatar">
+                {formData.profilePicture ? (
+                  <img src={formData.profilePicture} alt="Profile" />
+                ) : (
+                  <User size={28} color="#94a3b8" />
+                )}
+              </div>
+              <div className="pf-avatar-actions">
+                <button
+                  className="pf-outline-btn"
+                  onClick={() => profilePictureInputRef.current?.click()}
+                  disabled={profileImageUploading}
+                >
+                  {profileImageUploading ? (
+                    <><Loader2 size={13} className="spin-icon" /> Uploading…</>
+                  ) : (
+                    <><Upload size={13} /> {formData.profilePicture ? "Change" : "Upload"}</>
+                  )}
+                </button>
+                {formData.profilePicture && (
+                  <button
+                    className="pf-outline-btn pf-outline-btn--danger"
+                    onClick={handleRemoveProfilePicture}
+                    disabled={profileImageUploading}
+                  >
+                    <Trash2 size={13} /> Remove
+                  </button>
+                )}
+              </div>
+              <span className="pf-hint-text">JPG, PNG or WEBP · max 5 MB</span>
+            </div>
+            <input
+              ref={profilePictureInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={handleProfilePictureSelect}
+              style={{ display: "none" }}
+            />
+          </div>
+        </Section>
+
+        {/* Basic Information */}
+        <Section icon={<User size={16} />} title="Basic Information" color="purple">
+          <div className="pf-grid pf-grid--2">
+            <div className="pf-field">
+              <label className="pf-label">Full Name</label>
+              <input
+                className="pf-input"
+                type="text"
+                value={formData.fullName || ""}
+                onChange={(e) => handleFormChange("fullName", e.target.value)}
+                placeholder="Jane Doe"
+              />
+            </div>
+            <div className="pf-field">
+              <label className="pf-label">Email Address</label>
+              <div className="pf-input-icon-wrap">
+                <Mail size={14} className="pf-input-icon" />
+                <input
+                  className="pf-input pf-input--padded"
+                  type="email"
+                  value={formData.email || ""}
+                  onChange={(e) => handleFormChange("email", e.target.value)}
+                  placeholder="you@example.com"
+                />
+              </div>
+            </div>
+            <div className="pf-field">
+              <label className="pf-label">Phone</label>
+              <div className="pf-input-icon-wrap">
+                <Phone size={14} className="pf-input-icon" />
+                <input
+                  className="pf-input pf-input--padded"
+                  type="tel"
+                  value={formData.phone || ""}
+                  onChange={(e) => handleFormChange("phone", e.target.value)}
+                  placeholder="+1 (555) 000-0000"
+                />
+              </div>
+            </div>
+            <div className="pf-field">
+              <label className="pf-label">Location</label>
+              <div className="pf-input-icon-wrap">
+                <MapPin size={14} className="pf-input-icon" />
+                <input
+                  className="pf-input pf-input--padded"
+                  type="text"
+                  value={formData.location || ""}
+                  onChange={(e) => handleFormChange("location", e.target.value)}
+                  placeholder="New York, NY"
+                />
+              </div>
+            </div>
+          </div>
+          <div className="pf-field pf-field--full" style={{ marginTop: "1.25rem" }}>
+            <label className="pf-label">Professional Summary</label>
+            <textarea
+              className="pf-textarea"
+              value={formData.summary || ""}
+              onChange={(e) => handleFormChange("summary", e.target.value)}
+              placeholder="A brief professional summary about yourself…"
+              rows={4}
+            />
+          </div>
+        </Section>
+
+        {/* Social Links */}
+        <Section icon={<Star size={16} />} title="Social Links" color="teal">
+          <div className="pf-grid pf-grid--2">
+            <div className="pf-field">
+              <label className="pf-label">GitHub</label>
+              <div className="pf-input-icon-wrap">
+                <Github size={14} className="pf-input-icon" />
+                <input
+                  className="pf-input pf-input--padded"
+                  type="url"
+                  value={formData.github || ""}
+                  onChange={(e) => handleFormChange("github", e.target.value)}
+                  placeholder="https://github.com/username"
+                />
+              </div>
+            </div>
+            <div className="pf-field">
+              <label className="pf-label">LinkedIn</label>
+              <div className="pf-input-icon-wrap">
+                <Linkedin size={14} className="pf-input-icon" />
+                <input
+                  className="pf-input pf-input--padded"
+                  type="url"
+                  value={formData.linkedin || ""}
+                  onChange={(e) => handleFormChange("linkedin", e.target.value)}
+                  placeholder="https://linkedin.com/in/username"
+                />
+              </div>
+            </div>
+          </div>
+        </Section>
+
+        {/* Skills */}
+        <Section
+          icon={<Star size={16} />}
+          title="Skills"
+          color="orange"
+          count={(formData.skills || []).length}
+        >
+          <div className="pf-skills-cloud">
+            {(formData.skills || []).map((skill, i) => (
+              <span key={i} className="pf-skill-tag">
+                {normalizeSkill(skill)}
+                <button
+                  className="pf-skill-remove"
+                  onClick={() => removeSkill(i)}
+                  title="Remove"
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+            <input
+              className="pf-skill-input"
+              value={newSkill}
+              onChange={(e) => setNewSkill(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") { e.preventDefault(); addSkill(); }
+              }}
+              placeholder="+ Add a skill, press Enter"
+            />
+          </div>
+          {newSkill.trim() && (
+            <button className="pf-add-btn pf-add-btn--inline" onClick={addSkill}>
+              <PlusCircle size={14} /> Add "{newSkill.trim()}"
+            </button>
+          )}
+        </Section>
+
+        {/* Work Experience */}
+        <Section
+          icon={<Briefcase size={16} />}
+          title="Work Experience"
+          color="green"
+          count={(formData.experience || []).length}
+        >
+          {(formData.experience || []).map((exp, i) => (
+            <div key={i} className="pf-card">
+              <div className="pf-card-num">{i + 1}</div>
+              <button
+                className="pf-card-remove"
+                onClick={() => removeItem("experience", i)}
+                title="Remove"
+              >
+                <Trash2 size={13} />
+              </button>
+              <div className="pf-grid pf-grid--2">
+                <div className="pf-field">
+                  <label className="pf-label">Job Title</label>
+                  <input
+                    className="pf-input"
+                    value={exp.title || exp.position || exp.role || ""}
+                    onChange={(e) => updateItem("experience", i, "title", e.target.value)}
+                    placeholder="Software Engineer"
+                  />
+                </div>
+                <div className="pf-field">
+                  <label className="pf-label">Company</label>
+                  <input
+                    className="pf-input"
+                    value={exp.company || exp.organization || ""}
+                    onChange={(e) => updateItem("experience", i, "company", e.target.value)}
+                    placeholder="Company Name"
+                  />
+                </div>
+                <div className="pf-field pf-field--full">
+                  <label className="pf-label">Duration</label>
+                  <input
+                    className="pf-input"
+                    value={exp.duration || exp.dates || ""}
+                    onChange={(e) => updateItem("experience", i, "duration", e.target.value)}
+                    placeholder="Jan 2022 – Dec 2023"
+                  />
+                </div>
+              </div>
+              <div className="pf-field pf-field--full" style={{ marginTop: "0.75rem" }}>
+                <label className="pf-label">Description</label>
+                <textarea
+                  className="pf-textarea"
+                  value={exp.description || exp.summary || ""}
+                  onChange={(e) => updateItem("experience", i, "description", e.target.value)}
+                  placeholder="Describe your responsibilities and achievements…"
+                  rows={3}
+                />
+              </div>
+            </div>
+          ))}
+          <button
+            className="pf-add-btn"
+            onClick={() => addItem("experience", { title: "", company: "", duration: "", description: "" })}
+          >
+            <PlusCircle size={15} /> Add Experience
+          </button>
+        </Section>
+
+        {/* Education */}
+        <Section
+          icon={<GraduationCap size={16} />}
+          title="Education"
+          color="indigo"
+          count={(formData.education || []).length}
+        >
+          {(formData.education || []).map((edu, i) => (
+            <div key={i} className="pf-card">
+              <div className="pf-card-num">{i + 1}</div>
+              <button
+                className="pf-card-remove"
+                onClick={() => removeItem("education", i)}
+                title="Remove"
+              >
+                <Trash2 size={13} />
+              </button>
+              <div className="pf-grid pf-grid--2">
+                <div className="pf-field">
+                  <label className="pf-label">Degree / Qualification</label>
+                  <input
+                    className="pf-input"
+                    value={edu.degree || edu.qualification || ""}
+                    onChange={(e) => updateItem("education", i, "degree", e.target.value)}
+                    placeholder="B.Sc. Computer Science"
+                  />
+                </div>
+                <div className="pf-field">
+                  <label className="pf-label">Institution</label>
+                  <input
+                    className="pf-input"
+                    value={edu.institution || edu.university || edu.school || ""}
+                    onChange={(e) => updateItem("education", i, "institution", e.target.value)}
+                    placeholder="University Name"
+                  />
+                </div>
+                <div className="pf-field">
+                  <label className="pf-label">Year / Duration</label>
+                  <input
+                    className="pf-input"
+                    value={edu.year || edu.dates || edu.graduation_year || ""}
+                    onChange={(e) => updateItem("education", i, "year", e.target.value)}
+                    placeholder="2019 – 2023"
+                  />
+                </div>
+                <div className="pf-field">
+                  <label className="pf-label">GPA (optional)</label>
+                  <input
+                    className="pf-input"
+                    value={edu.gpa || edu.grade || ""}
+                    onChange={(e) => updateItem("education", i, "gpa", e.target.value)}
+                    placeholder="3.8 / 4.0"
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+          <button
+            className="pf-add-btn"
+            onClick={() => addItem("education", { degree: "", institution: "", year: "", gpa: "" })}
+          >
+            <PlusCircle size={15} /> Add Education
+          </button>
+        </Section>
+
+        {/* Projects */}
+        <Section
+          icon={<Target size={16} />}
+          title="Projects"
+          color="pink"
+          count={(formData.projects || []).length}
+        >
+          {(formData.projects || []).map((proj, i) => (
+            <div key={i} className="pf-card">
+              <div className="pf-card-num">{i + 1}</div>
+              <button
+                className="pf-card-remove"
+                onClick={() => removeItem("projects", i)}
+                title="Remove"
+              >
+                <Trash2 size={13} />
+              </button>
+              <div className="pf-grid pf-grid--2">
+                <div className="pf-field">
+                  <label className="pf-label">Project Name</label>
+                  <input
+                    className="pf-input"
+                    value={proj.name || proj.title || ""}
+                    onChange={(e) => updateItem("projects", i, "name", e.target.value)}
+                    placeholder="My Awesome Project"
+                  />
+                </div>
+                <div className="pf-field">
+                  <label className="pf-label">GitHub / Link (optional)</label>
+                  <input
+                    className="pf-input"
+                    type="url"
+                    value={proj.github || proj.url || proj.link || ""}
+                    onChange={(e) => updateItem("projects", i, "github", e.target.value)}
+                    placeholder="https://github.com/…"
+                  />
+                </div>
+                <div className="pf-field pf-field--full">
+                  <label className="pf-label">Technologies (optional)</label>
+                  <input
+                    className="pf-input"
+                    value={
+                      Array.isArray(proj.technologies)
+                        ? proj.technologies.join(", ")
+                        : proj.technologies || proj.tech_stack || ""
+                    }
+                    onChange={(e) => updateItem("projects", i, "technologies", e.target.value)}
+                    placeholder="React, Python, PostgreSQL…"
+                  />
+                </div>
+              </div>
+              <div className="pf-field pf-field--full" style={{ marginTop: "0.75rem" }}>
+                <label className="pf-label">Description</label>
+                <textarea
+                  className="pf-textarea"
+                  value={proj.description || ""}
+                  onChange={(e) => updateItem("projects", i, "description", e.target.value)}
+                  placeholder="Describe this project…"
+                  rows={3}
+                />
+              </div>
+            </div>
+          ))}
+          <button
+            className="pf-add-btn"
+            onClick={() => addItem("projects", { name: "", description: "", github: "", technologies: "" })}
+          >
+            <PlusCircle size={15} /> Add Project
+          </button>
+        </Section>
+
+        {/* Certifications */}
+        <Section
+          icon={<Award size={16} />}
+          title="Certifications"
+          color="yellow"
+          count={(formData.certifications || []).length}
+        >
+          {(formData.certifications || []).map((cert, i) => (
+            <div key={i} className="pf-card pf-card--compact">
+              <button
+                className="pf-card-remove"
+                onClick={() => removeItem("certifications", i)}
+                title="Remove"
+              >
+                <Trash2 size={13} />
+              </button>
+              <div className="pf-grid pf-grid--2">
+                <div className="pf-field">
+                  <label className="pf-label">Certification Name</label>
+                  <input
+                    className="pf-input"
+                    value={typeof cert === "string" ? cert : cert.name || cert.title || ""}
+                    onChange={(e) => {
+                      if (typeof cert === "string") {
+                        const arr = [...formData.certifications];
+                        arr[i] = e.target.value;
+                        handleFormChange("certifications", arr);
+                      } else {
+                        updateItem("certifications", i, "name", e.target.value);
+                      }
+                    }}
+                    placeholder="AWS Solutions Architect"
+                  />
+                </div>
+                <div className="pf-field">
+                  <label className="pf-label">Issuer / Date (optional)</label>
+                  <input
+                    className="pf-input"
+                    value={typeof cert === "string" ? "" : cert.issuer || cert.organization || cert.date || ""}
+                    onChange={(e) => updateItem("certifications", i, "issuer", e.target.value)}
+                    placeholder="Amazon Web Services, 2023"
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+          <button
+            className="pf-add-btn"
+            onClick={() => addItem("certifications", { name: "", issuer: "" })}
+          >
+            <PlusCircle size={15} /> Add Certification
+          </button>
+        </Section>
+
+      </div>
+    </div>
+    );
+  };
+
+  // ── dead legacy code removed ──────────────────────────────────────────────
+
+  const _legacyUnused = () => (
     <div className="view-container profile-form-view">
       <div className="content-wrapper">
         {/* Upload Container */}
