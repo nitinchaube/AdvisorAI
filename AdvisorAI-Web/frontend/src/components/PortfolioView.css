@@ -23,25 +23,8 @@
   gap: 1rem;
 }
 
-.portfolio-navbar-brand {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  text-decoration: none;
-  flex-shrink: 0;
-}
-
-.portfolio-navbar-logo {
-  height: 26px;
-  width: auto;
-  object-fit: contain;
-}
-
-.portfolio-navbar-name {
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: #1e293b;
-  letter-spacing: -0.01em;
+.portfolio-navbar-inner--centered {
+  justify-content: center;
 }
 
 .portfolio-navbar-links {

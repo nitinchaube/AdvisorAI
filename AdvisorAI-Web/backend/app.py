@@ -962,7 +962,7 @@ def get_public_profile(user_id):
                 # Only include public/important fields
                 public_fields = [
                     'fullName', 'email', 'location', 'summary',
-                    'github', 'linkedin',
+                    'github', 'linkedin', 'resumeLink',
                     'experience', 'education', 'skills', 'certifications', 'projects',
                     'portfolioTheme', 'profilePicture'
                 ]
@@ -996,7 +996,7 @@ def get_portfolio_by_name(portfolio_name):
                 # Only include public/important fields
                 public_fields = [
                     'fullName', 'email', 'location', 'summary',
-                    'github', 'linkedin',
+                    'github', 'linkedin', 'resumeLink',
                     'experience', 'education', 'skills', 'certifications', 'projects',
                     'portfolioTheme', 'profilePicture'
                 ]
