@@ -56,25 +56,27 @@ const JobCard = ({ job, type = "job" }) => {
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-md hover:shadow-lg transition-all duration-300 border border-gray-100 hover:border-blue-200 p-6 group">
+    <div className="bg-white rounded-lg sm:rounded-xl shadow-md hover:shadow-lg transition-all duration-300 border border-gray-100 hover:border-blue-200 p-4 sm:p-6 group w-full min-w-0 overflow-hidden">
       {/* Header */}
-      <div className="flex justify-between items-start mb-4">
-        <div className="flex-1">
-          <h3 className="text-xl font-semibold text-gray-900 group-hover:text-blue-600 transition-colors duration-200 line-clamp-2">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 sm:gap-0 mb-4">
+        <div className="flex-1 min-w-0">
+          <h3 className="text-lg sm:text-xl font-semibold text-gray-900 group-hover:text-blue-600 transition-colors duration-200 line-clamp-2">
             {job["Position Title"] || "Position Title Not Available"}
           </h3>
-          <div className="flex items-center gap-2 mt-2">
-            <Building className="w-4 h-4 text-gray-500" />
-            <span className="text-gray-700 font-medium">
+          <div className="flex items-center gap-2 mt-2 min-w-0">
+            <Building className="w-4 h-4 text-gray-500 flex-shrink-0" />
+            <span className="text-gray-700 font-medium flex-1 min-w-0 break-words">
               {job.Company || "Company Not Specified"}
             </span>
           </div>
         </div>
-        <div className="flex flex-col items-end gap-2">
+        <div className="flex flex-col items-start sm:items-end gap-2 w-full sm:w-auto">
           {job.Date && (
             <div className="flex items-center gap-1 text-sm text-gray-500">
-              <Calendar className="w-3 h-3" />
-              <span>{new Date(job.Date).toLocaleDateString()}</span>
+              <Calendar className="w-3 h-3 flex-shrink-0" />
+              <span className="break-words">
+                {new Date(job.Date).toLocaleDateString()}
+              </span>
             </div>
           )}
           {job.Apply && (
@@ -82,7 +84,7 @@ const JobCard = ({ job, type = "job" }) => {
               href={job.Apply}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200 text-sm font-medium"
+              className="inline-flex items-center justify-center gap-1 px-3 py-2 sm:py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200 text-sm font-medium w-full sm:w-auto"
             >
               Apply <ExternalLink className="w-3 h-3" />
             </a>
@@ -91,13 +93,15 @@ const JobCard = ({ job, type = "job" }) => {
       </div>
 
       {/* Key Details Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-        <div className="space-y-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 mb-4">
+        <div className="space-y-3 min-w-0">
           {/* Location */}
           {job.Location && (
-            <div className="flex items-center gap-2 text-sm">
-              <MapPin className="w-4 h-4 text-gray-500" />
-              <span className="text-gray-600">{job.Location}</span>
+            <div className="flex items-start gap-2 text-sm min-w-0">
+              <MapPin className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
+              <span className="text-gray-600 min-w-0 break-words">
+                {job.Location}
+              </span>
             </div>
           )}
 
@@ -130,7 +134,7 @@ const JobCard = ({ job, type = "job" }) => {
           )}
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-3 min-w-0">
           {/* Salary */}
           {(job.Salary || isInternship) && (
             <div className="flex items-center gap-2 text-sm">
@@ -143,9 +147,11 @@ const JobCard = ({ job, type = "job" }) => {
 
           {/* Industry */}
           {job["Company Industry"] && (
-            <div className="flex items-center gap-2 text-sm">
-              <Briefcase className="w-4 h-4 text-gray-500" />
-              <span className="text-gray-600">{job["Company Industry"]}</span>
+            <div className="flex items-start gap-2 text-sm min-w-0">
+              <Briefcase className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
+              <span className="text-gray-600 min-w-0 break-words">
+                {job["Company Industry"]}
+              </span>
             </div>
           )}
 
