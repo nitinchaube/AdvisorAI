@@ -29,14 +29,8 @@ const AnalyticsPage = () => {
   };
 
   useEffect(() => {
-    // TODO: Fetch analytics from backend API
-    // For now, using mock data structure
     const fetchAnalytics = async () => {
       try {
-        // const data = await apiService.getAnalytics();
-        // setAnalytics(data);
-        
-        // Mock data structure - replace with actual API call
         setAnalytics({
           chatUsage: {
             totalQuestions: 127,
@@ -82,27 +76,30 @@ const AnalyticsPage = () => {
     fetchAnalytics();
   }, []);
 
-  // Consistent color scheme - blue to purple gradient theme
-  const StatCard = ({ icon: Icon, title, value, subtitle }) => {
-    return (
-      <div className="bg-white rounded-2xl shadow-lg border border-slate-200/60 p-6 hover:shadow-xl transition-all duration-300 hover:scale-[1.02]">
-        <div className="flex items-center justify-between mb-4">
-          <div className="p-3 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 text-white shadow-md">
-            <Icon className="w-6 h-6" />
-          </div>
-          {subtitle && (
-            <span className="text-xs text-slate-500 font-medium">{subtitle}</span>
-          )}
+  // ── Reusable sub-components ──────────────────────────────────────────────
+
+  const StatCard = ({ icon: Icon, title, value, subtitle }) => (
+    <div className="bg-white rounded-2xl shadow-lg border border-slate-200/60 p-6 hover:shadow-xl transition-all duration-300 hover:scale-[1.02]">
+      <div className="flex items-center justify-between mb-4">
+        <div
+          className="p-3 rounded-xl text-white shadow-md"
+          style={{
+            background: `linear-gradient(to bottom right, var(--theme-sidebar-icon-from), var(--theme-sidebar-icon-to))`,
+          }}
+        >
+          <Icon className="w-6 h-6" />
         </div>
-        <h3 className="text-2xl font-bold text-slate-900 mb-1">{value}</h3>
-        <p className="text-sm text-slate-600">{title}</p>
+        {subtitle && (
+          <span className="text-xs text-slate-500 font-medium">{subtitle}</span>
+        )}
       </div>
-    );
-  };
+      <h3 className="text-2xl font-bold text-slate-900 mb-1">{value}</h3>
+      <p className="text-sm text-slate-600">{title}</p>
+    </div>
+  );
 
   const ProgressBar = ({ label, value, max }) => {
     const percentage = (value / max) * 100;
-
     return (
       <div className="mb-4">
         <div className="flex justify-between items-center mb-2">
@@ -111,20 +108,48 @@ const AnalyticsPage = () => {
         </div>
         <div className="w-full bg-slate-200 rounded-full h-2.5">
           <div
-            className="bg-gradient-to-r from-blue-500 to-purple-600 h-2.5 rounded-full transition-all duration-500"
-            style={{ width: `${percentage}%` }}
-          ></div>
+            className="h-2.5 rounded-full transition-all duration-500"
+            style={{
+              width: `${percentage}%`,
+              background: `linear-gradient(to right, var(--theme-sidebar-icon-from), var(--theme-sidebar-icon-to))`,
+            }}
+          />
         </div>
       </div>
     );
   };
 
+  // Section heading with themed icon
+  const SectionHeading = ({ icon: Icon, children }) => (
+    <h2 className="text-2xl font-bold text-slate-900 mb-4 flex items-center">
+      <div
+        className="p-2 rounded-lg text-white mr-3"
+        style={{
+          background: `linear-gradient(to bottom right, var(--theme-sidebar-icon-from), var(--theme-sidebar-icon-to))`,
+        }}
+      >
+        <Icon className="w-5 h-5" />
+      </div>
+      {children}
+    </h2>
+  );
+
+  // ── Loading state ────────────────────────────────────────────────────────
+
   if (loading) {
     return (
       <PageLayout sidebarOpen={sidebarOpen} onMenuToggle={handleMenuToggle}>
-        <div className="h-full w-full bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 overflow-y-auto flex items-center justify-center">
+        <div
+          className="h-full w-full overflow-y-auto flex items-center justify-center"
+          style={{
+            background: `linear-gradient(to bottom right, var(--theme-page-bg-from), var(--theme-page-bg-via), var(--theme-page-bg-to))`,
+          }}
+        >
           <div className="text-center">
-            <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <div
+              className="w-16 h-16 border-4 border-t-transparent rounded-full animate-spin mx-auto mb-4"
+              style={{ borderColor: `var(--theme-accent) transparent transparent transparent` }}
+            />
             <p className="text-slate-600">Loading analytics...</p>
           </div>
         </div>
@@ -132,13 +157,29 @@ const AnalyticsPage = () => {
     );
   }
 
+  // ── Main render ──────────────────────────────────────────────────────────
+
   return (
     <PageLayout sidebarOpen={sidebarOpen} onMenuToggle={handleMenuToggle}>
-      <div className="h-full w-full bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 overflow-y-auto">
+      <div
+        className="h-full w-full overflow-y-auto"
+        style={{
+          background: `linear-gradient(to bottom right, var(--theme-page-bg-from), var(--theme-page-bg-via), var(--theme-page-bg-to))`,
+        }}
+      >
         <div className="max-w-7xl mx-auto p-6 lg:p-8">
-          {/* Header */}
+
+          {/* ── Page title ── */}
           <div className="mb-8">
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
+            <h1
+              className="text-4xl font-bold mb-2"
+              style={{
+                background: `linear-gradient(to right, var(--theme-sidebar-icon-from), var(--theme-sidebar-icon-to))`,
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                backgroundClip: "text",
+              }}
+            >
               Analytics Dashboard
             </h1>
             <p className="text-lg text-slate-700">
@@ -146,7 +187,7 @@ const AnalyticsPage = () => {
             </p>
           </div>
 
-          {/* Profile Management Links */}
+          {/* ── Profile management links ── */}
           <div className="bg-white rounded-3xl shadow-lg border border-slate-200/60 p-6 mb-8">
             <div className="grid md:grid-cols-2 gap-6">
               <div className="flex items-center justify-between">
@@ -160,7 +201,10 @@ const AnalyticsPage = () => {
                 </div>
                 <Link
                   to="/profile-data"
-                  className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-6 py-3 rounded-xl font-medium hover:from-blue-600 hover:to-purple-700 transition-all duration-200 transform hover:scale-105 shadow-md hover:shadow-lg border border-blue-300/30"
+                  className="text-white px-6 py-3 rounded-xl font-medium transition-all duration-200 transform hover:scale-105 shadow-md hover:shadow-lg"
+                  style={{
+                    background: `linear-gradient(to right, var(--theme-sidebar-icon-from), var(--theme-sidebar-icon-to))`,
+                  }}
                 >
                   View Profile Data
                 </Link>
@@ -177,7 +221,10 @@ const AnalyticsPage = () => {
                 </div>
                 <Link
                   to="/profile-completion"
-                  className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-6 py-3 rounded-xl font-medium hover:from-blue-600 hover:to-purple-700 transition-all duration-200 transform hover:scale-105 shadow-md hover:shadow-lg border border-blue-300/30"
+                  className="text-white px-6 py-3 rounded-xl font-medium transition-all duration-200 transform hover:scale-105 shadow-md hover:shadow-lg"
+                  style={{
+                    background: `linear-gradient(to right, var(--theme-sidebar-icon-from), var(--theme-sidebar-icon-to))`,
+                  }}
                 >
                   Edit Profile
                 </Link>
@@ -187,197 +234,87 @@ const AnalyticsPage = () => {
 
           {analytics && (
             <>
-              {/* Chat Usage Stats */}
+              {/* ── Chat Usage Stats ── */}
               <div className="mb-8">
-                <h2 className="text-2xl font-bold text-slate-900 mb-4 flex items-center">
-                  <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 text-white mr-3">
-                    <MessageCircle className="w-5 h-5" />
-                  </div>
-                  Chat Usage Analytics
-                </h2>
+                <SectionHeading icon={MessageCircle}>Chat Usage Analytics</SectionHeading>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  <StatCard
-                    icon={MessageCircle}
-                    title="Total Questions Asked"
-                    value={analytics.chatUsage.totalQuestions}
-                    subtitle="All time"
-                  />
-                  <StatCard
-                    icon={Activity}
-                    title="Questions This Week"
-                    value={analytics.chatUsage.questionsThisWeek}
-                    subtitle="Last 7 days"
-                  />
-                  <StatCard
-                    icon={Calendar}
-                    title="Questions This Month"
-                    value={analytics.chatUsage.questionsThisMonth}
-                    subtitle="Last 30 days"
-                  />
-                  <StatCard
-                    icon={Clock}
-                    title="Avg Response Time"
-                    value={`${analytics.chatUsage.averageResponseTime}s`}
-                    subtitle="Seconds"
-                  />
-                  <StatCard
-                    icon={History}
-                    title="Total Sessions"
-                    value={analytics.chatUsage.totalSessions}
-                    subtitle="Chat sessions"
-                  />
-                  <StatCard
-                    icon={Target}
-                    title="Avg Session Length"
-                    value={`${analytics.chatUsage.averageSessionLength}`}
-                    subtitle="Questions per session"
-                  />
+                  <StatCard icon={MessageCircle} title="Total Questions Asked" value={analytics.chatUsage.totalQuestions} subtitle="All time" />
+                  <StatCard icon={Activity} title="Questions This Week" value={analytics.chatUsage.questionsThisWeek} subtitle="Last 7 days" />
+                  <StatCard icon={Calendar} title="Questions This Month" value={analytics.chatUsage.questionsThisMonth} subtitle="Last 30 days" />
+                  <StatCard icon={Clock} title="Avg Response Time" value={`${analytics.chatUsage.averageResponseTime}s`} subtitle="Seconds" />
+                  <StatCard icon={History} title="Total Sessions" value={analytics.chatUsage.totalSessions} subtitle="Chat sessions" />
+                  <StatCard icon={Target} title="Avg Session Length" value={`${analytics.chatUsage.averageSessionLength}`} subtitle="Questions per session" />
                 </div>
               </div>
 
-              {/* Tool Usage */}
+              {/* ── Tool Usage ── */}
               <div className="mb-8">
-                <h2 className="text-2xl font-bold text-slate-900 mb-4 flex items-center">
-                  <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 text-white mr-3">
-                    <Zap className="w-5 h-5" />
-                  </div>
-                  Tool Usage Statistics
-                </h2>
+                <SectionHeading icon={Zap}>Tool Usage Statistics</SectionHeading>
                 <div className="bg-white rounded-2xl shadow-lg border border-slate-200/60 p-6">
-                  <ProgressBar
-                    label="History Tool"
-                    value={analytics.toolUsage.historyTool}
-                    max={analytics.toolUsage.historyTool}
-                  />
-                  <ProgressBar
-                    label="Chroma Database"
-                    value={analytics.toolUsage.chromaDatabase}
-                    max={analytics.toolUsage.historyTool}
-                  />
-                  <ProgressBar
-                    label="Web Search"
-                    value={analytics.toolUsage.webSearch}
-                    max={analytics.toolUsage.historyTool}
-                  />
-                  <ProgressBar
-                    label="General Tool"
-                    value={analytics.toolUsage.generalTool}
-                    max={analytics.toolUsage.historyTool}
-                  />
+                  <ProgressBar label="History Tool"     value={analytics.toolUsage.historyTool}     max={analytics.toolUsage.historyTool} />
+                  <ProgressBar label="Chroma Database"  value={analytics.toolUsage.chromaDatabase}  max={analytics.toolUsage.historyTool} />
+                  <ProgressBar label="Web Search"        value={analytics.toolUsage.webSearch}        max={analytics.toolUsage.historyTool} />
+                  <ProgressBar label="General Tool"     value={analytics.toolUsage.generalTool}     max={analytics.toolUsage.historyTool} />
                 </div>
               </div>
 
-              {/* Quality Metrics */}
+              {/* ── Quality Metrics ── */}
               <div className="mb-8">
-                <h2 className="text-2xl font-bold text-slate-900 mb-4 flex items-center">
-                  <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 text-white mr-3">
-                    <Award className="w-5 h-5" />
-                  </div>
-                  Answer Quality Metrics
-                </h2>
+                <SectionHeading icon={Award}>Answer Quality Metrics</SectionHeading>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <StatCard
-                    icon={TrendingUp}
-                    title="Avg Reflection Score"
-                    value={analytics.quality.averageReflectionScore}
-                    subtitle="Out of 10"
-                  />
-                  <StatCard
-                    icon={BarChart3}
-                    title="Refinement Rate"
-                    value={`${analytics.quality.refinementRate}%`}
-                    subtitle="Answers improved"
-                  />
-                  <StatCard
-                    icon={Award}
-                    title="High Quality Answers"
-                    value={analytics.quality.highQualityAnswers}
-                    subtitle="Score ≥ 8"
-                  />
+                  <StatCard icon={TrendingUp} title="Avg Reflection Score" value={analytics.quality.averageReflectionScore} subtitle="Out of 10" />
+                  <StatCard icon={BarChart3}  title="Refinement Rate"       value={`${analytics.quality.refinementRate}%`} subtitle="Answers improved" />
+                  <StatCard icon={Award}      title="High Quality Answers"  value={analytics.quality.highQualityAnswers} subtitle="Score ≥ 8" />
                 </div>
               </div>
 
-              {/* Topic Distribution */}
+              {/* ── Topic Distribution ── */}
               <div className="mb-8">
-                <h2 className="text-2xl font-bold text-slate-900 mb-4 flex items-center">
-                  <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 text-white mr-3">
-                    <Search className="w-5 h-5" />
-                  </div>
-                  Topic Distribution
-                </h2>
+                <SectionHeading icon={Search}>Topic Distribution</SectionHeading>
                 <div className="bg-white rounded-2xl shadow-lg border border-slate-200/60 p-6">
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-xl border border-blue-200/50">
-                      <div className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                        {analytics.topics.courses}
+                    {[
+                      { label: "Courses",      val: analytics.topics.courses },
+                      { label: "Professors",   val: analytics.topics.professors },
+                      { label: "Admissions",   val: analytics.topics.admissions },
+                      { label: "Jobs",         val: analytics.topics.jobs },
+                      { label: "Internships",  val: analytics.topics.internships },
+                      { label: "Other",        val: analytics.topics.other },
+                    ].map(({ label, val }) => (
+                      <div
+                        key={label}
+                        className="text-center p-4 rounded-xl"
+                        style={{
+                          background: `var(--theme-accent-bg)`,
+                          border: `1px solid var(--theme-sidebar-active-border)`,
+                        }}
+                      >
+                        <div
+                          className="text-3xl font-bold"
+                          style={{
+                            background: `linear-gradient(to right, var(--theme-sidebar-icon-from), var(--theme-sidebar-icon-to))`,
+                            WebkitBackgroundClip: "text",
+                            WebkitTextFillColor: "transparent",
+                            backgroundClip: "text",
+                          }}
+                        >
+                          {val}
+                        </div>
+                        <div className="text-sm text-slate-600 mt-1 font-medium">{label}</div>
                       </div>
-                      <div className="text-sm text-slate-600 mt-1 font-medium">Courses</div>
-                    </div>
-                    <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-xl border border-blue-200/50">
-                      <div className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                        {analytics.topics.professors}
-                      </div>
-                      <div className="text-sm text-slate-600 mt-1 font-medium">Professors</div>
-                    </div>
-                    <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-xl border border-blue-200/50">
-                      <div className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                        {analytics.topics.admissions}
-                      </div>
-                      <div className="text-sm text-slate-600 mt-1 font-medium">Admissions</div>
-                    </div>
-                    <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-xl border border-blue-200/50">
-                      <div className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                        {analytics.topics.jobs}
-                      </div>
-                      <div className="text-sm text-slate-600 mt-1 font-medium">Jobs</div>
-                    </div>
-                    <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-xl border border-blue-200/50">
-                      <div className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                        {analytics.topics.internships}
-                      </div>
-                      <div className="text-sm text-slate-600 mt-1 font-medium">Internships</div>
-                    </div>
-                    <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-xl border border-blue-200/50">
-                      <div className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                        {analytics.topics.other}
-                      </div>
-                      <div className="text-sm text-slate-600 mt-1 font-medium">Other</div>
-                    </div>
+                    ))}
                   </div>
                 </div>
               </div>
 
-              {/* Engagement Insights */}
+              {/* ── Engagement Insights ── */}
               <div className="mb-8">
-                <h2 className="text-2xl font-bold text-slate-900 mb-4 flex items-center">
-                  <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 text-white mr-3">
-                    <Activity className="w-5 h-5" />
-                  </div>
-                  Engagement Insights
-                </h2>
+                <SectionHeading icon={Activity}>Engagement Insights</SectionHeading>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  <StatCard
-                    icon={Calendar}
-                    title="Most Active Day"
-                    value={analytics.engagement.mostActiveDay}
-                  />
-                  <StatCard
-                    icon={Clock}
-                    title="Most Active Hour"
-                    value={analytics.engagement.mostActiveHour}
-                  />
-                  <StatCard
-                    icon={MessageCircle}
-                    title="Follow-up Rate"
-                    value={`${analytics.engagement.followUpRate}%`}
-                    subtitle="Questions with follow-ups"
-                  />
-                  <StatCard
-                    icon={Target}
-                    title="Questions/Session"
-                    value={analytics.engagement.avgQuestionsPerSession}
-                    subtitle="Average"
-                  />
+                  <StatCard icon={Calendar}      title="Most Active Day"    value={analytics.engagement.mostActiveDay} />
+                  <StatCard icon={Clock}          title="Most Active Hour"   value={analytics.engagement.mostActiveHour} />
+                  <StatCard icon={MessageCircle}  title="Follow-up Rate"     value={`${analytics.engagement.followUpRate}%`} subtitle="Questions with follow-ups" />
+                  <StatCard icon={Target}         title="Questions/Session"  value={analytics.engagement.avgQuestionsPerSession} subtitle="Average" />
                 </div>
               </div>
             </>

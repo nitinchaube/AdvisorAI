@@ -590,7 +590,7 @@ const ChatInterface = ({
       {/* Header */}
       <div className="flex-shrink-0 px-4 py-3 sm:p-6 border-b border-slate-200 bg-white">
         <div className="flex items-center space-x-2 sm:space-x-3">
-          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-blue-400 to-cyan-600 rounded-xl flex items-center justify-center shadow-md border border-blue-300/30 flex-shrink-0">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center shadow-md border border-white/20 flex-shrink-0" style={{ background: "linear-gradient(to bottom right, var(--theme-sidebar-icon-from), var(--theme-sidebar-icon-to))" }}>
             <Bot className="w-4 h-4 sm:w-6 sm:h-6 text-white" />
           </div>
           <div className="flex-1 min-w-0">
@@ -599,15 +599,16 @@ const ChatInterface = ({
           </div>
           <div className="flex items-center space-x-3">
             <div className="flex items-center space-x-2">
-              <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
-              <span className="text-sm text-blue-600 font-medium hidden sm:block">Online</span>
+              <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: "var(--theme-accent)" }}></div>
+              <span className="text-sm font-medium hidden sm:block" style={{ color: "var(--theme-accent)" }}>Online</span>
             </div>
             
             {/* New Chat Button */}
             {onNewChat && (
               <button
                 onClick={onNewChat}
-                className="p-2 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white rounded-xl transition-all duration-300 hover:shadow-md hover:scale-105 border border-blue-300/30"
+                className="p-2 text-white rounded-xl transition-all duration-300 hover:shadow-md hover:scale-105 border border-white/20"
+                style={{ background: "linear-gradient(to right, var(--theme-sidebar-icon-from), var(--theme-sidebar-icon-to))" }}
                 title="New Chat"
               >
                 <Plus className="w-5 h-5" />
@@ -617,7 +618,8 @@ const ChatInterface = ({
             {/* Chat History Toggle Button - Only visible on mobile */}
             <button
               onClick={onToggleHistory}
-              className="md:hidden p-2 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white rounded-xl transition-all duration-300 hover:shadow-md hover:scale-105 border border-blue-300/30"
+              className="md:hidden p-2 text-white rounded-xl transition-all duration-300 hover:shadow-md hover:scale-105 border border-white/20"
+              style={{ background: "linear-gradient(to right, var(--theme-sidebar-icon-from), var(--theme-sidebar-icon-to))" }}
               title="Toggle Chat History"
             >
               <History className="w-5 h-5" />
@@ -637,11 +639,10 @@ const ChatInterface = ({
                 <div className={`flex items-start space-x-2 sm:space-x-3 max-w-[90%] sm:max-w-3xl ${
                   message.type === 'user' ? 'flex-row-reverse space-x-reverse' : ''
                 }`}>
-                  <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                    message.type === 'user' 
-                      ? 'bg-gradient-to-br from-blue-500 to-purple-600 border border-blue-300/30' 
-                      : 'bg-gradient-to-br from-blue-400 to-cyan-600 border border-blue-300/30'
-                  }`}>
+                  <div
+                    className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 border border-white/20"
+                    style={{ background: "linear-gradient(to bottom right, var(--theme-sidebar-icon-from), var(--theme-sidebar-icon-to))" }}
+                  >
                     {message.type === 'user' ? (
                       <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
                     ) : (
@@ -652,13 +653,16 @@ const ChatInterface = ({
                   <div className={`flex flex-col ${
                     message.type === 'user' ? 'items-end' : 'items-start'
                   }`}>
-                    <div className={`px-4 py-3 rounded-2xl max-w-2xl ${
-                      message.type === 'user'
-                        ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-md border border-blue-300/30'
-                        : message.error
-                        ? 'bg-red-50 text-red-800 border border-red-200'
-                        : 'bg-white text-slate-800 border border-slate-200/60 shadow-sm'
-                    } ${message.isStreaming ? 'animate-pulse' : ''}`}>
+                    <div
+                      className={`px-4 py-3 rounded-2xl max-w-2xl ${
+                        message.type === 'user'
+                          ? 'shadow-sm'
+                          : message.error
+                          ? 'bg-red-50 text-red-800 border border-red-200'
+                          : 'bg-white text-slate-800 border border-slate-200/60 shadow-sm'
+                      } ${message.isStreaming ? 'animate-pulse' : ''}`}
+                      style={message.type === 'user' ? { background: '#f1f3f5', border: '1px solid #e2e5e8', color: '#1e293b' } : {}}
+                    >
                       {message.type === 'user' ? (
                         <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
                       ) : (
@@ -742,7 +746,7 @@ const ChatInterface = ({
           {isTyping && !isStreaming && (
             <div className="flex justify-start">
               <div className="flex items-start space-x-2 sm:space-x-3">
-                <div className="w-7 h-7 sm:w-8 sm:h-8 bg-gradient-to-br from-blue-400 to-cyan-600 rounded-full flex items-center justify-center border border-blue-300/30 flex-shrink-0">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border border-white/20 flex-shrink-0" style={{ background: "linear-gradient(to bottom right, var(--theme-sidebar-icon-from), var(--theme-sidebar-icon-to))" }}>
                   <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
                 </div>
                 <div className="px-4 py-3 bg-white rounded-2xl border border-slate-200/60 shadow-sm min-w-[240px] max-w-lg">
@@ -849,7 +853,8 @@ const ChatInterface = ({
               <h3 className="text-sm font-semibold text-slate-700">Sources & Information</h3>
               <button
                 onClick={() => setShowSources(false)}
-                className="px-3 py-1 text-xs bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg hover:from-blue-600 hover:to-purple-700 transition-all duration-200 hover:scale-105 border border-blue-300/30"
+                className="px-3 py-1 text-xs text-white rounded-lg transition-all duration-200 hover:scale-105 border border-white/20"
+                style={{ background: "linear-gradient(to right, var(--theme-sidebar-icon-from), var(--theme-sidebar-icon-to))" }}
               >
                 X
               </button>
@@ -926,7 +931,8 @@ const ChatInterface = ({
             <button
               onClick={handleSendMessage}
               disabled={!inputMessage.trim() || isTyping || isStreaming || !currentSessionId}
-              className="p-2.5 sm:p-3 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 disabled:from-slate-300 disabled:to-slate-400 text-white rounded-xl transition-all duration-200 shadow-md hover:shadow-lg disabled:shadow-none disabled:cursor-not-allowed hover:scale-105 border border-blue-300/30 flex-shrink-0"
+              className="p-2.5 sm:p-3 disabled:bg-slate-300 text-white rounded-xl transition-all duration-200 shadow-md hover:shadow-lg disabled:shadow-none disabled:cursor-not-allowed hover:scale-105 border border-white/20 flex-shrink-0"
+              style={{ background: "linear-gradient(to right, var(--theme-sidebar-icon-from), var(--theme-sidebar-icon-to))" }}
             >
               <Send className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
