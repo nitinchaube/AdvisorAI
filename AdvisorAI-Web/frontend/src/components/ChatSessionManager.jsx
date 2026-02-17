@@ -236,7 +236,7 @@ const ChatSessionManager = ({
       <div className="flex-shrink-0 p-4 border-b border-gray-200/50">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center shadow-lg" style={{ background: "linear-gradient(to bottom right, var(--theme-sidebar-icon-from), var(--theme-sidebar-icon-to))" }}>
               <MessageCircle className="w-5 h-5 text-white" />
             </div>
             <div>
@@ -261,7 +261,8 @@ const ChatSessionManager = ({
         <button
           onClick={handleNewChat}
           disabled={isCreatingSession}
-          className="w-full mb-4 p-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:from-blue-400 disabled:to-purple-400 text-white rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl flex items-center justify-center space-x-2 disabled:cursor-not-allowed"
+          className="w-full mb-4 p-3 text-white rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl flex items-center justify-center space-x-2 disabled:cursor-not-allowed disabled:opacity-60"
+          style={{ background: "linear-gradient(to right, var(--theme-sidebar-icon-from), var(--theme-sidebar-icon-to))" }}
         >
           {isCreatingSession ? (
             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
@@ -306,9 +307,13 @@ const ChatSessionManager = ({
                 key={session.id} 
                 className={`p-3 rounded-xl border transition-all duration-200 cursor-pointer group ${
                   currentSessionId === session.id
-                    ? 'bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200 shadow-md'
+                    ? 'shadow-md'
                     : 'bg-white/50 border-gray-200/50 hover:bg-gray-50/80 hover:border-gray-300'
                 }`}
+                style={currentSessionId === session.id ? {
+                  background: `linear-gradient(to right, var(--theme-sidebar-active-from), var(--theme-sidebar-active-to))`,
+                  borderColor: `var(--theme-sidebar-active-border)`,
+                } : {}}
                 onClick={() => handleSessionSelect(session.id)}
               >
                 <div className="flex items-start justify-between mb-2">
@@ -331,9 +336,10 @@ const ChatSessionManager = ({
                         disabled={isUpdatingSession}
                       />
                     ) : (
-                      <h3 className={`font-semibold text-sm truncate ${
-                        currentSessionId === session.id ? 'text-blue-700' : 'text-gray-900'
-                      }`}>
+                      <h3
+                        className="font-semibold text-sm truncate"
+                        style={{ color: currentSessionId === session.id ? 'var(--theme-accent-dark)' : '#111827' }}
+                      >
                         {session.title}
                       </h3>
                     )}
