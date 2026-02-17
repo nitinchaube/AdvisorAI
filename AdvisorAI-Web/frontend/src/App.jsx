@@ -2,6 +2,8 @@ import { useState } from "react";
 import reactLogo from "./assets/react.svg";
 import { Route, Routes, NavLink } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
+import { ThemeProvider } from "./contexts/ThemeContext";
+import WebsiteThemePage from "./components/WebsiteThemePage.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import PublicRoute from "./components/PublicRoute.jsx";
 import Signup from "./components/Signup.jsx";
@@ -28,6 +30,7 @@ import ForgotPassword from "./components/ForgotPassword.jsx";
 
 function App() {
   return (
+    <ThemeProvider>
     <AuthProvider>
       <div>
         <Routes>
@@ -195,6 +198,15 @@ function App() {
             }
           />
 
+          <Route
+            path="/website-theme"
+            element={
+              <ProtectedRoute requireAdmin={true}>
+                <WebsiteThemePage />
+              </ProtectedRoute>
+            }
+          />
+
           {/* Public Portfolio Route */}
           <Route path="/portfolio/:portfolioName" element={<PortfolioView />} />
 
@@ -210,6 +222,7 @@ function App() {
         </Routes>
       </div>
     </AuthProvider>
+    </ThemeProvider>
   );
 }
 

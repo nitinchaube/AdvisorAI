@@ -4,6 +4,27 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Default Theme Variables (Ocean Blue) */
+:root {
+  --theme-header-gradient: linear-gradient(to right, #1e293b, #1e3a5f);
+  --theme-accent: #3b82f6;
+  --theme-accent-dark: #2563eb;
+  --theme-accent-mid: #60a5fa;
+  --theme-accent-light: #bfdbfe;
+  --theme-accent-bg: #eff6ff;
+  --theme-page-bg-from: #f8fafc;
+  --theme-page-bg-via: #eff6ff;
+  --theme-page-bg-to: #eef2ff;
+  --theme-sidebar-active-from: rgba(147, 197, 253, 0.2);
+  --theme-sidebar-active-to: rgba(103, 232, 249, 0.2);
+  --theme-sidebar-active-border: rgba(96, 165, 250, 0.6);
+  --theme-sidebar-icon-from: #60a5fa;
+  --theme-sidebar-icon-to: #06b6d4;
+  --theme-orb-1: rgba(191, 219, 254, 0.4);
+  --theme-orb-2: rgba(221, 214, 254, 0.4);
+  --theme-orb-3: rgba(199, 210, 254, 0.3);
+}
+
 /* Custom styles */
 body {
   margin: 0;
