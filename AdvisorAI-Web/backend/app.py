@@ -1,134 +1,177 @@
+from dotenv import load_dotenv
+import os
+
+# Load environment variables FIRST — before any os.environ calls
+load_dotenv()
+
 from flask import Flask, request, session, jsonify, Response, g
 from flask_cors import CORS
 import firebase_admin
-from firebase_admin import auth, credentials
-import os
+from firebase_admin import auth
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from datetime import timedelta, datetime
 import json
-from dotenv import load_dotenv
+import threading
+from urllib.parse import urlparse
 from resume_processor import ResumeProcessor
 # Replace RAG service with chatbot integration
 from chatbot_integration import get_chatbot_integration
 from faculty_data_mapper import mongo_faculty_to_admin_format, admin_format_to_mongo_faculty
 import logging
 import time
-import redis
 from functools import wraps
 import uuid
 from langchain_core.documents import Document
+
+# Configure logging from environment
+LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO').upper()
+logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO))
+logger = logging.getLogger(__name__)
 
 # --- MongoDB Setup ---
 from pymongo import MongoClient
 from bson import ObjectId
 MONGO_URI = os.environ.get('MONGO_URI')
+MONGO_DB_NAME = os.environ.get('MONGO_DB_NAME', 'AdvisorAI')
 mongo_client = MongoClient(MONGO_URI)
-mongo_db = mongo_client['AdvisorAI']
+mongo_db = mongo_client[MONGO_DB_NAME]
 
-# Load environment variables
-load_dotenv()
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Ensure unique index on portfolioName
+try:
+    mongo_db.users.create_index("portfolioName", unique=True, sparse=True)
+    logger.info("Ensured unique index on portfolioName")
+except Exception as e:
+    logger.warning(f"Could not create unique index on portfolioName: {e}")
 
 # Initialize Flask app
 app = Flask(__name__)
 
-# Configure Flask
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-here')
-app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'your-jwt-secret-key')
-app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
+# Configure Flask — secrets MUST be set via .env in production
+_secret_key = os.environ.get('SECRET_KEY', '')
+_jwt_secret_key = os.environ.get('JWT_SECRET_KEY', '')
+_flask_env = os.environ.get('FLASK_ENV', 'development')
+
+if _flask_env == 'production' and (not _secret_key or _secret_key == 'CHANGE_ME_TO_A_RANDOM_SECRET'):
+    raise RuntimeError("SECRET_KEY must be set to a strong random value in production!")
+if _flask_env == 'production' and (not _jwt_secret_key or _jwt_secret_key == 'CHANGE_ME_TO_A_RANDOM_JWT_SECRET'):
+    raise RuntimeError("JWT_SECRET_KEY must be set to a strong random value in production!")
+
+app.config['SECRET_KEY'] = _secret_key or 'dev-only-secret-key'
+app.config['JWT_SECRET_KEY'] = _jwt_secret_key or 'dev-only-jwt-secret-key'
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(
+    hours=int(os.environ.get('JWT_ACCESS_TOKEN_EXPIRES_HOURS', '24'))
+)
 
 # Initialize extensions
 JWTManager(app)
 
+# CORS origins from environment (comma-separated)
+_cors_origins_str = os.environ.get('CORS_ORIGINS', '')
+if _cors_origins_str:
+    CORS_ORIGINS = [origin.strip() for origin in _cors_origins_str.split(',') if origin.strip()]
+else:
+    # Fallback for development
+    CORS_ORIGINS = [
+        "http://localhost:3000",
+        "http://localhost:3002",
+        "http://127.0.0.1:3002",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
+        "http://localhost:5003",
+        "http://127.0.0.1:5003",
+    ]
+
 # Enable CORS for all routes and allow credentials (cookies)
 CORS(app, 
      supports_credentials=True, 
-     origins=[
-         "http://localhost:3000",  # React dev server
-         "http://localhost:3002",  # Vite dev server (port 3002)
-         "http://127.0.0.1:3002",  # Vite dev server (port 3002 alternative)
-         "http://localhost:5173",  # Vite dev server
-         "http://127.0.0.1:5173",  # Vite dev server (alternative)
-         "http://localhost:4173",  # Vite preview server
-         "http://127.0.0.1:4173",  # Vite preview server (alternative)
-         "http://localhost:5003",  # Backend server (new port)
-         "http://127.0.0.1:5003",  # Backend server (new port alternative)
+     origins=CORS_ORIGINS,
+     allow_headers=[
+         'Content-Type', 
+         'Authorization', 
+         'X-Requested-With',
+         'Accept',
+         'Origin',
+         'Access-Control-Request-Method',
+         'Access-Control-Request-Headers'
      ],
-     allow_headers=['Content-Type', 'Authorization'],
-     methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
-)  # Make sure all frontend dev ports are included for CORS
-
+     methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+     expose_headers=['Content-Range', 'X-Content-Range']
+)
 # Initialize Resume Processor
 try:
     resume_processor = ResumeProcessor()
-    print("  Resume processor initialized")
+    logger.info("Resume processor initialized")
 except Exception as e:
-    print(f"  Resume processor initialization failed: {e}")
+    logger.error(f"Resume processor initialization failed: {e}")
     resume_processor = None
 
-# Initialize Redis for caching
-try:
-    redis_client = redis.Redis(
-        host=os.environ.get('REDIS_HOST', 'localhost'),
-        port=int(os.environ.get('REDIS_PORT', 6379)),
-        db=int(os.environ.get('REDIS_DB', 0)),
-        decode_responses=True
-    )
-    # Test Redis connection
-    redis_client.ping()
-    print("  Redis client initialized")
-except Exception as e:
-    print(f"  Redis client initialization failed: {e}")
-    redis_client = None
-
-# Restore only Firebase Admin SDK initialization for authentication
+# Initialize Firebase Admin SDK using Application Default Credentials (ADC).
+# Local dev: run `gcloud auth application-default login`
+# GCP runtime (Cloud Run / GKE / Cloud Functions): uses the default service account automatically.
 if not firebase_admin._apps:
-    cred = credentials.Certificate('firebae_key1.json')
-firebase_admin.initialize_app(cred)
+    firebase_admin.initialize_app()
+    logger.info("Firebase Admin SDK initialized with Application Default Credentials")
 
-# Cache decorator for chat sessions
-def cache_chat_sessions(expiry=3600):  # 1 hour cache
-    def decorator(f):
-        @wraps(f)
-        def decorated_function(*args, **kwargs):
-            if not redis_client:
-                return f(*args, **kwargs)
-            
-            user_id = get_jwt_identity()
-            cache_key = f"chat_sessions:{user_id}"
-            
-            # Try to get from cache first
-            cached_data = redis_client.get(cache_key)
-            if cached_data:
-                try:
-                    return json.loads(cached_data)
-                except:
-                    pass
-            
-            # If not in cache, get from database
-            result = f(*args, **kwargs)
-            
-            # Cache the result
-            try:
-                redis_client.setex(cache_key, expiry, json.dumps(result))
-            except:
-                pass
-            
-            return result
-        return decorated_function
-    return decorator
+# ────────────────────────────────────────────────────────────
+# Background Job Scraper (runs in a daemon thread)
+# Completely isolated — any crash here will NOT affect the API.
+# ────────────────────────────────────────────────────────────
+_scraper_status = {
+    "enabled": False,
+    "last_run": None,
+    "last_status": "not started",
+    "last_error": None,
+    "runs": 0,
+    "interval_hours": 0,
+}
 
-# Invalidate cache when sessions are modified
-def invalidate_chat_cache(user_id):
-    if redis_client:
+def _run_scraper_loop():
+    """Background loop that scrapes jobs & internships every N hours."""
+    interval_hours = float(os.environ.get('SCRAPER_INTERVAL_HOURS', '2'))
+    interval_seconds = interval_hours * 3600
+    _scraper_status["interval_hours"] = interval_hours
+
+    # Lazy-import so the scraper module is only loaded when enabled
+    try:
+        from github_jobs_unified_scraper import UnifiedGitHubScraper
+        scraper = UnifiedGitHubScraper()
+    except Exception as exc:
+        logger.error("Scraper import/init failed — disabling: %s", exc)
+        _scraper_status["last_status"] = f"init failed: {exc}"
+        _scraper_status["last_error"] = str(exc)
+        return  # thread exits, app keeps running
+
+    logger.info("Scraper thread started — interval: every %.1f hours", interval_hours)
+
+    while True:
         try:
-            cache_key = f"chat_sessions:{user_id}"
-            redis_client.delete(cache_key)
-        except:
-            pass
+            logger.info("Scraper: starting run #%d …", _scraper_status["runs"] + 1)
+            scraper.scrape_all_repositories()
+            _scraper_status["runs"] += 1
+            _scraper_status["last_run"] = datetime.utcnow().isoformat() + "Z"
+            _scraper_status["last_status"] = "success"
+            _scraper_status["last_error"] = None
+            logger.info("Scraper: run #%d completed ✓", _scraper_status["runs"])
+        except Exception as exc:
+            _scraper_status["last_status"] = "error"
+            _scraper_status["last_error"] = str(exc)
+            logger.error("Scraper: run failed — %s. Will retry next cycle.", exc)
+
+        # Sleep until the next cycle
+        time.sleep(interval_seconds)
+
+
+# Start the scraper thread only when enabled
+_scraper_enabled = os.environ.get('SCRAPER_ENABLED', 'true').lower() in ('true', '1', 'yes')
+if _scraper_enabled:
+    _scraper_status["enabled"] = True
+    _scraper_thread = threading.Thread(target=_run_scraper_loop, daemon=True)
+    _scraper_thread.start()
+    logger.info("Background job scraper ENABLED (daemon thread)")
+else:
+    logger.info("Background job scraper DISABLED (set SCRAPER_ENABLED=true to enable)")
 
 # Utility function to convert MongoDB documents for JSON serialization
 
@@ -149,9 +192,51 @@ def mongo_doc_to_json(doc):
         return doc
     return doc
 
+
+def sanitize_profile_picture_url(profile_picture_url):
+    """
+    Validate and sanitize profile picture URL before persistence.
+    Only HTTPS Firebase/Google Cloud Storage URLs are accepted.
+    """
+    if profile_picture_url is None:
+        return None
+    if not isinstance(profile_picture_url, str):
+        raise ValueError("Profile picture must be a string URL.")
+
+    cleaned_url = profile_picture_url.strip()
+    if cleaned_url == "":
+        return ""
+    if len(cleaned_url) > 2048:
+        raise ValueError("Profile picture URL is too long.")
+
+    parsed_url = urlparse(cleaned_url)
+    if parsed_url.scheme != "https" or not parsed_url.netloc:
+        raise ValueError("Profile picture must be a valid HTTPS URL.")
+
+    host = parsed_url.netloc.lower()
+    is_google_storage_host = host in {
+        "firebasestorage.googleapis.com",
+        "storage.googleapis.com",
+    } or host.endswith(".storage.googleapis.com")
+
+    if not is_google_storage_host:
+        raise ValueError("Profile picture URL must point to Firebase/GCP Storage.")
+
+    return cleaned_url
+
 def verify_token(f):
+    """Authentication decorator that requires a valid Firebase ID token AND verified email.
+    
+    If MongoDB says email is unverified, this decorator re-checks Firebase Auth
+    directly (the source of truth) and syncs the status before deciding.
+    This prevents stale MongoDB data from blocking users who already verified.
+    """
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # Skip authentication for OPTIONS requests (CORS preflight)
+        if request.method == 'OPTIONS':
+            return f(*args, **kwargs)
+        
         id_token = None
         if 'Authorization' in request.headers and request.headers['Authorization'].startswith('Bearer '):
             id_token = request.headers['Authorization'].split('Bearer ')[1]
@@ -163,19 +248,15 @@ def verify_token(f):
             decoded_token = auth.verify_id_token(id_token)
             user_id = decoded_token['uid']
             
-            # Get user from MongoDB to check email verification status
             if mongo_db is not None:
                 user_doc = mongo_db.users.find_one({'uid': user_id})
                 
                 # If user doesn't exist in MongoDB, create a minimal profile
                 if not user_doc:
-                    print(f"⚠️ User {user_id} not found in MongoDB, creating minimal profile")
+                    logger.warning(f"User {user_id} not found in MongoDB, creating minimal profile")
                     try:
-                        # Get user record from Firebase
                         firebase_user = auth.get_user(user_id)
-                        
-                        # Create minimal user document
-                        minimal_user_doc = {
+                        user_doc = {
                             'uid': user_id,
                             'email': firebase_user.email,
                             'fullName': firebase_user.display_name or '',
@@ -185,21 +266,41 @@ def verify_token(f):
                             'role': 'user',
                             'emailVerified': firebase_user.email_verified
                         }
-                        mongo_db.users.insert_one(minimal_user_doc)
-                        user_doc = minimal_user_doc
-                        print(f"✅ Created minimal profile for user {user_id}")
+                        mongo_db.users.insert_one(user_doc)
+                        logger.info(f"Created minimal profile for user {user_id}")
                     except Exception as create_error:
-                        print(f"❌ Failed to create minimal profile: {create_error}")
+                        logger.error(f"Failed to create minimal profile: {create_error}")
                         return jsonify({"error": "User profile creation failed"}), 500
                 
-                # Check if email is verified
+                # Check email verification – sync from Firebase if MongoDB is stale
                 if not user_doc.get('emailVerified', False):
-                    return jsonify({
-                        "error": "Email not verified",
-                        "emailVerified": False,
-                        "message": "Please verify your email before accessing this feature",
-                        "requiresEmailVerification": True
-                    }), 403
+                    # MongoDB says unverified – double-check with Firebase (source of truth)
+                    try:
+                        firebase_user = auth.get_user(user_id)
+                        if firebase_user.email_verified:
+                            # Firebase says verified – sync to MongoDB
+                            mongo_db.users.update_one(
+                                {'uid': user_id},
+                                {'$set': {'emailVerified': True, 'emailVerifiedAt': datetime.now()}}
+                            )
+                            user_doc['emailVerified'] = True
+                            logger.info(f"Synced email verification from Firebase for user {user_id}")
+                        else:
+                            # Genuinely unverified
+                            return jsonify({
+                                "error": "Email not verified",
+                                "emailVerified": False,
+                                "message": "Please verify your email before accessing this feature",
+                                "requiresEmailVerification": True
+                            }), 403
+                    except Exception as fb_error:
+                        logger.error(f"Firebase check failed during verify_token: {fb_error}")
+                        return jsonify({
+                            "error": "Email not verified",
+                            "emailVerified": False,
+                            "message": "Please verify your email before accessing this feature",
+                            "requiresEmailVerification": True
+                        }), 403
                 
                 # Store user info in g for use in the route
                 g.user = user_doc
@@ -218,6 +319,10 @@ def verify_token(f):
 def verify_email_optional(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # Skip authentication for OPTIONS requests (CORS preflight)
+        if request.method == 'OPTIONS':
+            return f(*args, **kwargs)
+        
         try:
             # Get token from Authorization header
             auth_header = request.headers.get('Authorization')
@@ -242,7 +347,7 @@ def verify_email_optional(f):
             
             return f(*args, **kwargs)
         except Exception as e:
-            print(f"  Token verification error: {str(e)}")
+            logger.error(f"Token verification error: {str(e)}")
             return jsonify({"error": "Token verification failed"}), 401
     return decorated_function
 
@@ -297,7 +402,7 @@ def debug_text_extraction():
     """Debug text extraction from resume file"""
     try:
         user_id = g.user['uid']
-        print(f"🔍 Debug text extraction for user: {user_id}")
+        logger.debug(f"Debug text extraction for user: {user_id}")
         
         if 'resume' not in request.files:
             return jsonify({"error": "No file provided"}), 400
@@ -307,7 +412,7 @@ def debug_text_extraction():
             return jsonify({"error": "No file selected"}), 400
         
         # Create uploads directory if it doesn't exist
-        upload_dir = 'uploads'
+        upload_dir = os.environ.get('UPLOAD_DIR', 'uploads')
         if not os.path.exists(upload_dir):
             os.makedirs(upload_dir)
         
@@ -334,7 +439,7 @@ def debug_text_extraction():
             return jsonify({"error": "Resume processor not available"}), 500
             
     except Exception as e:
-        print(f"  Debug extraction error: {str(e)}")
+        logger.error(f"Debug extraction error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 # Authentication endpoints
@@ -374,15 +479,11 @@ def signup():
 
         # Send email verification
         try:
-            # Generate email verification link
             verification_link = auth.generate_email_verification_link(email)
-            
-            # In a real application, you would send this link via email
-            # For now, we'll return it in the response for testing
-            print(f"Email verification link for {email}: {verification_link}")
-            
+            logger.info(f"Email verification link generated for {email}")
+            logger.debug(f"Verification link: {verification_link}")
         except Exception as email_error:
-            print(f"Failed to generate email verification link: {email_error}")
+            logger.error(f"Failed to generate email verification link: {email_error}")
 
         # Create JWT token
         access_token = create_access_token(identity=user_record.uid)
@@ -400,12 +501,16 @@ def signup():
         }), 201
 
     except Exception as e:
-        print(f"  Signup error: {str(e)}")
+        logger.error(f"Signup error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/auth/signin', methods=['POST'])
 def signin():
-    """User signin endpoint with email verification check"""
+    """User signin endpoint with email verification check.
+    
+    Uses Firebase Auth as the source of truth for email_verified
+    and syncs status to MongoDB on every sign-in.
+    """
     try:
         data = request.get_json()
         email = data.get('email')
@@ -414,36 +519,36 @@ def signin():
         if not email or not password:
             return jsonify({"error": "Email and password are required"}), 400
 
-        # Verify user credentials with Firebase
+        # Get user record from Firebase (source of truth)
         user_record = auth.get_user_by_email(email)
+        email_verified = user_record.email_verified  # Check Firebase directly
 
-        # Check email verification status from MongoDB
-        email_verified = False
         if mongo_db is not None:
             user_doc = mongo_db.users.find_one({'uid': user_record.uid})
+            
             if user_doc:
-                email_verified = user_doc.get('emailVerified', False)
-
-        # Sync Firebase custom claims with MongoDB role if needed
-        if mongo_db is not None:
-            try:
-                user_doc = mongo_db.users.find_one({'uid': user_record.uid})
-                if user_doc and user_doc.get('role'):
-                    # Check if Firebase custom claims match MongoDB role
-                    current_claims = user_record.custom_claims or {}
+                # Sync email verification from Firebase → MongoDB
+                mongo_verified = user_doc.get('emailVerified', False)
+                if email_verified and not mongo_verified:
+                    mongo_db.users.update_one(
+                        {'uid': user_record.uid},
+                        {'$set': {'emailVerified': True, 'emailVerifiedAt': datetime.now()}}
+                    )
+                    logger.info(f"Synced email verification during signin for user {user_record.uid}")
+                
+                # Sync Firebase custom claims with MongoDB role
+                try:
                     mongo_role = user_doc.get('role')
-                    
-                    if current_claims.get('role') != mongo_role:
-                        # Update Firebase custom claims to match MongoDB
-                        custom_claims = {
-                            'role': mongo_role,
-                            'admin': mongo_role == 'admin'
-                        }
-                        auth.set_custom_user_claims(user_record.uid, custom_claims)
-                        print(f"✅ Synced Firebase custom claims for user {user_record.uid}: {custom_claims}")
-            except Exception as sync_error:
-                print(f"⚠️  Firebase custom claims sync failed: {sync_error}")
-                # Continue with signin even if sync fails
+                    if mongo_role:
+                        current_claims = user_record.custom_claims or {}
+                        if current_claims.get('role') != mongo_role:
+                            auth.set_custom_user_claims(user_record.uid, {
+                                'role': mongo_role,
+                                'admin': mongo_role == 'admin'
+                            })
+                            logger.info(f"Synced Firebase custom claims for user {user_record.uid}")
+                except Exception as sync_error:
+                    logger.warning(f"Firebase custom claims sync failed: {sync_error}")
 
         # Create JWT token
         access_token = create_access_token(identity=user_record.uid)
@@ -461,12 +566,16 @@ def signin():
         }), 200
 
     except Exception as e:
-        print(f"  Signin error: {str(e)}")
+        logger.error(f"Signin error: {str(e)}")
         return jsonify({"error": "Invalid credentials"}), 401
 
 @app.route('/api/auth/signin-with-token', methods=['POST'])
 def signin_with_token():
-    """Signin with Firebase ID token and check email verification"""
+    """Signin with Firebase ID token and check email verification.
+    
+    Always checks Firebase Auth directly for email_verified status
+    and syncs it to MongoDB so both stay in sync.
+    """
     try:
         data = request.get_json()
         id_token = data.get('idToken')
@@ -478,36 +587,36 @@ def signin_with_token():
         decoded_token = auth.verify_id_token(id_token)
         user_id = decoded_token['uid']
 
-        # Get user record
+        # Get user record from Firebase (source of truth for email_verified)
         user_record = auth.get_user(user_id)
+        email_verified = user_record.email_verified  # Check Firebase directly
 
-        # Check email verification status from MongoDB
-        email_verified = False
         if mongo_db is not None:
             user_doc = mongo_db.users.find_one({'uid': user_id})
+            
             if user_doc:
-                email_verified = user_doc.get('emailVerified', False)
-
-        # Sync Firebase custom claims with MongoDB role if needed
-        if mongo_db is not None:
-            try:
-                user_doc = mongo_db.users.find_one({'uid': user_id})
-                if user_doc and user_doc.get('role'):
-                    # Check if Firebase custom claims match MongoDB role
-                    current_claims = user_record.custom_claims or {}
+                # Sync email verification: if Firebase says verified, update MongoDB
+                mongo_verified = user_doc.get('emailVerified', False)
+                if email_verified and not mongo_verified:
+                    mongo_db.users.update_one(
+                        {'uid': user_id},
+                        {'$set': {'emailVerified': True, 'emailVerifiedAt': datetime.now()}}
+                    )
+                    logger.info(f"Synced email verification during signin for user {user_id}")
+                
+                # Sync Firebase custom claims with MongoDB role
+                try:
                     mongo_role = user_doc.get('role')
-                    
-                    if current_claims.get('role') != mongo_role:
-                        # Update Firebase custom claims to match MongoDB
-                        custom_claims = {
-                            'role': mongo_role,
-                            'admin': mongo_role == 'admin'
-                        }
-                        auth.set_custom_user_claims(user_id, custom_claims)
-                        print(f"✅ Synced Firebase custom claims for user {user_id}: {custom_claims}")
-            except Exception as sync_error:
-                print(f"⚠️  Firebase custom claims sync failed: {sync_error}")
-                # Continue with signin even if sync fails
+                    if mongo_role:
+                        current_claims = user_record.custom_claims or {}
+                        if current_claims.get('role') != mongo_role:
+                            auth.set_custom_user_claims(user_id, {
+                                'role': mongo_role,
+                                'admin': mongo_role == 'admin'
+                            })
+                            logger.info(f"Synced Firebase custom claims for user {user_id}")
+                except Exception as sync_error:
+                    logger.warning(f"Firebase custom claims sync failed: {sync_error}")
 
         return jsonify({
             "message": "Signin successful",
@@ -521,7 +630,7 @@ def signin_with_token():
         }), 200
 
     except Exception as e:
-        print(f"  Signin with token error: {str(e)}")
+        logger.error(f"Signin with token error: {str(e)}")
         return jsonify({"error": "Invalid token"}), 401
 
 # Email verification endpoints
@@ -534,10 +643,10 @@ def send_verification_email():
         email = g.user['email']
         
         # Configure action code settings with 2-day expiration
+        frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
         action_code_settings = auth.ActionCodeSettings(
-            url='http://localhost:3000/email-verification',  # Your frontend URL
+            url=f'{frontend_url}/email-verification',
             handle_code_in_app=True,
-            # Firebase default is 3 days, but we'll set it explicitly
             dynamic_link_domain=None  # Disable dynamic links
         )
         
@@ -547,23 +656,32 @@ def send_verification_email():
             action_code_settings=action_code_settings
         )
         
-        # In production, send this via email service
-        print(f"Email verification link for {email}: {verification_link}")
-        print(f"Link expires in 2 days (Firebase default)")
+        # In production, send this via email service (e.g. SendGrid, SES)
+        logger.info(f"Email verification link generated for {email}")
+        logger.debug(f"Verification link: {verification_link}")
         
-        return jsonify({
+        response_data = {
             "message": "Verification email sent successfully",
-            "verification_link": verification_link,  # Remove in production
             "expires_in_days": 2
-        }), 200
+        }
+        # Only include the link in non-production environments for testing
+        if os.environ.get('FLASK_ENV', 'development') != 'production':
+            response_data["verification_link"] = verification_link
+        
+        return jsonify(response_data), 200
         
     except Exception as e:
-        print(f"  Send verification email error: {str(e)}")
+        logger.error(f"Send verification email error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/auth/verify-email', methods=['POST'])
 def verify_email():
-    """Verify user's email address"""
+    """Verify user's email address.
+    
+    Checks Firebase Auth directly (not the stale ID token) because the
+    email_verified claim in an ID token is only set at token-issue time
+    and won't reflect a verification that happened after the token was minted.
+    """
     try:
         data = request.get_json()
         id_token = data.get('idToken')
@@ -571,26 +689,30 @@ def verify_email():
         if not id_token:
             return jsonify({"error": "ID token is required"}), 400
         
-        # Verify the ID token with Firebase
         try:
+            # Decode token just to get the uid
             decoded_token = auth.verify_id_token(id_token)
             user_id = decoded_token['uid']
-            email_verified = decoded_token.get('email_verified', False)
+            
+            # Check Firebase Auth directly (source of truth) instead of
+            # the cached email_verified claim in the ID token
+            firebase_user = auth.get_user(user_id)
+            email_verified = firebase_user.email_verified
             
             if not email_verified:
                 return jsonify({
-                    "error": "Email not verified in Firebase",
+                    "error": "Email not yet verified in Firebase",
                     "emailVerified": False,
-                    "message": "Please verify your email before accessing this feature"
+                    "message": "Please click the verification link in your email first"
                 }), 400
             
-            # Update MongoDB with verified status
+            # Sync verified status to MongoDB
             if mongo_db is not None:
                 mongo_db.users.update_one(
                     {'uid': user_id},
                     {'$set': {'emailVerified': True, 'emailVerifiedAt': datetime.now()}}
                 )
-                print(f"✅ Email verified for user {user_id}")
+                logger.info(f"Email verified and synced for user {user_id}")
             
             return jsonify({
                 "message": "Email verified successfully",
@@ -600,20 +722,36 @@ def verify_email():
         except auth.InvalidIdTokenError:
             return jsonify({"error": "Invalid ID token"}), 401
         except Exception as e:
-            print(f"  Token verification error: {str(e)}")
+            logger.error(f"Token verification error: {str(e)}")
             return jsonify({"error": "Token verification failed"}), 401
         
     except Exception as e:
-        print(f"  Email verification error: {str(e)}")
+        logger.error(f"Email verification error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/auth/check-verification-status', methods=['POST'])
 @verify_email_optional
 def check_verification_status():
-    """Check user's email verification status"""
+    """Check user's email verification status.
+    
+    Always checks Firebase Auth directly and syncs to MongoDB,
+    so the status is always up-to-date even if the user just verified.
+    """
     try:
         user_id = g.user['uid']
-        email_verified = g.user.get('emailVerified', False)
+        
+        # Check Firebase Auth directly (source of truth)
+        firebase_user = auth.get_user(user_id)
+        email_verified = firebase_user.email_verified
+        
+        # If Firebase says verified but MongoDB doesn't, sync it
+        mongo_verified = g.user.get('emailVerified', False)
+        if email_verified and not mongo_verified and mongo_db is not None:
+            mongo_db.users.update_one(
+                {'uid': user_id},
+                {'$set': {'emailVerified': True, 'emailVerifiedAt': datetime.now()}}
+            )
+            logger.info(f"Synced email verification status for user {user_id}")
         
         return jsonify({
             "emailVerified": email_verified,
@@ -621,7 +759,7 @@ def check_verification_status():
         }), 200
         
     except Exception as e:
-        print(f"  Check verification status error: {str(e)}")
+        logger.error(f"Check verification status error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 # Resume upload and parsing endpoint
@@ -632,7 +770,7 @@ def upload_and_parse_resume():
     try:
         # Get current user ID from the token
         user_id = g.user['uid']
-        print(f"🔑 Processing resume upload for user: {user_id}")
+        logger.info(f"Processing resume upload for user: {user_id}")
         
         if 'resume' not in request.files:
             return jsonify({"error": "No file provided"}), 400
@@ -652,7 +790,7 @@ def upload_and_parse_resume():
             return jsonify({"error": "Invalid file type. Only PDF, DOCX, and DOC files are allowed"}), 400
         
         # Create uploads directory if it doesn't exist
-        upload_dir = 'uploads'
+        upload_dir = os.environ.get('UPLOAD_DIR', 'uploads')
         if not os.path.exists(upload_dir):
             os.makedirs(upload_dir)
         
@@ -660,7 +798,7 @@ def upload_and_parse_resume():
         filename = f"{user_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{file.filename}"
         file_path = os.path.join(upload_dir, filename)
         file.save(file_path)
-        print(f"📁 File saved: {file_path}")
+        logger.info(f"File saved: {file_path}")
         
         # Process resume
         if resume_processor:
@@ -694,14 +832,14 @@ def upload_and_parse_resume():
             return jsonify({"error": "Resume processor not available"}), 500
             
     except Exception as e:
-        print(f"  Resume upload error: {str(e)}")
+        logger.error(f"Resume upload error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 
 
-# Get user profile
+# Get user profile (uses verify_email_optional so unverified users can fetch their profile)
 @app.route('/api/user/profile', methods=['GET'])
-@verify_token
+@verify_email_optional
 def get_user_profile():
     """Get user profile data"""
     try:
@@ -720,7 +858,7 @@ def get_user_profile():
                 }), 200
             else:
                 # If user doesn't exist in MongoDB, create a minimal profile
-                print(f"⚠️ User {user_id} not found in MongoDB, creating minimal profile")
+                logger.warning(f"User {user_id} not found in MongoDB, creating minimal profile")
                 try:
                     # Get user record from Firebase
                     firebase_user = auth.get_user(user_id)
@@ -737,30 +875,52 @@ def get_user_profile():
                         'emailVerified': firebase_user.email_verified
                     }
                     mongo_db.users.insert_one(minimal_user_doc)
-                    print(f"✅ Created minimal profile for user {user_id}")
+                    logger.info(f"Created minimal profile for user {user_id}")
                     
                     return jsonify({
                         "success": True,
                         "profile": minimal_user_doc
                     }), 200
                 except Exception as create_error:
-                    print(f"❌ Failed to create minimal profile: {create_error}")
+                    logger.error(f"Failed to create minimal profile: {create_error}")
                     return jsonify({"error": "User profile creation failed"}), 500
         else:
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"  Get profile error: {str(e)}")
+        logger.error(f"Get profile error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-# Update user profile
+# Update user profile (uses verify_email_optional so unverified users can complete their profile)
 @app.route('/api/user/profile', methods=['PUT'])
-@verify_token
+@verify_email_optional
 def update_user_profile():
     """Update user profile data"""
     try:
         user_id = g.user['uid']
-        data = request.get_json()
+        data = request.get_json() or {}
+        if not isinstance(data, dict):
+            return jsonify({"error": "Invalid profile payload"}), 400
+
+        if 'profilePicture' in data:
+            try:
+                data['profilePicture'] = sanitize_profile_picture_url(data.get('profilePicture'))
+            except ValueError as validation_error:
+                return jsonify({"error": str(validation_error)}), 400
+        
+        # Validate portfolioName uniqueness if being updated
+        if 'portfolioName' in data and data['portfolioName']:
+            portfolio_name = data['portfolioName'].strip()
+            if portfolio_name:
+                # Check if another user already has this portfolio name
+                existing_user = mongo_db.users.find_one({
+                    'portfolioName': portfolio_name,
+                    'uid': {'$ne': user_id}  # Exclude current user
+                })
+                if existing_user:
+                    return jsonify({
+                        "error": f"Portfolio name '{portfolio_name}' is already taken. Please choose another."
+                    }), 409  # 409 Conflict
         
         if mongo_db is not None:
             user_ref = mongo_db.users.find_one({'uid': user_id})
@@ -790,7 +950,7 @@ def update_user_profile():
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"  Update profile error: {str(e)}")
+        logger.error(f"Update profile error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 # Public portfolio endpoint by user ID
@@ -807,7 +967,7 @@ def get_public_profile(user_id):
                     'fullName', 'email', 'location', 'summary',
                     'github', 'linkedin',
                     'experience', 'education', 'skills', 'certifications', 'projects',
-                    'portfolioTheme'
+                    'portfolioTheme', 'profilePicture'
                 ]
                 public_profile = {k: profile.get(k) for k in public_fields if k in profile}
                 # For each project, only include github if present
@@ -824,7 +984,7 @@ def get_public_profile(user_id):
         else:
             return jsonify({"success": False, "error": "Database not available"}), 500
     except Exception as e:
-        print(f"  Get public profile error: {str(e)}")
+        logger.error(f"Get public profile error: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 # Public portfolio endpoint by portfolio name
@@ -841,7 +1001,7 @@ def get_portfolio_by_name(portfolio_name):
                     'fullName', 'email', 'location', 'summary',
                     'github', 'linkedin',
                     'experience', 'education', 'skills', 'certifications', 'projects',
-                    'portfolioTheme'
+                    'portfolioTheme', 'profilePicture'
                 ]
                 public_profile = {k: profile.get(k) for k in public_fields if k in profile}
                 # For each project, only include github if present
@@ -858,8 +1018,31 @@ def get_portfolio_by_name(portfolio_name):
         else:
             return jsonify({"success": False, "error": "Database not available"}), 500
     except Exception as e:
-        print(f"  Get portfolio by name error: {str(e)}")
+        logger.error(f"Get portfolio by name error: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
+
+# Check portfolio name availability
+@app.route('/api/check-portfolio-name/<portfolio_name>', methods=['GET'])
+def check_portfolio_name_availability(portfolio_name):
+    """Check if a portfolio name is available (public endpoint, no auth required)"""
+    try:
+        if not portfolio_name or len(portfolio_name) < 3:
+            return jsonify({
+                "available": False,
+                "error": "Portfolio name must be at least 3 characters"
+            }), 200
+        
+        if mongo_db is not None:
+            existing_user = mongo_db.users.find_one({'portfolioName': portfolio_name})
+            return jsonify({
+                "available": existing_user is None,
+                "portfolioName": portfolio_name
+            }), 200
+        else:
+            return jsonify({"error": "Database not available"}), 500
+    except Exception as e:
+        logger.error(f"Check portfolio name error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 # Chat endpoints
 @app.route('/api/chat/query', methods=['POST'])
@@ -876,7 +1059,7 @@ def chat_query():
         if not query.strip():
             return jsonify({"error": "Query is required"}), 400
         
-        print(f"🔍 Processing chat query for user {user_id} in session {session_id}: {query}")
+        logger.info(f"Processing chat query for user {user_id} in session {session_id}: {query}")
         
         # Get chatbot integration service
         chatbot_service = get_chatbot_integration()
@@ -890,22 +1073,22 @@ def chat_query():
         
         # Extract chat name from the result if available
         chat_name = result.get('chat_name', 'New Chat')
-        print(f"📝 Backend: Extracted chat_name: '{chat_name}' from result")
-        print(f"📝 Backend: Full result keys: {list(result.keys())}")
+        logger.info(f"Backend: Extracted chat_name: '{chat_name}' from result")
+        logger.debug(f"Backend: Full result keys: {list(result.keys())}")
         if 'metadata' in result:
-            print(f"📝 Backend: Metadata keys: {list(result['metadata'].keys())}")
+            logger.debug(f"Backend: Metadata keys: {list(result['metadata'].keys())}")
             if 'chat_name' in result['metadata']:
-                print(f"📝 Backend: chat_name in metadata: '{result['metadata']['chat_name']}'")
+                logger.info(f"Backend: chat_name in metadata: '{result['metadata']['chat_name']}'")
         
         # Also check if chat_name is in metadata
         if 'metadata' in result and 'chat_name' in result['metadata']:
             metadata_chat_name = result['metadata']['chat_name']
-            print(f"📝 Backend: Found chat_name in metadata: '{metadata_chat_name}'")
+            logger.info(f"Backend: Found chat_name in metadata: '{metadata_chat_name}'")
             if metadata_chat_name != 'New Chat':
                 chat_name = metadata_chat_name
-                print(f"📝 Backend: Using metadata chat_name: '{chat_name}'")
+                logger.info(f"Backend: Using metadata chat_name: '{chat_name}'")
         
-        print(f"📝 Backend: Final chat_name to be used: '{chat_name}'")
+        logger.info(f"Backend: Final chat_name to be used: '{chat_name}'")
         
         # Save messages to session document if available and session_id provided
         if mongo_db is not None and result.get('response') and session_id:
@@ -967,23 +1150,20 @@ def chat_query():
                     # Update chat name if it's still "New Chat" and we have a better name
                     if session_data.get('title') == 'New Chat' and chat_name != 'New Chat':
                         update_data['title'] = chat_name
-                        print(f"📝 Backend: Updating chat title from 'New Chat' to: '{chat_name}'")
-                        print(f"📝 Backend: Session data before update: {session_data.get('title')}")
-                        print(f"📝 Backend: New chat_name: '{chat_name}'")
+                        logger.info(f"Backend: Updating chat title from 'New Chat' to: '{chat_name}'")
+                        logger.debug(f"Backend: Session data before update: {session_data.get('title')}")
+                        logger.info(f"Backend: New chat_name: '{chat_name}'")
                     else:
-                        print(f"📝 Backend: Not updating title. Current: '{session_data.get('title')}', New: '{chat_name}'")
+                        logger.info(f"Backend: Not updating title. Current: '{session_data.get('title')}', New: '{chat_name}'")
                     
                     mongo_db.chat_sessions.replace_one({'_id': ObjectId(session_id)}, update_data)
                     
-                    # Invalidate cache
-                    invalidate_chat_cache(user_id)
-                    
-                    print(f"💾 Chat messages saved to session {session_id} for user {user_id}")
+                    logger.info(f"Chat messages saved to session {session_id} for user {user_id}")
                 else:
-                    print(f"  Session {session_id} not found")
+                    logger.warning(f"Session {session_id} not found")
                     
             except Exception as e:
-                print(f"  Error saving chat messages to session: {e}")
+                logger.error(f"Error saving chat messages to session: {e}")
                 # Don't fail the request if session saving fails
         
         # Also save to legacy chat_history for backward compatibility
@@ -1006,7 +1186,7 @@ def chat_query():
                 }
                 mongo_db.chat_history.insert_one(chat_doc)
             except Exception as e:
-                print(f"  Error saving to legacy chat_history: {e}")
+                logger.error(f"Error saving to legacy chat_history: {e}")
         
         # Prepare response
         response_data = {
@@ -1018,13 +1198,13 @@ def chat_query():
             "chat_name": chat_name
         }
         
-        print(f"📝 Backend: Sending response with chat_name: '{chat_name}'")
-        print(f"📝 Backend: Full response data: {response_data}")
+        logger.info(f"Backend: Sending response with chat_name: '{chat_name}'")
+        logger.debug(f"Backend: Full response data: {response_data}")
         
         return jsonify(response_data), 200
         
     except Exception as e:
-        print(f"  Chat query error: {str(e)}")
+        logger.error(f"Chat query error: {str(e)}")
         return jsonify({
             "success": False,
             "error": str(e),
@@ -1034,64 +1214,128 @@ def chat_query():
 @app.route('/api/chat/stream', methods=['POST'])
 @verify_token
 def chat_stream():
-    """Stream chat response"""
+    """Stream chat response via Server-Sent Events.
+
+    The generator emits three kinds of events:
+      • {"type":"status","content":"…"}   – thinking / processing indicator
+      • {"type":"token","content":"…"}    – a chunk of the answer text
+      • {"type":"done", …metadata…}       – signals completion, carries sources/chat_name
+    """
     try:
         user_id = g.user['uid']
         data = request.get_json()
         query = data.get('query', '')
         chat_history = data.get('chat_history', [])
-        
+        session_id = data.get('session_id')
+
         if not query.strip():
             return jsonify({"error": "Query is required"}), 400
-        
-        print(f"🌊 Streaming chat response for user {user_id}: {query}")
-        
+
+        logger.info(f"Streaming chat response for user {user_id} session {session_id}: {query}")
+
+        # We need to collect the full answer + metadata inside the generator
+        # so we can persist the session after the stream finishes.
+        _collected = {"answer": "", "meta": {}}
+
         def generate():
             try:
-                for token in get_chatbot_integration().stream_query(
+                for event in get_chatbot_integration().stream_query(
                     user_query=query,
                     user_id=user_id,
-                    chat_history=chat_history
+                    chat_history=chat_history,
                 ):
-                    yield f"data: {json.dumps({'token': token})}\n\n"
-                
-                yield f"data: {json.dumps({'done': True})}\n\n"
-                
+                    yield f"data: {json.dumps(event)}\n\n"
+
+                    # accumulate answer text
+                    if event.get("type") == "token":
+                        _collected["answer"] += event.get("content", "")
+                    elif event.get("type") == "done":
+                        _collected["meta"] = event
+
             except Exception as e:
-                error_data = json.dumps({'error': str(e)})
-                yield f"data: {error_data}\n\n"
-        
-        return Response(
+                yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+
+        response = Response(
             generate(),
-            mimetype='text/plain',
+            mimetype='text/event-stream',
             headers={
                 'Cache-Control': 'no-cache',
                 'Connection': 'keep-alive',
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+                'X-Accel-Buffering': 'no',
             }
         )
-        
+
+        # --- After the response is sent, persist the session ----
+        @response.call_on_close
+        def _persist():
+            full_answer = _collected["answer"].strip()
+            meta = _collected["meta"]
+            chat_name = meta.get("chat_name", "New Chat")
+
+            if not full_answer or not session_id:
+                return
+
+            # Save to session document
+            if mongo_db is not None:
+                try:
+                    # Find session by _id (ObjectId) and verify it belongs to the user
+                    session_data = mongo_db.chat_sessions.find_one(
+                        {"_id": ObjectId(session_id), "user_id": user_id}
+                    )
+                    if session_data:
+                        messages = session_data.get("messages", [])
+                        messages.append({
+                            'id': f"user_{int(time.time() * 1000)}",
+                            'role': 'user',
+                            'content': query,
+                            'timestamp': datetime.now().isoformat(),
+                        })
+                        messages.append({
+                            'id': f"ai_{int(time.time() * 1000)}",
+                            'role': 'assistant',
+                            'content': full_answer,
+                            'timestamp': datetime.now().isoformat(),
+                            'sources': meta.get("sources", {}),
+                        })
+                        update = {
+                            **session_data,
+                            'messages': messages,
+                            'last_updated': datetime.now(),
+                            'message_count': len(messages),
+                        }
+                        if chat_name != "New Chat" and session_data.get("title") in (None, "New Chat"):
+                            update["title"] = chat_name
+                        mongo_db.chat_sessions.update_one(
+                            {"_id": session_data["_id"]}, {"$set": update}
+                        )
+                except Exception as e:
+                    logger.error(f"Stream: session persist error: {e}")
+
+                # Legacy chat_history collection
+                try:
+                    mongo_db.chat_history.insert_one({
+                        'user_id': user_id,
+                        'query': query,
+                        'response': full_answer,
+                        'timestamp': datetime.now(),
+                        'sources': meta.get("sources", {}),
+                        'session_id': session_id,
+                    })
+                except Exception as e:
+                    logger.error(f"Stream: legacy save error: {e}")
+
+        return response
+
     except Exception as e:
-        print(f"  Chat stream error: {str(e)}")
+        logger.error(f"Chat stream error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/chat/sessions', methods=['GET'])
 @verify_token
 def get_chat_sessions():
-    """Get user's chat sessions with caching"""
+    """Get user's chat sessions"""
     try:
         user_id = g.user['uid']
-        
-        # Try to get from cache first
-        if redis_client:
-            cache_key = f"chat_sessions:{user_id}"
-            cached_data = redis_client.get(cache_key)
-            if cached_data:
-                try:
-                    return jsonify(json.loads(cached_data))
-                except:
-                    pass
         
         if mongo_db is not None:
             # Query chat sessions from Firestore (without ordering to avoid index requirement)
@@ -1112,20 +1356,12 @@ def get_chat_sessions():
                 "sessions": sessions
             }
             
-            # Cache the result
-            if redis_client:
-                try:
-                    cache_key = f"chat_sessions:{user_id}"
-                    redis_client.setex(cache_key, 3600, json.dumps(result))  # 1 hour cache
-                except:
-                    pass
-            
             return jsonify(result), 200
         else:
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"  Get chat sessions error: {str(e)}")
+        logger.error(f"Get chat sessions error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/chat/sessions', methods=['POST'])
@@ -1150,9 +1386,6 @@ def create_chat_session():
             session_ref = mongo_db.chat_sessions.insert_one(session_doc)
             session_id = str(session_ref.inserted_id)
             
-            # Invalidate cache
-            invalidate_chat_cache(user_id)
-            
             return jsonify({
                 "success": True,
                 "session_id": session_id,
@@ -1162,7 +1395,7 @@ def create_chat_session():
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"  Create chat session error: {str(e)}")
+        logger.error(f"Create chat session error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/chat/sessions/<session_id>', methods=['GET'])
@@ -1192,7 +1425,7 @@ def get_chat_session_messages(session_id):
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"  Get chat session messages error: {str(e)}")
+        logger.error(f"Get chat session messages error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/chat/sessions/<session_id>', methods=['PUT'])
@@ -1225,9 +1458,6 @@ def update_chat_session(session_id):
                 'last_updated': datetime.now()
             })
             
-            # Invalidate cache
-            invalidate_chat_cache(user_id)
-            
             return jsonify({
                 "success": True,
                 "message": "Chat session updated successfully"
@@ -1236,7 +1466,7 @@ def update_chat_session(session_id):
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"  Update chat session error: {str(e)}")
+        logger.error(f"Update chat session error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/chat/sessions/<session_id>', methods=['DELETE'])
@@ -1260,9 +1490,6 @@ def delete_chat_session(session_id):
             # Delete the session (messages are stored within the session document)
             mongo_db.chat_sessions.delete_one({'_id': ObjectId(session_id)})
             
-            # Invalidate cache
-            invalidate_chat_cache(user_id)
-            
             return jsonify({
                 "success": True,
                 "message": "Chat session deleted successfully"
@@ -1271,7 +1498,7 @@ def delete_chat_session(session_id):
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"  Delete chat session error: {str(e)}")
+        logger.error(f"Delete chat session error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/chat/history', methods=['GET'])
@@ -1300,7 +1527,7 @@ def get_chat_history():
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"  Get chat history error: {str(e)}")
+        logger.error(f"Get chat history error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/rag/stats', methods=['GET'])
@@ -1317,7 +1544,7 @@ def get_rag_stats():
         }), 200
         
     except Exception as e:
-        print(f"  RAG stats error: {str(e)}")
+        logger.error(f"RAG stats error: {str(e)}")
         return jsonify({
             "success": False,
             "error": str(e)
@@ -1361,7 +1588,7 @@ def get_user_chat_history():
             return jsonify({"error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"  Get user chat history error: {str(e)}")
+        logger.error(f"Get user chat history error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/courses', methods=['GET'])
@@ -1694,11 +1921,11 @@ def sync_course_to_chroma(course_id, course_data):
             content = json.dumps(course_data)
             metadata = {'title': course_data.get('Course Title', ''), 'code': course_data.get('Course Code', '')}
             collection.upsert(ids=[course_id], documents=[content], metadatas=[metadata])
-            print(f"✅ Course {course_id} synced to Chroma")
+            logger.info(f"Course {course_id} synced to Chroma")
         else:
-            print(f"⚠️  Chroma collection 'AllCourseRelatedData' not available")
+            logger.warning(f"Chroma collection 'AllCourseRelatedData' not available")
     except Exception as e:
-        print(f"❌ Error syncing course {course_id} to Chroma: {e}")
+        logger.error(f"Error syncing course {course_id} to Chroma: {e}")
 
 def delete_from_chroma(course_id):
     """Delete course data from Chroma vector database"""
@@ -1706,11 +1933,11 @@ def delete_from_chroma(course_id):
         collection = get_chatbot_integration().load_vector_store('AllCourseRelatedData')
         if collection:
             collection.delete(ids=[course_id])
-            print(f"✅ Course {course_id} deleted from Chroma")
+            logger.info(f"Course {course_id} deleted from Chroma")
         else:
-            print(f"⚠️  Chroma collection 'AllCourseRelatedData' not available")
+            logger.warning(f"Chroma collection 'AllCourseRelatedData' not available")
     except Exception as e:
-        print(f"❌ Error deleting course {course_id} from Chroma: {e}")
+        logger.error(f"Error deleting course {course_id} from Chroma: {e}")
 
 @app.route('/api/admin/courses', methods=['GET'])
 @admin_required
@@ -1915,7 +2142,7 @@ def fix_profile_completion():
             return jsonify({"success": False, "error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"  Fix profile completion error: {str(e)}")
+        logger.error(f"Fix profile completion error: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/chat/feedback', methods=['POST'])
@@ -1953,9 +2180,9 @@ def submit_feedback():
                     {'messages.id': message_id},
                     {'$set': {'messages.$.feedback': feedback}}
                 )
-                print(f"✅ Feedback saved for message {message_id}: {feedback}")
+                logger.info(f"Feedback saved for message {message_id}: {feedback}")
             except Exception as e:
-                print(f"⚠️  Could not update message in chat_sessions: {e}")
+                logger.warning(f"Could not update message in chat_sessions: {e}")
         
         return jsonify({
             "success": True,
@@ -1964,7 +2191,7 @@ def submit_feedback():
         }), 200
         
     except Exception as e:
-        print(f"❌ Feedback submission error: {str(e)}")
+        logger.error(f"Feedback submission error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 # Job and Internship Search API Endpoints
@@ -2103,7 +2330,8 @@ def get_jobs():
     """Get job listings with filtering and pagination"""
     try:
         # Read jobs CSV
-        jobs_data = read_csv_data('jobs.csv')
+        jobs_csv_path = os.environ.get('JOBS_CSV_PATH', 'jobs.csv')
+        jobs_data = read_csv_data(jobs_csv_path)
         if not jobs_data:
             return jsonify({'success': False, 'error': 'Unable to load jobs data'}), 500
         
@@ -2145,7 +2373,8 @@ def get_internships():
     """Get internship listings with filtering and pagination"""
     try:
         # Read internships CSV
-        internships_data = read_csv_data('internships.csv')
+        internships_csv_path = os.environ.get('INTERNSHIPS_CSV_PATH', 'internships.csv')
+        internships_data = read_csv_data(internships_csv_path)
         if not internships_data:
             return jsonify({'success': False, 'error': 'Unable to load internships data'}), 500
         
@@ -2243,7 +2472,8 @@ def filter_internships(internships: List[Dict], filters: Dict) -> List[Dict]:
 def get_job_stats():
     """Get job statistics for filters"""
     try:
-        jobs_data = read_csv_data('jobs.csv')
+        jobs_csv_path = os.environ.get('JOBS_CSV_PATH', 'jobs.csv')
+        jobs_data = read_csv_data(jobs_csv_path)
         if not jobs_data:
             return jsonify({'success': False, 'error': 'Unable to load jobs data'}), 500
         
@@ -2290,7 +2520,8 @@ def get_job_stats():
 def get_internship_stats():
     """Get internship statistics for filters"""
     try:
-        internships_data = read_csv_data('internships.csv')
+        internships_csv_path = os.environ.get('INTERNSHIPS_CSV_PATH', 'internships.csv')
+        internships_data = read_csv_data(internships_csv_path)
         if not internships_data:
             return jsonify({'success': False, 'error': 'Unable to load internships data'}), 500
         
@@ -2345,6 +2576,57 @@ def test_cors():
         'method': request.method
     })
 
+# ── Scraper endpoints ──
+@app.route('/api/scraper/status', methods=['GET'])
+def scraper_status():
+    """Check the background job scraper's health (no auth required)."""
+    return jsonify({
+        "success": True,
+        "scraper": _scraper_status,
+    })
+
+@app.route('/api/admin/scraper/run', methods=['POST'])
+@verify_token
+def admin_trigger_scraper():
+    """Manually trigger a job scraper run (admin only)."""
+    try:
+        user_id = g.user['uid']
+        if mongo_db is not None:
+            user_doc = mongo_db.users.find_one({'uid': user_id})
+            if not user_doc or user_doc.get('role') != 'admin':
+                return jsonify({"success": False, "error": "Admin access required"}), 403
+        else:
+            return jsonify({"success": False, "error": "Database not available"}), 500
+
+        # Run the scraper in a one-shot background thread so the request returns immediately
+        def _one_shot_scrape():
+            try:
+                from github_jobs_unified_scraper import UnifiedGitHubScraper
+                scraper = UnifiedGitHubScraper()
+                scraper.scrape_all_repositories()
+                _scraper_status["runs"] += 1
+                _scraper_status["last_run"] = datetime.utcnow().isoformat() + "Z"
+                _scraper_status["last_status"] = "success (manual)"
+                _scraper_status["last_error"] = None
+                logger.info("Scraper: manual run triggered by admin %s completed ✓", user_id)
+            except Exception as exc:
+                _scraper_status["last_status"] = "error (manual)"
+                _scraper_status["last_error"] = str(exc)
+                logger.error("Scraper: manual run failed — %s", exc)
+
+        t = threading.Thread(target=_one_shot_scrape, daemon=True)
+        t.start()
+
+        logger.info("Admin %s triggered manual scraper run", user_id)
+        return jsonify({
+            "success": True,
+            "message": "Scraper started. Check /api/scraper/status for progress.",
+        })
+
+    except Exception as e:
+        logger.error(f"Admin trigger scraper error: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
 # User Management Admin API Endpoints
 @app.route('/api/admin/users', methods=['GET'])
 @verify_token
@@ -2384,7 +2666,7 @@ def get_all_users():
             return jsonify({"success": False, "error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"  Get all users error: {str(e)}")
+        logger.error(f"Get all users error: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/admin/users/<user_uid>', methods=['GET'])
@@ -2417,7 +2699,7 @@ def get_user_details(user_uid):
             return jsonify({"success": False, "error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"  Get user details error: {str(e)}")
+        logger.error(f"Get user details error: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/admin/users/<user_uid>', methods=['PUT'])
@@ -2465,9 +2747,9 @@ def update_user_admin(user_uid):
                             'admin': new_role == 'admin'
                         }
                         auth.set_custom_user_claims(user_uid, custom_claims)
-                        print(f"✅ Firebase custom claims updated for user {user_uid}: {custom_claims}")
+                        logger.info(f"Firebase custom claims updated for user {user_uid}: {custom_claims}")
                     except Exception as firebase_error:
-                        print(f"⚠️  Firebase custom claims update failed: {firebase_error}")
+                        logger.error(f"Firebase custom claims update failed: {firebase_error}")
                         # Continue with MongoDB update even if Firebase fails
                 
                 return jsonify({
@@ -2484,7 +2766,7 @@ def update_user_admin(user_uid):
             return jsonify({"success": False, "error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"  Update user admin error: {str(e)}")
+        logger.error(f"Update user admin error: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/admin/users/<user_uid>', methods=['DELETE'])
@@ -2537,7 +2819,7 @@ def delete_user_admin(user_uid):
             return jsonify({"success": False, "error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"  Delete user admin error: {str(e)}")
+        logger.error(f"Delete user admin error: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/admin/users/<user_uid>/role', methods=['PUT'])
@@ -2585,9 +2867,9 @@ def update_user_role(user_uid):
                     'admin': new_role == 'admin'
                 }
                 auth.set_custom_user_claims(user_uid, custom_claims)
-                print(f"✅ Firebase custom claims updated for user {user_uid}: {custom_claims}")
+                logger.info(f"Firebase custom claims updated for user {user_uid}: {custom_claims}")
             except Exception as firebase_error:
-                print(f"⚠️  Firebase custom claims update failed: {firebase_error}")
+                logger.error(f"Firebase custom claims update failed: {firebase_error}")
                 # Continue with MongoDB update even if Firebase fails
                 # But log the error for investigation
             
@@ -2600,7 +2882,7 @@ def update_user_role(user_uid):
             return jsonify({"success": False, "error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"  Update user role error: {str(e)}")
+        logger.error(f"Update user role error: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/admin/sync-firebase-claims', methods=['POST'])
@@ -2640,15 +2922,15 @@ def sync_firebase_claims():
                             }
                             auth.set_custom_user_claims(user_uid, custom_claims)
                             synced_count += 1
-                            print(f"✅ Synced Firebase claims for user {user_uid}: {custom_claims}")
+                            logger.info(f"Synced Firebase claims for user {user_uid}: {custom_claims}")
                         else:
-                            print(f"ℹ️  Firebase claims already in sync for user {user_uid}")
+                            logger.info(f"ℹFirebase claims already in sync for user {user_uid}")
                             
                 except Exception as user_error:
                     failed_count += 1
                     error_msg = f"Failed to sync user {user.get('uid', 'unknown')}: {str(user_error)}"
                     errors.append(error_msg)
-                    print(f"❌ {error_msg}")
+                    logger.error(f"{error_msg}")
             
             return jsonify({
                 "success": True,
@@ -2662,17 +2944,16 @@ def sync_firebase_claims():
             return jsonify({"success": False, "error": "Database not available"}), 500
             
     except Exception as e:
-        print(f"  Sync Firebase claims error: {str(e)}")
+        logger.error(f"Sync Firebase claims error: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 if __name__ == '__main__':
+    # This block only runs for local development (python app.py).
+    # In production, gunicorn imports the `app` object directly.
     port = int(os.environ.get('PORT', 5003))
-    print(f"🚀 Starting AdvisorAI backend server on port {port}")
-    print(f"📡 API Base URL: http://localhost:{port}/api")
-    print(f"🔍 Job search endpoints:")
-    print(f"   - GET /api/jobs")
-    print(f"   - GET /api/internships") 
-    print(f"   - GET /api/jobs/stats")
-    print(f"   - GET /api/internships/stats")
-    print(f"🧪 Test CORS: http://localhost:{port}/api/test-cors")
-    app.run(debug=True, host='0.0.0.0', port=port) 
+    host = os.environ.get('APP_HOST', '0.0.0.0')
+    debug = os.environ.get('FLASK_ENV', 'development') != 'production'
+
+    logger.info("Starting AdvisorAI backend on %s:%s", host, port)
+    logger.info("Environment: %s | Debug: %s", os.environ.get('FLASK_ENV', 'development'), debug)
+    app.run(debug=debug, host=host, port=port)

@@ -4,13 +4,11 @@ import { useAuth } from "../contexts/AuthContext";
 import logo from "../utils/logo.png";
 import {
   User,
-  Settings,
   LogOut,
   Menu,
   X,
   Crown,
   Shield,
-  BookOpen,
   GraduationCap,
   Edit,
   ChevronRight,
@@ -56,10 +54,10 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
   };
 
   return (
-    <header className="bg-gradient-to-r from-slate-800 to-slate-700 backdrop-blur-xl border-b border-slate-600/20 px-5 py-4 shadow-2xl sticky top-0 z-50">
+    <header className="bg-gradient-to-r from-slate-800 to-slate-700 backdrop-blur-xl border-b border-slate-600/20 px-3 sm:px-5 py-3 sm:py-4 shadow-2xl sticky top-0 z-50">
       <div className="flex items-center justify-between w-full">
         {/* Left side - Menu button and title */}
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-2 sm:space-x-4">
           <button
             onClick={onMenuToggle}
             className="p-2 rounded-xl hover:bg-white/10 transition-all duration-300 hover:shadow-lg hover:scale-105 border border-white/10"
@@ -74,12 +72,12 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
 
           <Link
             to="/"
-            className="flex items-center space-x-3 hover:scale-105 transition-all duration-300"
+            className="flex items-center space-x-2 sm:space-x-3 hover:scale-105 transition-all duration-300"
           >
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg hover:shadow-xl transition-all duration-300 border-2 border-white/10 overflow-hidden">
-              <img src={logo} alt="AdvisorAI Logo" className="w-6 h-6 object-contain filter brightness-0 invert" />
+            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg hover:shadow-xl transition-all duration-300 border-2 border-white/10 overflow-hidden flex-shrink-0">
+              <img src={logo} alt="AdvisorAI Logo" className="w-5 h-5 sm:w-6 sm:h-6 object-contain" />
             </div>
-            <div>
+            <div className="hidden sm:block">
               <h1 className="text-xl font-bold text-white">
                 Advisor<span className="bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">AI</span>
               </h1>
@@ -88,34 +86,30 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
         </div>
 
         {/* Right side - Portfolio button and User menu */}
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-2 sm:space-x-4">
           {/* Portfolio Button */}
           {userProfile?.portfolioName ? (
             <a
               href={`/portfolio/${userProfile.portfolioName}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="group relative flex items-center space-x-2.5 px-5 py-2.5 text-slate-200 hover:text-white font-medium transition-all duration-300 hover:scale-105"
+              className="group relative flex items-center space-x-2.5 px-3 sm:px-5 py-2 sm:py-2.5 text-slate-200 hover:text-white font-medium transition-all duration-300 hover:scale-105"
             >
-              {/* Subtle underline effect */}
               <div className="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-blue-400 to-purple-400 group-hover:w-full transition-all duration-300"></div>
-              
-              {/* Button content */}
               <div className="relative flex items-center space-x-2">
                 <Briefcase className="w-4 h-4 group-hover:scale-110 transition-transform duration-300" />
-                <span className="text-sm">View Portfolio</span>
+                <span className="text-sm hidden sm:inline">View Portfolio</span>
               </div>
             </a>
           ) : (
             <button
               onClick={() => navigate("/profile-completion")}
-              className="group relative flex items-center space-x-2.5 px-5 py-2.5 text-slate-400 hover:text-slate-300 font-medium transition-all duration-300 cursor-pointer"
+              className="group relative flex items-center space-x-2.5 px-3 sm:px-5 py-2 sm:py-2.5 text-slate-400 hover:text-slate-300 font-medium transition-all duration-300 cursor-pointer"
               title="Complete your profile to get a portfolio"
             >
-              {/* Button content */}
               <div className="relative flex items-center space-x-2">
                 <Briefcase className="w-4 h-4" />
-                <span className="text-sm">Set Portfolio</span>
+                <span className="text-sm hidden sm:inline">Set Portfolio</span>
               </div>
             </button>
           )}
@@ -128,8 +122,8 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
             >
               {/* Profile Avatar with Status */}
               <div className="relative">
-                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center shadow-lg group-hover:shadow-xl transition-all duration-300 border-2 border-white/10">
-                  <User className="w-6 h-6 text-white" />
+                <div className="w-9 h-9 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center shadow-lg group-hover:shadow-xl transition-all duration-300 border-2 border-white/10">
+                  <User className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                 </div>
               </div>
 
@@ -154,7 +148,7 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
             {/* Enhanced Dropdown Menu */}
             {showUserMenu && (
               <div
-                className="absolute right-0 mt-3 w-80 max-h-[80vh] bg-gradient-to-br from-slate-800/95 via-slate-700/90 to-slate-600/95 backdrop-blur-2xl rounded-3xl shadow-2xl border border-slate-500/20 py-6 z-50 overflow-y-auto overflow-x-hidden"
+                className="absolute right-0 mt-3 w-[calc(100vw-2rem)] sm:w-80 max-w-80 max-h-[80vh] bg-gradient-to-br from-slate-800/95 via-slate-700/90 to-slate-600/95 backdrop-blur-2xl rounded-3xl shadow-2xl border border-slate-500/20 py-6 z-50 overflow-y-auto overflow-x-hidden"
                 style={{ pointerEvents: "auto" }}
               >
                 {/* Background decoration */}
@@ -175,8 +169,8 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
                 <div className="relative px-6 py-4 border-b border-slate-500/20">
                   <div className="flex items-center space-x-4">
                     <div className="relative">
-                      <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center shadow-xl ring-4 ring-white/10 border-2 border-white/10">
-                        <User className="w-8 h-8 text-white" />
+                      <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center shadow-xl ring-4 ring-white/10 border-2 border-white/10">
+                        <User className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
                       </div>
                       <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-gradient-to-r from-emerald-400 to-teal-500 rounded-full border-3 border-slate-800 shadow-lg animate-pulse"></div>
                     </div>
@@ -282,19 +276,6 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
                     </button>
                   )}
 
-                  <button className="w-full flex items-center space-x-3 px-6 py-3 text-sm text-slate-300 hover:bg-white/10 transition-all duration-300 hover:text-white group mx-2 rounded-xl">
-                    <div className="p-2 bg-white/10 rounded-lg group-hover:bg-white/20 transition-all duration-300 group-hover:scale-110">
-                      <BookOpen className="w-4 h-4" />
-                    </div>
-                    <span className="font-medium">My Courses</span>
-                  </button>
-
-                  <button className="w-full flex items-center space-x-3 px-6 py-3 text-sm text-slate-300 hover:bg-white/10 transition-all duration-300 hover:text-white group mx-2 rounded-xl">
-                    <div className="p-2 bg-white/10 rounded-lg group-hover:bg-white/20 transition-all duration-300 group-hover:scale-110">
-                      <Settings className="w-4 h-4" />
-                    </div>
-                    <span className="font-medium">Settings</span>
-                  </button>
                   {isAdmin() && (
                     <Link
                       to="/admin"

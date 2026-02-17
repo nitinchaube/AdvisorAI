@@ -1,52 +1,169 @@
 import os
+import logging
 import requests
 from bs4 import BeautifulSoup
+from urllib.parse import unquote, urlparse, quote_plus
 import time
 import random
+import json
 
-def duckduckgo_search_urls(query, num_results=3):
-    """Perform a DuckDuckGo search and return the top result URLs."""
+logger = logging.getLogger(__name__)
+
+
+def _normalise_url(raw: str) -> str:
+    """URL-decode and strip tracking query params so duplicates are caught."""
+    url = unquote(raw).split("&")[0]   # remove trailing DDG params like &rut=…
+    url = url.rstrip("/")
+    return url
+
+
+def _dedup_urls(urls, num_results=5):
+    """Deduplicate URLs by domain + path."""
+    seen = set()
+    unique = []
+    for url in urls:
+        parsed = urlparse(url)
+        key = f"{parsed.netloc}{parsed.path}".rstrip("/")
+        if key not in seen:
+            seen.add(key)
+            unique.append(url)
+            if len(unique) >= num_results:
+                break
+    return unique
+
+
+def duckduckgo_search_urls(query, num_results=5):
+    """Perform a DuckDuckGo search and return unique top result URLs.
+    
+    Tries multiple strategies:
+    1. DuckDuckGo lite endpoint (most reliable for scraping)
+    2. DuckDuckGo HTML endpoint (classic)
+    3. DuckDuckGo JSON API (instant answers)
+    """
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                       "AppleWebKit/537.36 (KHTML, like Gecko) "
-                      "Chrome/91.0.4472.124 Safari/537.36"
+                      "Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Referer": "https://duckduckgo.com/",
     }
-    
-    search_url = "https://duckduckgo.com/html/"
-    params = {"q": query}
-    
+
+    links = []
+
+    # Strategy 1: DuckDuckGo Lite (simpler HTML, harder to block)
     try:
-        resp = requests.get(search_url, params=params, headers=headers, timeout=15)
+        resp = requests.get(
+            "https://lite.duckduckgo.com/lite/",
+            params={"q": query},
+            headers=headers,
+            timeout=15,
+        )
         resp.raise_for_status()
-        
         soup = BeautifulSoup(resp.text, "html.parser")
-        links = []
-        for result in soup.select(".result__a"):
-            href = result.get("href")
-            if href and href.startswith("/l/?uddg="):
-                url = href.split("/l/?uddg=")[1]
-                if url and not url.startswith("duckduckgo.com"):
-                    links.append(url)
-                    if len(links) == num_results:
-                        break
+
+        for a_tag in soup.find_all("a", class_="result-link"):
+            href = a_tag.get("href", "")
+            if href and href.startswith("http") and "duckduckgo.com" not in href:
+                links.append(_normalise_url(href))
+
+        # Also try plain links in the lite page
         if not links:
-            for link in soup.select("a[href*='http']"):
-                href = link.get("href")
-                if href and "duckduckgo.com" not in href and href.startswith("http"):
-                    links.append(href)
-                    if len(links) == num_results:
-                        break
-        print(f"Found {len(links)} URLs from DuckDuckGo")
-        return links
+            for a_tag in soup.find_all("a"):
+                href = a_tag.get("href", "")
+                if href.startswith("http") and "duckduckgo.com" not in href:
+                    links.append(_normalise_url(href))
+
+        links = _dedup_urls(links, num_results)
+        if links:
+            logger.info(f"Found {len(links)} URLs from DuckDuckGo Lite: {links}")
+            return links
     except Exception as e:
-        print(f"Error in DuckDuckGo search: {e}")
-        return []
+        logger.warning(f"DuckDuckGo Lite failed: {e}")
+
+    # Strategy 2: DuckDuckGo HTML endpoint (classic)
+    try:
+        resp = requests.get(
+            "https://duckduckgo.com/html/",
+            params={"q": query},
+            headers=headers,
+            timeout=15,
+        )
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        for result in soup.select(".result__a"):
+            href = result.get("href", "")
+            if "/l/?uddg=" in href:
+                raw = href.split("/l/?uddg=")[1]
+                url = _normalise_url(raw)
+            elif href.startswith("http"):
+                url = _normalise_url(href)
+            else:
+                continue
+            if url and "duckduckgo.com" not in url:
+                links.append(url)
+
+        # Fallback: any outbound links
+        if not links:
+            for a_tag in soup.select("a[href*='http']"):
+                href = a_tag.get("href", "")
+                url = _normalise_url(href)
+                if url and "duckduckgo.com" not in url:
+                    links.append(url)
+
+        links = _dedup_urls(links, num_results)
+        if links:
+            logger.info(f"Found {len(links)} URLs from DuckDuckGo HTML: {links}")
+            return links
+        else:
+            logger.warning("DuckDuckGo HTML returned 0 results (possible rate limit / CAPTCHA)")
+    except Exception as e:
+        logger.warning(f"DuckDuckGo HTML failed: {e}")
+
+    # Strategy 3: DuckDuckGo JSON API (instant answers — limited but reliable)
+    try:
+        resp = requests.get(
+            "https://api.duckduckgo.com/",
+            params={"q": query, "format": "json", "no_redirect": "1"},
+            headers=headers,
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        # Extract URLs from related topics and results
+        for topic in data.get("RelatedTopics", []):
+            url = topic.get("FirstURL", "")
+            if url and url.startswith("http") and "duckduckgo.com" not in url:
+                links.append(_normalise_url(url))
+            # Nested topics
+            for sub in topic.get("Topics", []):
+                url = sub.get("FirstURL", "")
+                if url and url.startswith("http") and "duckduckgo.com" not in url:
+                    links.append(_normalise_url(url))
+
+        # Abstract URL
+        abstract_url = data.get("AbstractURL", "")
+        if abstract_url and abstract_url.startswith("http"):
+            links.insert(0, _normalise_url(abstract_url))
+
+        links = _dedup_urls(links, num_results)
+        if links:
+            logger.info(f"Found {len(links)} URLs from DuckDuckGo API: {links}")
+            return links
+    except Exception as e:
+        logger.warning(f"DuckDuckGo API failed: {e}")
+
+    logger.warning(f"All DuckDuckGo strategies failed for query: {query[:80]}")
+    return []
+
 
 def serpapi_search_urls(query, num_results=3, api_key=None):
     """Use SerpAPI to get Google search results as a backup."""
     api_key = api_key or os.getenv("SERPAPI_API_KEY")
-    if not api_key or api_key == "your_serpapi_key_here":
-        print("No SerpAPI key available.")
+    if not api_key or api_key.startswith("your_") or api_key == "CHANGE_ME":
+        logger.info("No SerpAPI key available. Set SERPAPI_API_KEY in your .env file.")
         return []
     try:
         params = {
@@ -60,17 +177,63 @@ def serpapi_search_urls(query, num_results=3, api_key=None):
         resp = requests.get("https://serpapi.com/search", params=params, timeout=15)
         resp.raise_for_status()
         data = resp.json()
+        seen = set()
         links = []
         for result in data.get("organic_results", []):
-            if result.get("link"):
-                links.append(result["link"])
-                if len(links) == num_results:
-                    break
-        print(f"Found {len(links)} URLs from SerpAPI (Google)")
+            url = result.get("link", "")
+            if not url:
+                continue
+            parsed = urlparse(url)
+            key = f"{parsed.netloc}{parsed.path}".rstrip("/")
+            if key in seen:
+                continue
+            seen.add(key)
+            links.append(url)
+            if len(links) >= num_results:
+                break
+        logger.info(f"Found {len(links)} unique URLs from SerpAPI (Google): {links}")
         return links
     except Exception as e:
-        print(f"Error in SerpAPI search: {e}")
+        logger.error(f"Error in SerpAPI search: {e}")
         return []
+
+
+def google_scrape_urls(query, num_results=5):
+    """Last-resort: scrape Google search results directly."""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                      "AppleWebKit/537.36 (KHTML, like Gecko) "
+                      "Chrome/122.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.5",
+    }
+    try:
+        resp = requests.get(
+            "https://www.google.com/search",
+            params={"q": query, "num": num_results + 2},
+            headers=headers,
+            timeout=15,
+        )
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        links = []
+        for a_tag in soup.find_all("a", href=True):
+            href = a_tag["href"]
+            # Google wraps URLs in /url?q=...
+            if href.startswith("/url?q="):
+                url = href.split("/url?q=")[1].split("&")[0]
+                url = unquote(url)
+                if url.startswith("http") and "google.com" not in url:
+                    links.append(url)
+
+        links = _dedup_urls(links, num_results)
+        if links:
+            logger.info(f"Found {len(links)} URLs from Google scrape: {links}")
+        return links
+    except Exception as e:
+        logger.warning(f"Google scrape failed: {e}")
+        return []
+
 
 def clean_html(html):
     """Remove scripts/styles and extract visible text."""
@@ -100,94 +263,119 @@ def clean_html(html):
         if text and len(text) > 20:
             text_elements.append(text)
     
+    # Get list items (often contain useful info)
+    for tag in soup.find_all('li'):
+        text = tag.get_text(strip=True)
+        if text and len(text) > 30:
+            text_elements.append(text)
+    
     # Combine text
     combined_text = " ".join(text_elements)
     return " ".join(combined_text.split())  # Clean whitespace
 
+
 def scrape_top3(query, num_results=5, api_key=None):
-    """Search and fetch top 5 URLs, return their cleaned text."""
+    """Search and fetch top URLs, return their cleaned text."""
     
-    print(f"Searching for: {query}")
+    logger.info(f"Searching for: {query}")
     
-    # Try DuckDuckGo first (more reliable for scraping)
+    # Try DuckDuckGo first (multiple strategies built in)
     urls = duckduckgo_search_urls(query, num_results)
+
+    # Fallback to SerpAPI
     if not urls:
-        print("DuckDuckGo failed, trying SerpAPI (Google)...")
+        logger.info("DuckDuckGo failed, trying SerpAPI (Google)...")
         urls = serpapi_search_urls(query, num_results, api_key=api_key)
+
+    # Last resort: direct Google scrape
+    if not urls:
+        logger.info("SerpAPI unavailable, trying direct Google scrape...")
+        urls = google_scrape_urls(query, num_results)
     
     if not urls:
-        print("No URLs found from any search engine")
+        logger.warning("No URLs found from any search engine")
         return []
-    
-    results = []
-    for i, url in enumerate(urls, 1):
+
+    logger.info(f"Scraping {len(urls)} URLs: {urls}")
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                      "AppleWebKit/537.36 (KHTML, like Gecko) "
+                      "Chrome/122.0.0.0 Safari/537.36"
+    }
+
+    # Fetch all URLs in parallel using threads (no sleep between requests)
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def _fetch_one(url):
         try:
-            print(f"Fetching content from {i}/{len(urls)}: {url}")
-            
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                              "AppleWebKit/537.36 (KHTML, like Gecko) "
-                              "Chrome/91.0.4472.124 Safari/537.36"
-            }
-            
-            resp = requests.get(url, timeout=15, headers=headers)
+            resp = requests.get(url, timeout=10, headers=headers)
             resp.raise_for_status()
-            
             text = clean_html(resp.text)
             if text:
-                results.append({"url": url, "content": text[:3000]})  # Increased from 2000 to 3000 chars
-                print(f"Successfully extracted {len(text)} characters")
-            else:
-                results.append({"url": url, "content": "No text content found"})
-                print("No text content found")
-            
-            # Random delay between requests
-            time.sleep(random.uniform(1, 3))
-            
+                logger.info(f"Successfully extracted {len(text)} chars from {url}")
+                return {"url": url, "content": text[:3000]}
+            logger.info(f"No text content from {url}")
+            return {"url": url, "content": "No text content found"}
         except Exception as e:
-            print(f"Failed to fetch {url}: {e}")
-            results.append({"url": url, "content": f"Failed to fetch: {e}"})
-    
+            logger.error(f"Failed to fetch {url}: {e}")
+            return {"url": url, "content": f"Failed to fetch: {e}"}
+
+    results = []
+    with ThreadPoolExecutor(max_workers=min(len(urls), 5)) as pool:
+        futures = {pool.submit(_fetch_one, url): url for url in urls}
+        for future in as_completed(futures):
+            results.append(future.result())
+
+    # Maintain original URL order
+    url_order = {url: i for i, url in enumerate(urls)}
+    results.sort(key=lambda r: url_order.get(r["url"], 999))
+
     return results
+
 
 def scrape_web_content(query, num_results=5, api_key=None):
     """
-    Simple function to scrape web content for a query.
-    
-    Args:
-        query: The search query
-        num_results: Number of results to process (increased from 3 to 5)
-        
+    Scrape web content for a query.
+
     Returns:
-        Combined text content from web sources
+        dict with keys:
+          - content (str): combined text from all sources
+          - urls (list[str]): the URLs that were successfully scraped
     """
     results = scrape_top3(query, num_results=num_results, api_key=api_key)
-    
+
     if not results:
-        return "No relevant information found on the web."
-    
-    # Combine all content
+        return {"content": "", "urls": []}
+
     combined_content = []
+    urls = []
     for result in results:
         combined_content.append(f"Source: {result['url']}\n{result['content']}\n")
-    
-    return "\n---\n".join(combined_content)
+        urls.append(result["url"])
+
+    return {
+        "content": "\n---\n".join(combined_content),
+        "urls": urls,
+    }
+
 
 # Example usage:
 if __name__ == "__main__":
-    print("Testing Web Scraper with DuckDuckGo + SerpAPI fallback")
-    print("=" * 40)
+    logging.basicConfig(level=logging.INFO)
+    logger.info("Testing Web Scraper with DuckDuckGo + SerpAPI fallback")
+    logger.info("=" * 40)
     
-    query = "Python programming tutorials"
-    print(f"Query: {query}")
+    query = "Stevens Institute of Technology research areas"
+    logger.info(f"Query: {query}")
     
     results = scrape_top3(query)
     
     if results:
-        print(f"\nSuccessfully retrieved {len(results)} results:")
+        logger.info(f"\nSuccessfully retrieved {len(results)} results:")
         for i, result in enumerate(results, 1):
-            print(f"\n--- Result {i} ---")
-            print(f"URL: {result['url']}")
-            print(f"Content: {result['content'][:300]}...")
+            logger.info(f"\n--- Result {i} ---")
+            logger.info(f"URL: {result['url']}")
+            logger.info(f"Content: {result['content'][:300]}...")
     else:
-        print("No results found")
+        logger.info("No results found")

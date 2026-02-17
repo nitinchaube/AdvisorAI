@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from "react";
-import Header from "./Header";
-import Footer from "./Footer";
-import Sidebar from "./Sidebar";
+import PageLayout from "./PageLayout";
 import { adminAPI } from "../services/api";
 import {
   BookOpen,
@@ -18,11 +16,15 @@ import {
   CheckCircle,
   ChevronLeft,
   ChevronRight,
+  RefreshCw,
+  Briefcase,
+  Clock,
+  Zap,
 } from "lucide-react";
 
 const AdminDashboard = () => {
   // Sidebar state
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
 
   // Admin specific state
   const [activeTab, setActiveTab] = useState("courses");
@@ -48,6 +50,10 @@ const AdminDashboard = () => {
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [totalPages, setTotalPages] = useState(1);
 
+  // Scraper state
+  const [scraperStatus, setScraperStatus] = useState(null);
+  const [scraperRunning, setScraperRunning] = useState(false);
+
   // Handler for menu toggle
   const handleMenuToggle = () => {
     setSidebarOpen(!sidebarOpen);
@@ -56,6 +62,40 @@ const AdminDashboard = () => {
   useEffect(() => {
     loadData();
   }, [activeTab]);
+
+  // Fetch scraper status on mount and every 30s
+  useEffect(() => {
+    const fetchScraperStatus = async () => {
+      try {
+        const res = await adminAPI.getScraperStatus();
+        setScraperStatus(res.scraper);
+      } catch {
+        // silently ignore — non-critical
+      }
+    };
+    fetchScraperStatus();
+    const interval = setInterval(fetchScraperStatus, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleTriggerScraper = async () => {
+    try {
+      setScraperRunning(true);
+      await adminAPI.triggerScraper();
+      showNotification("Job scraper started! It will run in the background.", "success");
+      // Poll status a few times to get the updated result
+      setTimeout(async () => {
+        try {
+          const res = await adminAPI.getScraperStatus();
+          setScraperStatus(res.scraper);
+        } catch {}
+        setScraperRunning(false);
+      }, 5000);
+    } catch (error) {
+      showNotification("Failed to trigger scraper: " + error.message, "error");
+      setScraperRunning(false);
+    }
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -582,11 +622,68 @@ const AdminDashboard = () => {
   // Render admin content similar to Dashboard's renderContent
   const renderAdminContent = () => {
     return (
-      <div className="h-full w-full overflow-hidden">
-        {/* Admin Content Container */}
-        <div className="h-full bg-white/90 backdrop-blur-sm overflow-y-auto">
+      <>
+        {/* Job Scraper Card */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
+            <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/60 rounded-2xl p-5 shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="bg-amber-100 p-3 rounded-xl">
+                  <Briefcase className="w-6 h-6 text-amber-600" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-slate-800 text-sm">Jobs & Internships Scraper</h3>
+                  {scraperStatus ? (
+                    <div className="flex items-center gap-3 mt-1 text-xs text-slate-500">
+                      <span className="flex items-center gap-1">
+                        <span className={`inline-block w-2 h-2 rounded-full ${
+                          scraperStatus.last_status?.includes("success") ? "bg-green-500" :
+                          scraperStatus.last_status?.includes("error") ? "bg-red-500" : "bg-slate-400"
+                        }`} />
+                        {scraperStatus.last_status || "idle"}
+                      </span>
+                      {scraperStatus.last_run && (
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          Last: {new Date(scraperStatus.last_run).toLocaleString()}
+                        </span>
+                      )}
+                      <span>Runs: {scraperStatus.runs || 0}</span>
+                      <span>Every {scraperStatus.interval_hours || 2}h</span>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-400 mt-1">Loading status…</p>
+                  )}
+                  {scraperStatus?.last_error && (
+                    <p className="text-xs text-red-500 mt-1 truncate max-w-md">{scraperStatus.last_error}</p>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={handleTriggerScraper}
+                disabled={scraperRunning}
+                className={`flex items-center gap-2 px-5 py-3 rounded-xl font-semibold text-sm transition-all duration-300 shadow-md hover:shadow-lg transform hover:scale-105 ${
+                  scraperRunning
+                    ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+                    : "bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-600 hover:to-orange-600"
+                }`}
+              >
+                {scraperRunning ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Running…
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-4 h-4" />
+                    Run Scraper Now
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
           {/* Tabs */}
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
             <div className="bg-gradient-to-r from-slate-800/95 to-slate-700/95 backdrop-blur-xl rounded-3xl shadow-2xl border border-slate-600/20 p-2">
               <nav className="flex space-x-2">
                 <button
@@ -1113,30 +1210,12 @@ const AdminDashboard = () => {
               </div>
             )}
           </div>
-        </div>
-      </div>
+      </>
     );
   };
 
   return (
-    <div className="h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 relative overflow-hidden">
-      {/* Enhanced Background decoration */}
-      <div className="absolute inset-0 bg-gradient-to-br from-blue-100/30 via-purple-100/20 to-indigo-100/30"></div>
-
-      {/* Animated gradient orbs */}
-      <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-br from-blue-200/20 via-purple-200/20 to-indigo-200/20 rounded-full blur-3xl animate-pulse"></div>
-      <div
-        className="absolute bottom-0 left-0 w-96 h-96 bg-gradient-to-br from-indigo-200/20 via-blue-200/20 to-cyan-200/20 rounded-full blur-3xl animate-pulse"
-        style={{ animationDelay: "2s" }}
-      ></div>
-      <div
-        className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-gradient-to-br from-purple-200/15 via-blue-200/15 to-indigo-200/15 rounded-full blur-3xl animate-pulse"
-        style={{ animationDelay: "4s" }}
-      ></div>
-
-      {/* Subtle grid pattern */}
-      <div className="absolute inset-0 bg-[linear-gradient(rgba(59,130,246,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(59,130,246,0.03)_1px,transparent_1px)] bg-[size:50px_50px]"></div>
-
+    <PageLayout sidebarOpen={sidebarOpen} onMenuToggle={handleMenuToggle}>
       {/* Notification */}
       {notification.show && (
         <div
@@ -1157,30 +1236,15 @@ const AdminDashboard = () => {
         </div>
       )}
 
-      {/* Fixed Header */}
-      <div className="flex-shrink-0 z-50 relative">
-        <Header onMenuToggle={handleMenuToggle} sidebarOpen={sidebarOpen} />
-      </div>
+      {/* Content */}
 
-      {/* Main Content Area - Between Header and Footer */}
-      <div className="flex-1 flex relative overflow-hidden">
-        {/* Sidebar - Between header and footer */}
-        {sidebarOpen && (
-          <div className="flex-shrink-0 z-40 relative">
-            <Sidebar activeTab="admin" setActiveTab={() => {}} />
-          </div>
-        )}
-
-        {/* Content - Takes remaining space */}
-        <div className="flex-1 relative overflow-hidden">
-          {renderAdminContent()}
+      {/* <div className="flex-1 relative overflow-auto"> */}
+      <div className="h-full bg-white/90 backdrop-blur-sm overflow-y-auto">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-8">
+        {renderAdminContent()}
         </div>
       </div>
-
-      {/* Fixed Footer */}
-      <div className="flex-shrink-0 z-50 relative">
-        <Footer />
-      </div>
+      {/* </div> */}
 
       {/* Modal */}
       {showModal && (
@@ -1266,7 +1330,7 @@ const AdminDashboard = () => {
           </div>
         </div>
       )}
-    </div>
+    </PageLayout>
   );
 };
 

@@ -1,53 +1,235 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Send, Bot, User, Sparkles, Paperclip, Mic, History, Info, Plus, ThumbsUp, ThumbsDown, Copy, Check } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { apiService } from "../services/api";
 import { useAuth } from "../contexts/AuthContext";
 import { chatCache } from '../utils/chatCache';
 
-// Simple markdown renderer component
+// Code block with copy button (ChatGPT-style)
+const CodeBlock = ({ children, language, ...props }) => {
+  const [copied, setCopied] = useState(false);
+  const codeString = String(children).replace(/\n$/, '');
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(codeString);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
+
+  return (
+    <div className="relative my-4 group">
+      {language && (
+        <div className="flex items-center justify-between px-4 py-2 bg-slate-800 text-slate-300 text-xs font-mono rounded-t-lg">
+          <span>{language}</span>
+          <button
+            onClick={handleCopy}
+            className="flex items-center gap-1.5 px-2 py-1 hover:bg-slate-700 rounded transition-colors"
+            title="Copy code"
+          >
+            {copied ? (
+              <>
+                <Check className="w-3.5 h-3.5" />
+                <span>Copied!</span>
+              </>
+            ) : (
+              <>
+                <Copy className="w-3.5 h-3.5" />
+                <span>Copy</span>
+              </>
+            )}
+          </button>
+        </div>
+      )}
+      <pre className={`bg-slate-900 text-slate-100 rounded-lg overflow-x-auto ${language ? 'rounded-t-none' : 'rounded-lg'} p-4 my-0`}>
+        <code className="text-sm font-mono leading-relaxed" {...props}>
+          {children}
+        </code>
+      </pre>
+    </div>
+  );
+};
+
+// Proper markdown renderer component with react-markdown (ChatGPT-style)
 const MarkdownRenderer = ({ content }) => {
   if (!content) return null;
 
-  // Convert markdown to HTML-like JSX
-  const renderMarkdown = (text) => {
-    // Bold text: **text** or __text__
-    text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-    text = text.replace(/__(.*?)__/g, '<strong>$1</strong>');
-    
-    // Italic text: *text* or _text_
-    text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
-    text = text.replace(/_(.*?)_/g, '<em>$1</em>');
-    
-    // Links: [text](url)
-    text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 underline">$1</a>');
-    
-    // Numbered lists: 1. item
-    text = text.replace(/^(\d+\.\s+)(.*)$/gm, '<li class="list-decimal ml-4">$2</li>');
-    
-    // Bullet lists: * item or - item
-    text = text.replace(/^[\*\-]\s+(.*)$/gm, '<li class="list-disc ml-4">$1</li>');
-    
-    // Headers: # Header
-    text = text.replace(/^### (.*$)/gim, '<h3 class="text-lg font-bold mt-4 mb-2">$1</h3>');
-    text = text.replace(/^## (.*$)/gim, '<h2 class="text-xl font-bold mt-4 mb-2">$1</h2>');
-    text = text.replace(/^# (.*$)/gim, '<h1 class="text-2xl font-bold mt-4 mb-2">$1</h1>');
-    
-    // Code blocks: `code`
-    text = text.replace(/`([^`]+)`/g, '<code class="bg-gray-100 px-1 py-0.5 rounded text-sm font-mono">$1</code>');
-    
-    // Line breaks
-    text = text.replace(/\n/g, '<br />');
-    
-    return text;
-  };
-
-  const processedContent = renderMarkdown(content);
-
   return (
-    <div 
-      className="text-sm leading-relaxed"
-      dangerouslySetInnerHTML={{ __html: processedContent }}
-    />
+    <div className="text-sm leading-relaxed markdown-content break-words">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+        // Custom styling for code blocks
+        code({ node, inline, className, children, ...props }) {
+          const match = /language-(\w+)/.exec(className || '');
+          const language = match ? match[1] : '';
+          
+          return !inline ? (
+            <CodeBlock language={language} {...props}>
+              {children}
+            </CodeBlock>
+          ) : (
+            <code className="bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-sm font-mono text-slate-800 dark:text-slate-200" {...props}>
+              {children}
+            </code>
+          );
+        },
+        // Custom styling for links
+        a({ children, ...props }) {
+          return (
+            <a
+              {...props}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:text-blue-800 underline"
+            >
+              {children}
+            </a>
+          );
+        },
+        // Custom styling for lists (ChatGPT-style)
+        ul({ children, ...props }) {
+          return (
+            <ul className="list-disc my-3 space-y-1 ml-6" {...props}>
+              {children}
+            </ul>
+          );
+        },
+        ol({ children, ...props }) {
+          return (
+            <ol className="list-decimal my-3 space-y-1 ml-6" {...props}>
+              {children}
+            </ol>
+          );
+        },
+        li({ children, ...props }) {
+          return (
+            <li className="pl-2 leading-relaxed" {...props}>
+              {children}
+            </li>
+          );
+        },
+        // Custom styling for paragraphs (ChatGPT-style)
+        p({ children, ...props }) {
+          // Check if paragraph only contains whitespace or is empty
+          const text = String(children).trim();
+          if (!text) return null;
+          
+          return (
+            <p className="my-3 leading-relaxed text-slate-800" {...props}>
+              {children}
+            </p>
+          );
+        },
+        // Custom styling for headers
+        h1({ children, ...props }) {
+          return (
+            <h1 className="text-xl font-bold mt-4 mb-2 text-slate-900" {...props}>
+              {children}
+            </h1>
+          );
+        },
+        h2({ children, ...props }) {
+          return (
+            <h2 className="text-lg font-bold mt-4 mb-2 text-slate-900" {...props}>
+              {children}
+            </h2>
+          );
+        },
+        h3({ children, ...props }) {
+          return (
+            <h3 className="text-base font-semibold mt-3 mb-2 text-slate-900" {...props}>
+              {children}
+            </h3>
+          );
+        },
+        // Custom styling for blockquotes (ChatGPT-style)
+        blockquote({ children, ...props }) {
+          return (
+            <blockquote className="border-l-4 border-slate-300 pl-4 my-3 italic text-slate-600 bg-slate-50 py-2 rounded-r" {...props}>
+              {children}
+            </blockquote>
+          );
+        },
+        // Horizontal rule
+        hr({ ...props }) {
+          return (
+            <hr className="my-4 border-slate-200" {...props} />
+          );
+        },
+        // Strong text
+        strong({ children, ...props }) {
+          return (
+            <strong className="font-semibold text-slate-900" {...props}>
+              {children}
+            </strong>
+          );
+        },
+        // Emphasis text
+        em({ children, ...props }) {
+          return (
+            <em className="italic text-slate-700" {...props}>
+              {children}
+            </em>
+          );
+        },
+        // Strikethrough text
+        del({ children, ...props }) {
+          return (
+            <del className="line-through text-slate-500" {...props}>
+              {children}
+            </del>
+          );
+        },
+        // Inline code (already handled in code component, but ensure it's preserved)
+        // Text nodes - preserve all text formatting
+        // Custom styling for tables (ChatGPT-style)
+        table({ children, ...props }) {
+          return (
+            <div className="overflow-x-auto my-4 border border-slate-200 rounded-lg">
+              <table className="min-w-full divide-y divide-slate-200" {...props}>
+                {children}
+              </table>
+            </div>
+          );
+        },
+        thead({ children, ...props }) {
+          return (
+            <thead className="bg-slate-50" {...props}>
+              {children}
+            </thead>
+          );
+        },
+        tbody({ children, ...props }) {
+          return (
+            <tbody className="bg-white divide-y divide-slate-200" {...props}>
+              {children}
+            </tbody>
+          );
+        },
+        th({ children, ...props }) {
+          return (
+            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider" {...props}>
+              {children}
+            </th>
+          );
+        },
+        td({ children, ...props }) {
+          return (
+            <td className="px-4 py-3 text-sm text-slate-800" {...props}>
+              {children}
+            </td>
+          );
+        },
+      }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
   );
 };
 
@@ -68,6 +250,9 @@ const ChatInterface = ({
   const [loading, setLoading] = useState(false);
   const [copiedMessages, setCopiedMessages] = useState(new Set());
   const [sessionInitialized, setSessionInitialized] = useState(false);
+  const [thinkingStatus, setThinkingStatus] = useState('Thinking…');
+  const [thinkingUrls, setThinkingUrls] = useState([]);
+  const [thinkingSources, setThinkingSources] = useState(null); // Perplexity-style source summary
   const messagesEndRef = useRef(null);
 
   // Copy message content to clipboard
@@ -241,148 +426,151 @@ const ChatInterface = ({
       type: 'user',
       content: inputMessage,
       timestamp: new Date().toLocaleTimeString(),
-      feedback: null, // Initialize feedback as null
+      feedback: null,
       context: {
-        previousMessages: messages.filter(msg => msg.type === 'user' || msg.type === 'ai').slice(-4), // Last 4 messages for context
+        previousMessages: messages.filter(msg => msg.type === 'user' || msg.type === 'ai').slice(-4),
         timestamp: new Date().toISOString()
       }
     };
 
-    // Store the current input message
     const currentInput = inputMessage;
     setInputMessage('');
-    setIsTyping(true);
+    setIsTyping(true);       // show bouncing dots while pipeline runs
+    setIsStreaming(false);
+    setThinkingStatus('Thinking…');
+    setThinkingUrls([]);
+    setThinkingSources(null);
     setShowSources(false);
     setCurrentSources(null);
 
-    // Add user message immediately and get updated messages
     const updatedMessages = [...messages, userMessage];
     setMessages(updatedMessages);
-    
-    // Update cache immediately
+
     if (currentSessionId) {
       chatCache.setSessionMessages(currentSessionId, updatedMessages);
     }
 
+    // ID for the AI message we'll progressively build
+    const aiMsgId = Date.now() + 1;
+
     try {
-      // Ensure we have a valid session ID
       if (!currentSessionId) {
-        console.error('No session ID available for message');
         throw new Error('No active chat session');
       }
 
-      // Get chat history for context - ensure we always include last 3 Q&A pairs (6 messages)
-      // This provides consistent context for the AI and prevents loss of conversation flow
-      // Note: We send clean chat history to AI, but store full context for fine-tuning
       const chatHistory = updatedMessages
         .filter(msg => msg.type === 'user' || msg.type === 'ai')
-        .slice(-6) // Last 6 messages for context (3 Q&A pairs)
+        .slice(-6)
         .map(msg => ({
           role: msg.type === 'user' ? 'user' : 'assistant',
-          content: msg.content
-          // Note: We don't send context, timestamp, or feedback to AI
-          // This keeps the chat history lightweight for AI processing
-          // Full context is stored separately for fine-tuning purposes
+          content: msg.content,
         }));
 
-      console.log("📱 Sending chat history:", {
-        totalMessages: updatedMessages.length,
-        filteredMessages: updatedMessages.filter(msg => msg.type === 'user' || msg.type === 'ai').length,
-        chatHistoryLength: chatHistory.length,
-        chatHistory: chatHistory
-      });
+      let accumulated = "";
+      let streamStarted = false;
 
-      // Send message to RAG service with session ID
-      const response = await apiService.sendChatMessage(currentInput, chatHistory, currentSessionId);
-      
-      console.log("📱 Raw API response received:", response);
-      
-      if (response.success) {
-        const aiMessage = {
-          id: Date.now() + 1,
-          type: 'ai',
-          content: response.response,
-          timestamp: new Date().toLocaleTimeString(),
-          sources: response.sources,
-          feedback: null, // Initialize feedback as null
-          context: {
-            previousMessages: chatHistory, // Save the context that was sent to AI
-            userQuestion: currentInput,
-            timestamp: new Date().toISOString(),
-            // Note: This context is stored in DB for fine-tuning but not sent to AI
-            // The AI receives clean chat history without this metadata
+      await apiService.streamChatMessage(
+        currentInput,
+        chatHistory,
+        currentSessionId,
+
+        // ── onToken ──────────────────────────────────────────────
+        (token) => {
+          if (!streamStarted) {
+            streamStarted = true;
+            setIsTyping(false);   // stop bouncing dots
+            setIsStreaming(true); // signal that text is flowing in
+            // Insert an empty AI message placeholder
+            setMessages(prev => [
+              ...prev,
+              {
+                id: aiMsgId,
+                type: 'ai',
+                content: '',
+                timestamp: new Date().toLocaleTimeString(),
+                sources: null,
+                feedback: null,
+                context: null,
+              },
+            ]);
           }
-        };
+          accumulated += token;
+          const snap = accumulated;
+          setMessages(prev =>
+            prev.map(m => (m.id === aiMsgId ? { ...m, content: snap } : m))
+          );
+        },
 
-        // Debug logging for response structure
-        console.log("📱 Chat response received:", {
-          success: response.success,
-          chat_name: response.chat_name,
-          sources: response.sources,
-          hasChatName: !!response.chat_name,
-          chatNameValue: response.chat_name,
-          fullResponse: response
-        });
-        
-        console.log("📱 Checking if chat_name exists and is different from 'New Chat'");
-        console.log("📱 response.chat_name:", response.chat_name);
-        console.log("📱 response.chat_name !== 'New Chat':", response.chat_name !== 'New Chat');
-        console.log("📱 Both conditions met:", response.chat_name && response.chat_name !== 'New Chat');
-
-        setMessages(prev => {
-          const updated = [...prev, aiMessage];
-          // Ensure chat history consistency before updating cache
-          const consistentMessages = ensureChatHistoryConsistency(updated);
-          // Update cache with consistent messages
-          if (currentSessionId) chatCache.setSessionMessages(currentSessionId, consistentMessages);
-          return updated;
-        });
-        setCurrentSources(response.sources);
-
-        // Check if session title should be updated
-        if (response.chat_name && response.chat_name !== 'New Chat') {
-          // Update session title if it's still "New Chat"
-          try {
-            console.log("📝 Updating session title from 'New Chat' to:", response.chat_name);
-            console.log("📝 Calling apiService.updateChatSession with:", currentSessionId, response.chat_name);
-            const updateResponse = await apiService.updateChatSession(currentSessionId, response.chat_name);
-            console.log("📝 updateChatSession response:", updateResponse);
-            if (onSessionUpdate) {
-              console.log("📝 Calling onSessionUpdate callback with:", currentSessionId, response.chat_name);
-              onSessionUpdate(currentSessionId, response.chat_name);
-            }
-          } catch (error) {
-            console.error('Error updating session title:', error);
+        // ── onStatus – update the live step indicator ────────────
+        (status, event) => {
+          setThinkingStatus(status);
+          if (event && event.urls) {
+            setThinkingUrls(event.urls);
           }
-        } else {
-          console.log("📝 Not updating session title. Conditions not met:");
-          console.log("📝 - response.chat_name exists:", !!response.chat_name);
-          console.log("📝 - response.chat_name !== 'New Chat':", response.chat_name !== 'New Chat');
-        }
-      } else {
-        throw new Error(response.error || 'Failed to get response');
-      }
+          if (event && event.sources) {
+            setThinkingSources(event.sources);
+          }
+        },
+
+        // ── onDone ───────────────────────────────────────────────
+        (meta) => {
+          setIsStreaming(false);
+          const finalContent = accumulated.trim();
+          const sources = meta.sources || {};
+          setCurrentSources(sources);
+
+          setMessages(prev => {
+            const updated = prev.map(m =>
+              m.id === aiMsgId
+                ? {
+                    ...m,
+                    content: finalContent,
+                    sources,
+                    context: {
+                      previousMessages: chatHistory,
+                      userQuestion: currentInput,
+                      timestamp: new Date().toISOString(),
+                    },
+                  }
+                : m
+            );
+            const consistent = ensureChatHistoryConsistency(updated);
+            if (currentSessionId) chatCache.setSessionMessages(currentSessionId, consistent);
+            return updated;
+          });
+
+          // Update session title when the backend provides one
+          const chatName = meta.chat_name;
+          if (chatName && chatName !== 'New Chat') {
+            if (onSessionUpdate) onSessionUpdate(currentSessionId, chatName);
+            apiService.updateChatSession(currentSessionId, chatName).catch(() => {});
+          }
+        },
+      );
     } catch (error) {
       console.error('Chat error:', error);
+      setIsStreaming(false);
       const errorMessage = {
-        id: Date.now() + 1,
+        id: aiMsgId,
         type: 'ai',
         content: "I apologize, but I'm experiencing some technical difficulties. Please try again in a moment.",
         timestamp: new Date().toLocaleTimeString(),
         error: true,
         feedback: null,
-        context: null
+        context: null,
       };
       setMessages(prev => {
-        const updated = [...prev, errorMessage];
-        // Ensure chat history consistency before updating cache
-        const consistentMessages = ensureChatHistoryConsistency(updated);
-        // Update cache with consistent messages
-        if (currentSessionId) chatCache.setSessionMessages(currentSessionId, consistentMessages);
+        const hasPlaceholder = prev.some(m => m.id === aiMsgId);
+        const updated = hasPlaceholder
+          ? prev.map(m => (m.id === aiMsgId ? errorMessage : m))
+          : [...prev, errorMessage];
+        const consistent = ensureChatHistoryConsistency(updated);
+        if (currentSessionId) chatCache.setSessionMessages(currentSessionId, consistent);
         return updated;
       });
     } finally {
       setIsTyping(false);
+      setIsStreaming(false);
     }
   };
 
@@ -400,14 +588,14 @@ const ChatInterface = ({
   return (
     <div className="h-full w-full flex flex-col bg-white">
       {/* Header */}
-      <div className="flex-shrink-0 p-6 border-b border-slate-200 bg-white">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-cyan-600 rounded-xl flex items-center justify-center shadow-md border border-blue-300/30">
-            <Bot className="w-6 h-6 text-white" />
+      <div className="flex-shrink-0 px-4 py-3 sm:p-6 border-b border-slate-200 bg-white">
+        <div className="flex items-center space-x-2 sm:space-x-3">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-blue-400 to-cyan-600 rounded-xl flex items-center justify-center shadow-md border border-blue-300/30 flex-shrink-0">
+            <Bot className="w-4 h-4 sm:w-6 sm:h-6 text-white" />
           </div>
-          <div className="flex-1">
-            <h2 className="text-xl font-bold text-slate-800">{sessionTitle}</h2>
-            <p className="text-sm text-slate-600 font-medium">Ask me anything about courses, professors, academic planning</p>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-base sm:text-xl font-bold text-slate-800 truncate">{sessionTitle}</h2>
+            <p className="text-xs sm:text-sm text-slate-600 font-medium hidden sm:block">Ask me anything about courses, professors, academic planning</p>
           </div>
           <div className="flex items-center space-x-3">
             <div className="flex items-center space-x-2">
@@ -439,25 +627,25 @@ const ChatInterface = ({
       </div>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-6 bg-slate-50/30">
-        <div className="max-w-4xl mx-auto space-y-6">
+      <div className="flex-1 overflow-y-auto px-3 py-4 sm:p-6 bg-slate-50/30">
+        <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6">
           {messages.map((message) => (
               <div
                 key={message.id}
                 className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
               >
-                <div className={`flex items-start space-x-3 max-w-3xl ${
+                <div className={`flex items-start space-x-2 sm:space-x-3 max-w-[90%] sm:max-w-3xl ${
                   message.type === 'user' ? 'flex-row-reverse space-x-reverse' : ''
                 }`}>
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                  <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
                     message.type === 'user' 
                       ? 'bg-gradient-to-br from-blue-500 to-purple-600 border border-blue-300/30' 
                       : 'bg-gradient-to-br from-blue-400 to-cyan-600 border border-blue-300/30'
                   }`}>
                     {message.type === 'user' ? (
-                      <User className="w-4 h-4 text-white" />
+                      <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
                     ) : (
-                      <Bot className="w-4 h-4 text-white" />
+                      <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
                     )}
                   </div>
                   
@@ -470,11 +658,16 @@ const ChatInterface = ({
                         : message.error
                         ? 'bg-red-50 text-red-800 border border-red-200'
                         : 'bg-white text-slate-800 border border-slate-200/60 shadow-sm'
-                    }`}>
+                    } ${message.isStreaming ? 'animate-pulse' : ''}`}>
                       {message.type === 'user' ? (
-                        <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
                       ) : (
-                        <MarkdownRenderer content={message.content} />
+                        <div className="w-full">
+                          <MarkdownRenderer content={message.content} />
+                          {message.isStreaming && (
+                            <span className="inline-block w-2 h-4 ml-1 bg-blue-500 animate-pulse" />
+                          )}
+                        </div>
                       )}
                     </div>
                     
@@ -545,18 +738,100 @@ const ChatInterface = ({
             ))
           }
           
-          {(isTyping || isStreaming) && (
+          {/* Perplexity-style thinking indicator with progressive sources */}
+          {isTyping && !isStreaming && (
             <div className="flex justify-start">
-              <div className="flex items-start space-x-3">
-                <div className="w-8 h-8 bg-gradient-to-br from-blue-400 to-cyan-600 rounded-full flex items-center justify-center border border-blue-300/30">
-                  <Bot className="w-4 h-4 text-white" />
+              <div className="flex items-start space-x-2 sm:space-x-3">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 bg-gradient-to-br from-blue-400 to-cyan-600 rounded-full flex items-center justify-center border border-blue-300/30 flex-shrink-0">
+                  <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
                 </div>
-                <div className="px-4 py-3 bg-white rounded-2xl border border-slate-200/60 shadow-sm">
-                  <div className="flex space-x-1">
-                    <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></div>
-                    <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                    <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                <div className="px-4 py-3 bg-white rounded-2xl border border-slate-200/60 shadow-sm min-w-[240px] max-w-lg">
+                  {/* Status line with spinner */}
+                  <div className="flex items-center space-x-3">
+                    <div className="relative w-4 h-4 flex-shrink-0">
+                      <div className="absolute inset-0 rounded-full border-2 border-blue-200"></div>
+                      <div className="absolute inset-0 rounded-full border-2 border-blue-500 border-t-transparent animate-spin"></div>
+                    </div>
+                    <span className="text-sm text-slate-700 font-medium">
+                      {thinkingStatus}
+                    </span>
                   </div>
+
+                  {/* Sources found (Perplexity-style) */}
+                  {thinkingSources && (
+                    <div className="mt-3 pt-3 border-t border-slate-100">
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Sources</p>
+                      <div className="space-y-1.5">
+                        {thinkingSources.database_docs > 0 && (
+                          <div className="flex items-center space-x-2 text-xs">
+                            <span className="w-4 h-4 rounded bg-green-100 flex items-center justify-center flex-shrink-0">
+                              <span className="text-green-600 text-[10px]">✓</span>
+                            </span>
+                            <span className="text-slate-600">
+                              University Database — <span className="font-medium text-slate-800">{thinkingSources.database_docs} docs</span>
+                            </span>
+                          </div>
+                        )}
+                        {thinkingSources.history_entries > 0 && (
+                          <div className="flex items-center space-x-2 text-xs">
+                            <span className="w-4 h-4 rounded bg-blue-100 flex items-center justify-center flex-shrink-0">
+                              <span className="text-blue-600 text-[10px]">✓</span>
+                            </span>
+                            <span className="text-slate-600">
+                              Chat History — <span className="font-medium text-slate-800">{thinkingSources.history_entries} conversations</span>
+                            </span>
+                          </div>
+                        )}
+                        {thinkingSources.web_urls?.length > 0 && (
+                          <div className="space-y-1">
+                            <div className="flex items-center space-x-2 text-xs">
+                              <span className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 ${thinkingSources.web_success ? 'bg-green-100' : 'bg-amber-100'}`}>
+                                <span className={`text-[10px] ${thinkingSources.web_success ? 'text-green-600' : 'text-amber-600'}`}>
+                                  {thinkingSources.web_success ? '✓' : '!'}
+                                </span>
+                              </span>
+                              <span className="text-slate-600">
+                                Web Search — <span className="font-medium text-slate-800">{thinkingSources.web_urls.length} pages</span>
+                              </span>
+                            </div>
+                            {/* Individual URL list */}
+                            <div className="ml-6 space-y-0.5">
+                              {thinkingSources.web_urls.map((url, idx) => {
+                                let host;
+                                try { host = new URL(url).hostname.replace('www.', ''); }
+                                catch { host = url; }
+                                return (
+                                  <a key={idx} href={url} target="_blank" rel="noopener noreferrer"
+                                     className="flex items-center space-x-1.5 text-[11px] text-blue-500 hover:text-blue-700 hover:underline">
+                                    <span className="text-slate-300">↗</span>
+                                    <span className="truncate max-w-[200px]">{host}</span>
+                                  </a>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Fallback: show URLs if sources not yet available */}
+                  {!thinkingSources && thinkingUrls.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-slate-100 space-y-1">
+                      {thinkingUrls.map((url, idx) => {
+                        let displayUrl;
+                        try { displayUrl = new URL(url).hostname + new URL(url).pathname; }
+                        catch { displayUrl = url; }
+                        if (displayUrl.length > 45) displayUrl = displayUrl.slice(0, 45) + '…';
+                        return (
+                          <div key={idx} className="flex items-center space-x-2 text-xs text-slate-400">
+                            <span className="text-blue-400">🔗</span>
+                            <span className="truncate">{displayUrl}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -586,6 +861,27 @@ const ChatInterface = ({
               <p><strong>User info included:</strong> {currentSources.user_info_included ? 'Yes' : 'No'}</p>
               <p><strong>Chat history included:</strong> {currentSources.chat_history_included ? 'Yes' : 'No'}</p>
               
+              {/* Web search links */}
+              {currentSources.reasoning?.web_search?.urls?.length > 0 && (
+                <div className="mt-2">
+                  <p className="font-semibold">Web pages consulted:</p>
+                  <ul className="ml-2 mt-1 space-y-1 list-disc">
+                    {currentSources.reasoning.web_search.urls.map((url, idx) => (
+                      <li key={idx} className="ml-2">
+                        <a
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:underline break-all"
+                        >
+                          {url}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              
               {currentSources.top_documents && currentSources.top_documents.length > 0 && (
                 <div className="mt-2">
                   <p className="font-semibold">Top Documents:</p>
@@ -604,25 +900,25 @@ const ChatInterface = ({
       )}
 
       {/* Input Area */}
-      <div className="flex-shrink-0 p-6 border-t border-slate-200 bg-white">
+      <div className="flex-shrink-0 px-3 py-3 sm:p-6 border-t border-slate-200 bg-white">
         <div className="max-w-4xl mx-auto">
-          <div className="flex items-end space-x-3">
+          <div className="flex items-end space-x-2 sm:space-x-3">
             <div className="flex-1 relative">
               <textarea
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder={currentSessionId ? "Ask me anything about stevens ..." : "Start a new chat to begin..."}
-                className="w-full pl-4 pr-12 py-3 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-none bg-white transition-all duration-200 shadow-sm"
+                placeholder={currentSessionId ? "Ask me anything about Stevens ..." : "Start a new chat to begin..."}
+                className="w-full pl-3 sm:pl-4 pr-10 sm:pr-12 py-2.5 sm:py-3 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-none bg-white transition-all duration-200 shadow-sm text-sm sm:text-base"
                 rows="1"
-                style={{ minHeight: '48px', maxHeight: '120px' }}
+                style={{ minHeight: '44px', maxHeight: '120px' }}
                 disabled={isTyping || isStreaming || !currentSessionId}
               />
-              <div className="absolute right-3 bottom-3 flex items-center space-x-2">
-                <button className="p-1 text-slate-400 hover:text-slate-600 transition-colors duration-200">
+              <div className="absolute right-2 sm:right-3 bottom-2.5 sm:bottom-3 flex items-center space-x-1 sm:space-x-2">
+                <button className="p-1 text-slate-400 hover:text-slate-600 transition-colors duration-200 hidden sm:block">
                   <Paperclip className="w-4 h-4" />
                 </button>
-                <button className="p-1 text-slate-400 hover:text-slate-600 transition-colors duration-200">
+                <button className="p-1 text-slate-400 hover:text-slate-600 transition-colors duration-200 hidden sm:block">
                   <Mic className="w-4 h-4" />
                 </button>
               </div>
@@ -630,9 +926,9 @@ const ChatInterface = ({
             <button
               onClick={handleSendMessage}
               disabled={!inputMessage.trim() || isTyping || isStreaming || !currentSessionId}
-              className="p-3 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 disabled:from-slate-300 disabled:to-slate-400 text-white rounded-xl transition-all duration-200 shadow-md hover:shadow-lg disabled:shadow-none disabled:cursor-not-allowed hover:scale-105 border border-blue-300/30"
+              className="p-2.5 sm:p-3 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 disabled:from-slate-300 disabled:to-slate-400 text-white rounded-xl transition-all duration-200 shadow-md hover:shadow-lg disabled:shadow-none disabled:cursor-not-allowed hover:scale-105 border border-blue-300/30 flex-shrink-0"
             >
-              <Send className="w-5 h-5" />
+              <Send className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
           </div>
           
