@@ -622,11 +622,9 @@ const AdminDashboard = () => {
   // Render admin content similar to Dashboard's renderContent
   const renderAdminContent = () => {
     return (
-      <div className="h-full w-full overflow-hidden">
-        {/* Admin Content Container */}
-        <div className="h-full bg-white/90 backdrop-blur-sm overflow-y-auto">
-          {/* Job Scraper Card */}
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
+      <>
+        {/* Job Scraper Card */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
             <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/60 rounded-2xl p-5 shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="flex items-center gap-4">
                 <div className="bg-amber-100 p-3 rounded-xl">
@@ -1212,8 +1210,7 @@ const AdminDashboard = () => {
               </div>
             )}
           </div>
-        </div>
-      </div>
+      </>
     );
   };
 
@@ -1240,9 +1237,14 @@ const AdminDashboard = () => {
       )}
 
       {/* Content */}
-      <div className="flex-1 relative overflow-hidden">
+
+      {/* <div className="flex-1 relative overflow-auto"> */}
+      <div className="h-full bg-white/90 backdrop-blur-sm overflow-y-auto">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-8">
         {renderAdminContent()}
+        </div>
       </div>
+      {/* </div> */}
 
       {/* Modal */}
       {showModal && (
