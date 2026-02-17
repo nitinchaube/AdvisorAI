@@ -322,6 +322,25 @@
   gap: 1rem;
   margin-top: 2rem;
   justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.button-separator {
+  display: flex;
+  align-items: center;
+  color: #9ca3af;
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: 0 0.5rem;
+  position: relative;
+}
+
+.button-separator span {
+  background: #ffffff;
+  padding: 0 0.75rem;
+  z-index: 1;
+  position: relative;
 }
 
 .primary-btn {
@@ -1260,6 +1279,11 @@
   .action-buttons button {
     width: 100%;
     justify-content: center;
+  }
+
+  .button-separator {
+    width: 100%;
+    text-align: center;
   }
   
   .stats-section {
