@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import PageLayout from "./PageLayout";
 import ChatHistoryView from "./ChatHistoryView";
 import { apiService } from "../services/api";
 
 const ChatHistoryPage = () => {
+  const navigate = useNavigate();
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
 
@@ -20,6 +22,8 @@ const ChatHistoryPage = () => {
   const handleSessionSelect = (sessionId) => {
     setCurrentSessionId(sessionId);
     localStorage.setItem("currentChatSessionId", sessionId);
+    // Navigate to chat page to continue the conversation
+    navigate("/chat");
   };
 
   const handleSessionUpdate = (sessionId, newTitle) => {

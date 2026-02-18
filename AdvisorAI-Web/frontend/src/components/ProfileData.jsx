@@ -199,7 +199,7 @@ const ProfileData = () => {
       <div
         style={{
           minHeight: "100vh",
-          background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+          background: `linear-gradient(to bottom right, var(--theme-page-bg-from), var(--theme-page-bg-via), var(--theme-page-bg-to))`,
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
@@ -231,7 +231,7 @@ const ProfileData = () => {
       <div
         style={{
           minHeight: "100vh",
-          background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+          background: `linear-gradient(to bottom right, var(--theme-page-bg-from), var(--theme-page-bg-via), var(--theme-page-bg-to))`,
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
@@ -254,7 +254,7 @@ const ProfileData = () => {
           <button
             style={{
               padding: "0.75rem 1.5rem",
-              background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+              background: `linear-gradient(to right, var(--theme-sidebar-icon-from), var(--theme-sidebar-icon-to))`,
               color: "white",
               border: "none",
               borderRadius: "8px",
@@ -294,15 +294,79 @@ const ProfileData = () => {
     <div
       style={{
         minHeight: "100vh",
-        background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+        background: `linear-gradient(to bottom right, var(--theme-page-bg-from), var(--theme-page-bg-via), var(--theme-page-bg-to))`,
         padding: "2rem",
         color: "white",
         overflow: "auto", // Make the profile section scrollable
         maxHeight: "calc(100vh - 5rem)", // Leave space for header
         boxSizing: "border-box",
+        position: "relative",
       }}
     >
-      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+      {/* Theme background decorations */}
+      <div
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: `linear-gradient(to bottom right, var(--theme-orb-1), var(--theme-orb-2), var(--theme-orb-3))`,
+          opacity: 0.3,
+          pointerEvents: "none",
+          zIndex: 0,
+        }}
+      />
+      {/* Animated gradient orbs */}
+      <div
+        style={{
+          position: "absolute",
+          top: 0,
+          right: 0,
+          width: "24rem",
+          height: "24rem",
+          borderRadius: "50%",
+          filter: "blur(80px)",
+          animation: "pulse 4s ease-in-out infinite",
+          background: `linear-gradient(to bottom right, var(--theme-orb-1), var(--theme-orb-2))`,
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          bottom: 0,
+          left: 0,
+          width: "24rem",
+          height: "24rem",
+          borderRadius: "50%",
+          filter: "blur(80px)",
+          animation: "pulse 4s ease-in-out infinite",
+          animationDelay: "2s",
+          background: `linear-gradient(to bottom right, var(--theme-orb-2), var(--theme-orb-3))`,
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%, -50%)",
+          width: "24rem",
+          height: "24rem",
+          borderRadius: "50%",
+          filter: "blur(80px)",
+          animation: "pulse 4s ease-in-out infinite",
+          animationDelay: "4s",
+          background: `linear-gradient(to bottom right, var(--theme-orb-3), var(--theme-orb-1))`,
+        }}
+      />
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 0.3; }
+          50% { opacity: 0.6; }
+        }
+      `}</style>
+      <div style={{ maxWidth: "1200px", margin: "0 auto", position: "relative", zIndex: 1 }}>
         {/* Header */}
         <div style={{ textAlign: "center", marginBottom: "2rem" }}>
           <div
@@ -321,7 +385,7 @@ const ProfileData = () => {
                 justifyContent: "center",
                 width: "4rem",
                 height: "4rem",
-                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                background: `linear-gradient(to bottom right, var(--theme-page-bg-from), var(--theme-page-bg-via), var(--theme-page-bg-to))`,
                 borderRadius: "50%",
                 boxShadow: "0 8px 32px rgba(102, 126, 234, 0.4)",
               }}
@@ -457,7 +521,7 @@ const ProfileData = () => {
           <button
             style={{
               padding: "0.75rem 1.5rem",
-              background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+              background: `linear-gradient(to bottom right, var(--theme-page-bg-from), var(--theme-page-bg-via), var(--theme-page-bg-to))`,
               color: "white",
               border: "none",
               borderRadius: "8px",
@@ -474,7 +538,7 @@ const ProfileData = () => {
           <button
             style={{
               padding: "0.75rem 1.5rem",
-              background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+              background: `linear-gradient(to right, var(--theme-sidebar-icon-from), var(--theme-sidebar-icon-to))`,
               color: "white",
               border: "none",
               borderRadius: "8px",
@@ -530,7 +594,7 @@ const ProfileData = () => {
                         width: "2.5rem",
                         height: "2.5rem",
                         background:
-                          "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                          `linear-gradient(to right, var(--theme-sidebar-icon-from), var(--theme-sidebar-icon-to))`,
                         borderRadius: "8px",
                         color: "white",
                       }}
@@ -641,7 +705,7 @@ const ProfileData = () => {
           right: "2rem",
           width: "3.5rem",
           height: "3.5rem",
-          background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+          background: `linear-gradient(to bottom right, var(--theme-page-bg-from), var(--theme-page-bg-via), var(--theme-page-bg-to))`,
           border: "none",
           borderRadius: "50%",
           color: "white",
