@@ -20,6 +20,7 @@ import {
   Briefcase,
   Clock,
   Zap,
+  ShieldCheck,
 } from "lucide-react";
 
 const AdminDashboard = () => {
@@ -225,6 +226,20 @@ const AdminDashboard = () => {
       showNotification(`User role updated to ${newRole} successfully`, "success");
     } catch (error) {
       showNotification("Failed to update user role: " + error.message, "error");
+    }
+  };
+
+  const handleVerifyUser = async (user) => {
+    if (user.emailVerified) return;
+    const confirmMessage = `Are you sure you want to verify the email for ${user.fullName || user.email}?`;
+    if (!window.confirm(confirmMessage)) return;
+
+    try {
+      await adminAPI.verifyUser(user.uid);
+      showNotification(`Email verified for ${user.fullName || user.email}`, "success");
+      await loadData();
+    } catch (error) {
+      showNotification("Failed to verify user email: " + error.message, "error");
     }
   };
 
@@ -903,6 +918,9 @@ const AdminDashboard = () => {
                                 Last Login
                               </th>
                               <th className="px-6 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider w-32">
+                                Email Verified
+                              </th>
+                              <th className="px-6 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider w-32">
                                 Firebase
                               </th>
                               <th className="px-6 py-4 text-right text-xs font-bold text-slate-600 uppercase tracking-wider w-24">
@@ -1048,6 +1066,26 @@ const AdminDashboard = () => {
                                   </div>
                                 </td>
                                 <td className="px-6 py-4 text-sm text-gray-500">
+                                  <div className="max-w-32 truncate" title={item.emailVerified ? "Verified" : "Not Verified"}>
+                                    <span
+                                      className={`inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full ${
+                                        item.emailVerified
+                                          ? 'bg-green-100 text-green-800'
+                                          : 'bg-orange-100 text-orange-800'
+                                      }`}
+                                    >
+                                      {item.emailVerified ? (
+                                        <>
+                                          <ShieldCheck className="w-3 h-3 mr-1" />
+                                          Verified
+                                        </>
+                                      ) : (
+                                        "Not Verified"
+                                      )}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-500">
                                   <div
                                     className="max-w-32 truncate"
                                     title={item["firebaseSynced"] ? "Synced" : "Not Synced"}
@@ -1067,6 +1105,15 @@ const AdminDashboard = () => {
                             )}
                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                               <div className="flex items-center justify-end space-x-2">
+                                {activeTab === "users" && !item.emailVerified && (
+                                  <button
+                                    onClick={() => handleVerifyUser(item)}
+                                    className="p-2 text-orange-600 hover:text-orange-700 hover:bg-orange-50 rounded-xl transition-all duration-300 transform hover:scale-110"
+                                    title="Verify user email"
+                                  >
+                                    <ShieldCheck className="w-4 h-4" />
+                                  </button>
+                                )}
                                 {activeTab === "users" && (
                                   <button
                                     onClick={() => openRoleModal(item)}
