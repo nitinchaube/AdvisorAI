@@ -36,38 +36,38 @@ const ProfessorCard = ({ professor, renderStars, onSelectCourse }) => (
         {/* Rating block - vertically stacked */}
         <div className="flex flex-col items-end flex-shrink-0">
           <div className="flex items-center space-x-0.5">
-            {renderStars(professor.rating)}
-          </div>
-          <span className="text-lg font-bold text-gray-900 mt-0.5">
-            {professor.rating?.toFixed ? professor.rating.toFixed(1) : (professor.rating || 0)}
-          </span>
-          <span className="text-xs text-gray-500">
-            {professor.reviews || 0} reviews
-          </span>
+          {renderStars(professor.rating)}
         </div>
+          <span className="text-lg font-bold text-gray-900 mt-0.5">
+          {professor.rating?.toFixed ? professor.rating.toFixed(1) : (professor.rating || 0)}
+        </span>
+        <span className="text-xs text-gray-500">
+          {professor.reviews || 0} reviews
+        </span>
+      </div>
       </div>
 
       {/* Info sections */}
       <div className="flex-1 mt-3 space-y-3 text-sm text-gray-700">
         {professor.generalInfo && (
-          <div className="flex items-start">
+        <div className="flex items-start">
             <Info className="w-4 h-4 mr-2 sm:mr-3 mt-0.5 flex-shrink-0 text-gray-400" />
-            <p className="text-gray-700 leading-relaxed overflow-hidden flex-1" style={{
-              display: '-webkit-box',
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: 'vertical'
-            }}>{professor.generalInfo}</p>
-          </div>
+          <p className="text-gray-700 leading-relaxed overflow-hidden flex-1" style={{
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical'
+          }}>{professor.generalInfo}</p>
+        </div>
         )}
         {professor.researchInfo && (
-          <div className="flex items-start">
+        <div className="flex items-start">
             <FlaskConical className="w-4 h-4 mr-2 sm:mr-3 mt-0.5 flex-shrink-0 text-gray-400" />
-            <p className="text-gray-700 leading-relaxed overflow-hidden flex-1" style={{
-              display: '-webkit-box',
-              WebkitLineClamp: 3,
-              WebkitBoxOrient: 'vertical'
-            }}>{professor.researchInfo}</p>
-          </div>
+          <p className="text-gray-700 leading-relaxed overflow-hidden flex-1" style={{
+            display: '-webkit-box',
+            WebkitLineClamp: 3,
+            WebkitBoxOrient: 'vertical'
+          }}>{professor.researchInfo}</p>
+        </div>
         )}
       </div>
     </div>

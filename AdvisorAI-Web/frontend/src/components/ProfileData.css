@@ -1,7 +1,7 @@
 /* Profile Data Styles */
 .profile-data-container {
   min-height: 100vh !important;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  background: linear-gradient(to bottom right, var(--theme-page-bg-from), var(--theme-page-bg-via), var(--theme-page-bg-to)) !important;
   position: relative !important;
   overflow: hidden !important;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;

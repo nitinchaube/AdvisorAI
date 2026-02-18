@@ -491,7 +491,7 @@ class UnifiedGitHubScraper:
         if not jobs:
             logger.warning(f"No jobs to save for {repo_name}")
             return
-
+        
         # Keep a single latest backup so the UI can fall back if needed
         if os.path.exists(csv_filename):
             backup_filename = f"{csv_filename}.backup_latest"
@@ -500,7 +500,7 @@ class UnifiedGitHubScraper:
                 logger.info(f"Updated backup: {backup_filename}")
             except Exception as e:
                 logger.warning(f"Failed to create/update backup {backup_filename}: {e}")
-
+        
         # Remove duplicates within the new data set (in case source has duplicates)
         unique_jobs = []
         seen_jobs = set()
@@ -534,7 +534,7 @@ class UnifiedGitHubScraper:
             
             # Log statistics
             self.log_statistics(unique_jobs, repo_name)
-
+            
         except Exception as e:
             logger.error(f"Error writing to {csv_filename}: {e}")
             # Try to restore from the latest backup if write failed

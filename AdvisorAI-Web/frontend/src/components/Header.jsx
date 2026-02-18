@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import logo from "../utils/logo.png";
 import {
@@ -14,6 +14,8 @@ import {
   ChevronRight,
   Home,
   Briefcase,
+  ArrowLeft,
+  LayoutDashboard,
 } from "lucide-react";
 
 const Header = ({ onMenuToggle, sidebarOpen }) => {
@@ -21,6 +23,10 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
 
   const { currentUser, userProfile, logout, isAdmin } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Determine if we're on a standalone page (no sidebar)
+  const isStandalonePage = !onMenuToggle;
 
   // Close menu when clicking outside
   React.useEffect(() => {
@@ -59,17 +65,27 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
       <div className="flex items-center justify-between w-full">
         {/* Left side - Menu button and title */}
         <div className="flex items-center space-x-2 sm:space-x-4">
-          <button
-            onClick={onMenuToggle}
-            className="p-2 rounded-xl hover:bg-white/10 transition-all duration-300 hover:shadow-lg hover:scale-105 border border-white/10"
-            title={sidebarOpen ? "Close detailed menu" : "Open detailed menu"}
-          >
-            {sidebarOpen ? (
-              <X className="w-4 h-4 text-white" />
-            ) : (
-              <Menu className="w-4 h-4 text-white" />
-            )}
-          </button>
+          {isStandalonePage ? (
+            <button
+              onClick={() => navigate("/chat")}
+              className="p-2 rounded-xl hover:bg-white/10 transition-all duration-300 hover:shadow-lg hover:scale-105 border border-white/10"
+              title="Back to Dashboard"
+            >
+              <ArrowLeft className="w-4 h-4 text-white" />
+            </button>
+          ) : (
+            <button
+              onClick={onMenuToggle}
+              className="p-2 rounded-xl hover:bg-white/10 transition-all duration-300 hover:shadow-lg hover:scale-105 border border-white/10"
+              title={sidebarOpen ? "Close detailed menu" : "Open detailed menu"}
+            >
+              {sidebarOpen ? (
+                <X className="w-4 h-4 text-white" />
+              ) : (
+                <Menu className="w-4 h-4 text-white" />
+              )}
+            </button>
+          )}
 
           <Link
             to="/"
@@ -89,8 +105,24 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
           </Link>
         </div>
 
-        {/* Right side - Portfolio button and User menu */}
-        <div className="flex items-center space-x-2 sm:space-x-4">
+        {/* Right side - Dashboard, Portfolio, and User menu */}
+        <div className="flex items-center space-x-1 sm:space-x-3">
+          {/* Dashboard Button */}
+          {currentUser && (
+            <Link
+              to="/chat"
+              className={`group relative flex items-center space-x-2 px-3 sm:px-4 py-2 sm:py-2.5 font-medium transition-all duration-300 hover:scale-105 rounded-xl ${
+                location.pathname === '/chat'
+                  ? 'text-white bg-white/15 border border-white/20'
+                  : 'text-slate-300 hover:text-white hover:bg-white/10'
+              }`}
+              title="Dashboard"
+            >
+              <LayoutDashboard className="w-4 h-4" />
+              <span className="text-sm hidden md:inline">Dashboard</span>
+            </Link>
+          )}
+
           {/* Portfolio Button */}
           {userProfile?.portfolioName ? (
             <a
@@ -230,6 +262,20 @@ const Header = ({ onMenuToggle, sidebarOpen }) => {
                         <Home className="w-4 h-4" />
                       </div>
                       <span className="font-medium">Home</span>
+                    </div>
+                    <ChevronRight className="w-4 h-4 opacity-50 group-hover:opacity-100 transition-opacity" />
+                  </Link>
+
+                  <Link
+                    to="/chat"
+                    className="w-full flex items-center justify-between px-6 py-3 text-sm text-slate-300 hover:bg-white/10 transition-all duration-300 hover:text-white group mx-2 rounded-xl"
+                    onClick={() => setShowUserMenu(false)}
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className="p-2 bg-white/10 rounded-lg group-hover:bg-white/20 transition-all duration-300 group-hover:scale-110">
+                        <LayoutDashboard className="w-4 h-4" />
+                      </div>
+                      <span className="font-medium">Dashboard</span>
                     </div>
                     <ChevronRight className="w-4 h-4 opacity-50 group-hover:opacity-100 transition-opacity" />
                   </Link>
