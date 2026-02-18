@@ -559,6 +559,12 @@ def signin():
                     )
                     logger.info(f"Synced email verification during signin for user {user_record.uid}")
                 
+                # Update last login time
+                mongo_db.users.update_one(
+                    {'uid': user_record.uid},
+                    {'$set': {'lastLoginAt': datetime.now()}}
+                )
+
                 # Sync Firebase custom claims with MongoDB role
                 try:
                     mongo_role = user_doc.get('role')
@@ -627,6 +633,12 @@ def signin_with_token():
                     )
                     logger.info(f"Synced email verification during signin for user {user_id}")
                 
+                # Update last login time
+                mongo_db.users.update_one(
+                    {'uid': user_id},
+                    {'$set': {'lastLoginAt': datetime.now()}}
+                )
+
                 # Sync Firebase custom claims with MongoDB role
                 try:
                     mongo_role = user_doc.get('role')
@@ -1892,6 +1904,9 @@ def admin_required(fn):
     @wraps(fn)
     @verify_token
     def wrapper(*args, **kwargs):
+        # Skip admin check for CORS preflight
+        if request.method == 'OPTIONS':
+            return fn(*args, **kwargs)
         user_id = g.user['uid']
         if mongo_db is None:
             return jsonify({"error": "Database not available"}), 500
@@ -2628,7 +2643,13 @@ def admin_trigger_scraper():
 @app.route('/api/admin/users', methods=['GET'])
 @verify_token
 def get_all_users():
-    """Get all users for admin management"""
+    """Get all users for admin management.
+    
+    Merges MongoDB users with Firebase Auth users so that users who
+    signed up but never completed their profile are still visible.
+    Any Firebase-only user is auto-inserted into MongoDB with a
+    minimal document.
+    """
     try:
         user_id = g.user['uid']
         
@@ -2638,8 +2659,8 @@ def get_all_users():
             if not user_doc or user_doc.get('role') != 'admin':
                 return jsonify({"success": False, "error": "Admin access required"}), 403
             
-            # Get all users with sensitive information filtered out
-            users = list(mongo_db.users.find({}, {
+            # ── 1. Collect existing MongoDB UIDs ────────────────────────
+            mongo_users = list(mongo_db.users.find({}, {
                 'uid': 1,
                 'email': 1,
                 'fullName': 1,
@@ -2649,15 +2670,117 @@ def get_all_users():
                 'updatedAt': 1,
                 'lastLoginAt': 1
             }))
-            
-            # Convert ObjectId to string for JSON serialization
+            mongo_uid_set = {u['uid'] for u in mongo_users if 'uid' in u}
+
+            # ── 2. Iterate Firebase Auth users; insert missing ones ─────
+            firebase_users_map = {}  # uid → FirebaseUserRecord
+            new_mongo_docs = []
+            try:
+                page = auth.list_users()
+                while page:
+                    for fb_user in page.users:
+                        firebase_users_map[fb_user.uid] = fb_user
+                        if fb_user.uid not in mongo_uid_set:
+                            # Create minimal MongoDB document
+                            new_doc = {
+                                'uid': fb_user.uid,
+                                'email': fb_user.email or '',
+                                'fullName': fb_user.display_name or '',
+                                'createdAt': fb_user.user_metadata.creation_timestamp
+                                             and datetime.fromtimestamp(fb_user.user_metadata.creation_timestamp / 1000)
+                                             or datetime.now(),
+                                'lastLoginAt': fb_user.user_metadata.last_sign_in_timestamp
+                                               and datetime.fromtimestamp(fb_user.user_metadata.last_sign_in_timestamp / 1000)
+                                               or None,
+                                'profileCompleted': False,
+                                'resumeData': {},
+                                'role': 'user',
+                                'emailVerified': fb_user.email_verified
+                            }
+                            new_mongo_docs.append(new_doc)
+                    page = page.get_next_page()
+            except Exception as fb_err:
+                logger.warning(f"Could not list Firebase users: {fb_err}")
+
+            # Bulk-insert new documents
+            if new_mongo_docs:
+                try:
+                    mongo_db.users.insert_many(new_mongo_docs, ordered=False)
+                    logger.info(f"Inserted {len(new_mongo_docs)} Firebase-only users into MongoDB")
+                except Exception as insert_err:
+                    logger.warning(f"Bulk insert partially failed: {insert_err}")
+
+            # ── 3. Re-read all MongoDB users (now includes new ones) ────
+            users = list(mongo_db.users.find({}, {
+                'uid': 1,
+                'email': 1,
+                'fullName': 1,
+                'role': 1,
+                'profileCompleted': 1,
+                'createdAt': 1,
+                'updatedAt': 1,
+                'lastLoginAt': 1,
+                'emailVerified': 1
+            }))
+
+            # ── 4. Enrich each user with Firebase data ─────────────────
             for user in users:
                 if '_id' in user:
                     user['_id'] = str(user['_id'])
+
+                fb_user = firebase_users_map.get(user.get('uid'))
+                if fb_user:
+                    # Always reflect the live Firebase email_verified status
+                    user['emailVerified'] = fb_user.email_verified
+
+                    # Firebase sync status
+                    firebase_claims = fb_user.custom_claims or {}
+                    firebase_role = firebase_claims.get('role', 'user')
+                    mongo_role = user.get('role', 'user')
+                    user['firebaseSynced'] = (firebase_role == mongo_role)
+
+                    # Backfill lastLoginAt from Firebase if missing in MongoDB
+                    if not user.get('lastLoginAt') and fb_user.user_metadata.last_sign_in_timestamp:
+                        fb_last_login = datetime.fromtimestamp(
+                            fb_user.user_metadata.last_sign_in_timestamp / 1000
+                        )
+                        user['lastLoginAt'] = fb_last_login
+                        # Also persist it to MongoDB so it sticks
+                        try:
+                            mongo_db.users.update_one(
+                                {'uid': user['uid']},
+                                {'$set': {'lastLoginAt': fb_last_login}}
+                            )
+                        except Exception:
+                            pass  # non-critical
+
+                    # Backfill createdAt from Firebase if missing
+                    if not user.get('createdAt') and fb_user.user_metadata.creation_timestamp:
+                        fb_created = datetime.fromtimestamp(
+                            fb_user.user_metadata.creation_timestamp / 1000
+                        )
+                        user['createdAt'] = fb_created
+                        try:
+                            mongo_db.users.update_one(
+                                {'uid': user['uid']},
+                                {'$set': {'createdAt': fb_created}}
+                            )
+                        except Exception:
+                            pass
+                else:
+                    user['firebaseSynced'] = False
             
+            # ── 5. Serialize datetime fields to ISO strings ────────────
+            for user in users:
+                for dt_field in ('createdAt', 'updatedAt', 'lastLoginAt'):
+                    val = user.get(dt_field)
+                    if isinstance(val, datetime):
+                        user[dt_field] = val.isoformat()
+
             return jsonify({
                 "success": True,
-                "users": users
+                "users": users,
+                "synced_from_firebase": len(new_mongo_docs)
             }), 200
         else:
             return jsonify({"success": False, "error": "Database not available"}), 500
@@ -2665,6 +2788,47 @@ def get_all_users():
     except Exception as e:
         logger.error(f"Get all users error: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/admin/users/<user_uid>/verify', methods=['POST', 'OPTIONS'])
+@verify_token
+def verify_user_email(user_uid):
+    """Admin endpoint to manually verify a user's email in Firebase."""
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
+
+    try:
+        admin_id = g.user['uid']
+
+        # Check if current user is admin
+        if mongo_db is not None:
+            admin_doc = mongo_db.users.find_one({'uid': admin_id})
+            if not admin_doc or admin_doc.get('role') != 'admin':
+                return jsonify({"success": False, "error": "Admin access required"}), 403
+        else:
+            return jsonify({"success": False, "error": "Database not available"}), 500
+
+        # Update email_verified in Firebase Auth
+        auth.update_user(user_uid, email_verified=True)
+
+        # Also update in MongoDB so the flag is cached locally
+        if mongo_db is not None:
+            mongo_db.users.update_one(
+                {'uid': user_uid},
+                {'$set': {'emailVerified': True, 'updatedAt': datetime.now()}}
+            )
+
+        logger.info(f"Admin {admin_id} verified email for user {user_uid}")
+        return jsonify({
+            "success": True,
+            "message": "User email verified successfully"
+        }), 200
+
+    except auth.UserNotFoundError:
+        return jsonify({"success": False, "error": "User not found in Firebase"}), 404
+    except Exception as e:
+        logger.error(f"Verify user email error: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 @app.route('/api/admin/users/<user_uid>', methods=['GET'])
 @verify_token
@@ -2798,10 +2962,23 @@ def delete_user_admin(user_uid):
                     "error": "Cannot delete other admin users"
                 }), 400
             
-            # Delete user and related data
+            # Delete user from Firebase Auth
+            try:
+                auth.delete_user(user_uid)
+                logger.info(f"Deleted user {user_uid} from Firebase Auth")
+            except auth.UserNotFoundError:
+                logger.warning(f"User {user_uid} not found in Firebase Auth (already deleted?)")
+            except Exception as fb_err:
+                logger.error(f"Failed to delete user {user_uid} from Firebase: {fb_err}")
+                return jsonify({
+                    "success": False,
+                    "error": f"Failed to delete user from Firebase: {str(fb_err)}"
+                }), 500
+
+            # Delete user and related data from MongoDB
             mongo_db.users.delete_one({'uid': user_uid})
             
-            # Clean up related data (optional - you can add more cleanup here)
+            # Clean up related data
             mongo_db.chat_sessions.delete_many({'user_id': user_uid})
             mongo_db.chat_history.delete_many({'user_id': user_uid})
             mongo_db.message_feedback.delete_many({'user_id': user_uid})
@@ -2810,7 +2987,7 @@ def delete_user_admin(user_uid):
             
             return jsonify({
                 "success": True,
-                "message": "User deleted successfully"
+                "message": "User deleted from both Firebase and MongoDB successfully"
             }), 200
         else:
             return jsonify({"success": False, "error": "Database not available"}), 500
@@ -2946,9 +3123,11 @@ def sync_firebase_claims():
 
 # ── Website Settings API (theme, etc.) ──────────────────────────────────────
 
-@app.route('/api/settings/theme', methods=['GET'])
+@app.route('/api/settings/theme', methods=['GET', 'OPTIONS'])
 def get_website_theme():
     """Public endpoint — returns the admin-configured website theme."""
+    if request.method == 'OPTIONS':
+        return '', 200
     try:
         if mongo_db is None:
             return jsonify({"success": True, "theme": "blue"}), 200
@@ -2961,10 +3140,12 @@ def get_website_theme():
         return jsonify({"success": True, "theme": "blue"}), 200  # fallback
 
 
-@app.route('/api/settings/theme', methods=['PUT'])
+@app.route('/api/settings/theme', methods=['PUT', 'OPTIONS'])
 @admin_required
 def set_website_theme():
     """Admin-only — persist the selected theme in MongoDB."""
+    if request.method == 'OPTIONS':
+        return '', 200
     try:
         data = request.get_json()
         theme_name = data.get("theme")

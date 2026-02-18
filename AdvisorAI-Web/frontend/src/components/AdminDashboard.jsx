@@ -20,6 +20,7 @@ import {
   Briefcase,
   Clock,
   Zap,
+  ShieldCheck,
 } from "lucide-react";
 
 const AdminDashboard = () => {
@@ -109,6 +110,12 @@ const AdminDashboard = () => {
       } else if (activeTab === "users") {
         const response = await adminAPI.getAllUsers();
         setUsers(response.users || []);
+        if (response.synced_from_firebase > 0) {
+          showNotification(
+            `${response.synced_from_firebase} new user(s) imported from Firebase`,
+            "success"
+          );
+        }
       }
     } catch (error) {
       showNotification("Failed to load data: " + error.message, "error");
@@ -222,6 +229,20 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleVerifyUser = async (user) => {
+    if (user.emailVerified) return;
+    const confirmMessage = `Are you sure you want to verify the email for ${user.fullName || user.email}?`;
+    if (!window.confirm(confirmMessage)) return;
+
+    try {
+      await adminAPI.verifyUser(user.uid);
+      showNotification(`Email verified for ${user.fullName || user.email}`, "success");
+      await loadData();
+    } catch (error) {
+      showNotification("Failed to verify user email: " + error.message, "error");
+    }
+  };
+
   const handleSave = async () => {
     try {
       if (activeTab === "courses") {
@@ -248,9 +269,9 @@ const AdminDashboard = () => {
         } else {
           // Update user information
           const updateData = {
-            fullName: formData["Full Name"],
-            email: formData["Email"],
-            role: formData["Role"]
+            fullName: formData["fullName"],
+            email: formData["email"],
+            role: formData["role"]
           };
           await adminAPI.updateUser(selectedItem.uid, updateData);
           await loadData();
@@ -897,6 +918,9 @@ const AdminDashboard = () => {
                                 Last Login
                               </th>
                               <th className="px-6 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider w-32">
+                                Email Verified
+                              </th>
+                              <th className="px-6 py-4 text-left text-xs font-bold text-slate-600 uppercase tracking-wider w-32">
                                 Firebase
                               </th>
                               <th className="px-6 py-4 text-right text-xs font-bold text-slate-600 uppercase tracking-wider w-24">
@@ -909,7 +933,7 @@ const AdminDashboard = () => {
                       <tbody className="bg-white/50 divide-y divide-slate-200/30">
                         {paginatedData.map((item, index) => (
                           <tr
-                            key={item.id || index}
+                            key={item.uid || item.id || index}
                             className="hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-purple-50/30 transition-all duration-300 hover:shadow-sm"
                           >
                             {activeTab === "courses" ? (
@@ -1042,6 +1066,26 @@ const AdminDashboard = () => {
                                   </div>
                                 </td>
                                 <td className="px-6 py-4 text-sm text-gray-500">
+                                  <div className="max-w-32 truncate" title={item.emailVerified ? "Verified" : "Not Verified"}>
+                                    <span
+                                      className={`inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full ${
+                                        item.emailVerified
+                                          ? 'bg-green-100 text-green-800'
+                                          : 'bg-orange-100 text-orange-800'
+                                      }`}
+                                    >
+                                      {item.emailVerified ? (
+                                        <>
+                                          <ShieldCheck className="w-3 h-3 mr-1" />
+                                          Verified
+                                        </>
+                                      ) : (
+                                        "Not Verified"
+                                      )}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-500">
                                   <div
                                     className="max-w-32 truncate"
                                     title={item["firebaseSynced"] ? "Synced" : "Not Synced"}
@@ -1061,6 +1105,15 @@ const AdminDashboard = () => {
                             )}
                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                               <div className="flex items-center justify-end space-x-2">
+                                {activeTab === "users" && !item.emailVerified && (
+                                  <button
+                                    onClick={() => handleVerifyUser(item)}
+                                    className="p-2 text-orange-600 hover:text-orange-700 hover:bg-orange-50 rounded-xl transition-all duration-300 transform hover:scale-110"
+                                    title="Verify user email"
+                                  >
+                                    <ShieldCheck className="w-4 h-4" />
+                                  </button>
+                                )}
                                 {activeTab === "users" && (
                                   <button
                                     onClick={() => openRoleModal(item)}

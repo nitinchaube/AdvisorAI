@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { sendEmailVerification, applyActionCode } from 'firebase/auth';
 import { auth } from '../config/firebase';
 import { apiService } from '../services/api';
 import './EmailVerification.css';
+
+const COOLDOWN_SECONDS = 120; // 2 minutes
 
 const EmailVerification = () => {
   const { 
@@ -18,6 +20,40 @@ const EmailVerification = () => {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [emailVerified, setEmailVerified] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+  const cooldownRef = useRef(null);
+
+  // Restore cooldown from localStorage on mount
+  useEffect(() => {
+    const savedExpiry = localStorage.getItem('verifyEmailCooldownExpiry');
+    if (savedExpiry) {
+      const remaining = Math.ceil((parseInt(savedExpiry, 10) - Date.now()) / 1000);
+      if (remaining > 0) {
+        setCooldown(remaining);
+      } else {
+        localStorage.removeItem('verifyEmailCooldownExpiry');
+      }
+    }
+  }, []);
+
+  // Countdown timer
+  useEffect(() => {
+    if (cooldown > 0) {
+      cooldownRef.current = setInterval(() => {
+        setCooldown((prev) => {
+          if (prev <= 1) {
+            clearInterval(cooldownRef.current);
+            localStorage.removeItem('verifyEmailCooldownExpiry');
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (cooldownRef.current) clearInterval(cooldownRef.current);
+    };
+  }, [cooldown]);
 
   // Check if user came from email verification link
   useEffect(() => {
@@ -48,7 +84,6 @@ const EmailVerification = () => {
 
   const handleEmailVerification = async (oobCode) => {
     try {
-      setLoading(true);
       setMessage('Verifying email...');
       
       // Apply the verification code
@@ -75,12 +110,12 @@ const EmailVerification = () => {
       } else {
         setError('Failed to verify email. Please try again.');
       }
-    } finally {
-      setLoading(false);
     }
   };
 
   const handleResendVerification = async () => {
+    if (cooldown > 0) return; // Safety guard
+
     try {
       setIsResending(true);
       setError('');
@@ -89,9 +124,14 @@ const EmailVerification = () => {
       if (currentUser) {
         // Send verification email using Firebase's new method
         await sendEmailVerification(currentUser, {
-          url: 'http://localhost:3000/email-verification' // Specify the continue URL
+          url: window.location.origin + '/email-verification'
         });
         setMessage('Verification email sent! Please check your inbox.');
+
+        // Start cooldown
+        const expiryTime = Date.now() + COOLDOWN_SECONDS * 1000;
+        localStorage.setItem('verifyEmailCooldownExpiry', expiryTime.toString());
+        setCooldown(COOLDOWN_SECONDS);
       } else {
         setError('No user found. Please try logging in again.');
       }
@@ -145,6 +185,12 @@ const EmailVerification = () => {
     }
   };
 
+  const formatCooldown = (seconds) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return m > 0 ? `${m}:${s.toString().padStart(2, '0')}` : `${s}s`;
+  };
+
   if (loading) {
     return (
       <div className="email-verification-container">
@@ -158,6 +204,8 @@ const EmailVerification = () => {
     navigate('/login');
     return null;
   }
+
+  const isButtonDisabled = isResending || cooldown > 0;
 
   return (
     <div className="email-verification-container">
@@ -191,10 +239,15 @@ const EmailVerification = () => {
         <div className="verification-actions">
           <button 
             onClick={handleResendVerification}
-            disabled={isResending}
+            disabled={isButtonDisabled}
             className="resend-button"
+            style={isButtonDisabled ? { opacity: 0.6, cursor: 'not-allowed' } : {}}
           >
-            {isResending ? 'Sending...' : 'Resend Verification Email'}
+            {isResending
+              ? 'Sending...'
+              : cooldown > 0
+              ? `Resend in ${formatCooldown(cooldown)}`
+              : 'Resend Verification Email'}
           </button>
           
           <button 
