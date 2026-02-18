@@ -10,12 +10,12 @@ const Footer = () => {
           <div className="flex items-center space-x-2">
             <img src={logo} alt="AdvisorAI" className="w-5 h-5 object-contain" />
             <span className="text-sm text-slate-300 font-medium">
-             Made by the AdvisorAI Team
+             Made by the <a href="https://advisoraii.web.app" target="_blank" rel="noopener noreferrer" className="text-slate-200 hover:text-white underline underline-offset-2 transition-colors duration-200">AdvisorAI</a> Team
             </span>
           </div>
           
           <div className="flex items-center space-x-4">
-            <span className="text-sm text-slate-400">© 2024 AdvisorAI. All rights reserved.</span>
+            <span className="text-sm text-slate-400">© 2025 <a href="https://advisoraii.web.app" target="_blank" rel="noopener noreferrer" className="text-slate-300 hover:text-white underline underline-offset-2 transition-colors duration-200">AdvisorAI</a>. All rights reserved.</span>
             <div className="flex items-center space-x-3">
               
               

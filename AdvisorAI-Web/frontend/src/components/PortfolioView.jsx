@@ -1186,7 +1186,7 @@ const PortfolioView = () => {
         className={`py-6 ${themeClasses.footerBg} text-slate-400 border-t ${themeClasses.primaryBorder}`}
       >
         <div className="max-w-7xl mx-auto px-6 lg:px-8 flex justify-center">
-          <p className="text-sm">Powered by AdvisorAI</p>
+          <p className="text-sm">Powered by <a href="https://advisoraii.web.app" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-slate-300 transition-colors duration-200">AdvisorAI</a></p>
         </div>
       </footer>
     </div>

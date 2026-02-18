@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Send, Bot, User, Sparkles, Paperclip, Mic, History, Info, Plus, ThumbsUp, ThumbsDown, Copy, Check } from "lucide-react";
+import { Send, Bot, User, Sparkles, History, Info, Plus, ThumbsUp, ThumbsDown, Copy, Check } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { apiService } from "../services/api";
@@ -919,14 +919,6 @@ const ChatInterface = ({
                 style={{ minHeight: '44px', maxHeight: '120px' }}
                 disabled={isTyping || isStreaming || !currentSessionId}
               />
-              <div className="absolute right-2 sm:right-3 bottom-2.5 sm:bottom-3 flex items-center space-x-1 sm:space-x-2">
-                <button className="p-1 text-slate-400 hover:text-slate-600 transition-colors duration-200 hidden sm:block">
-                  <Paperclip className="w-4 h-4" />
-                </button>
-                <button className="p-1 text-slate-400 hover:text-slate-600 transition-colors duration-200 hidden sm:block">
-                  <Mic className="w-4 h-4" />
-                </button>
-              </div>
             </div>
             <button
               onClick={handleSendMessage}

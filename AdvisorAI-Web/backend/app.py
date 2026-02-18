@@ -2719,7 +2719,8 @@ def get_all_users():
                 'profileCompleted': 1,
                 'createdAt': 1,
                 'updatedAt': 1,
-                'lastLoginAt': 1
+                'lastLoginAt': 1,
+                'emailVerified': 1
             }))
 
             # ── 4. Enrich each user with Firebase data ─────────────────
@@ -2729,6 +2730,9 @@ def get_all_users():
 
                 fb_user = firebase_users_map.get(user.get('uid'))
                 if fb_user:
+                    # Always reflect the live Firebase email_verified status
+                    user['emailVerified'] = fb_user.email_verified
+
                     # Firebase sync status
                     firebase_claims = fb_user.custom_claims or {}
                     firebase_role = firebase_claims.get('role', 'user')
@@ -2784,6 +2788,47 @@ def get_all_users():
     except Exception as e:
         logger.error(f"Get all users error: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/admin/users/<user_uid>/verify', methods=['POST', 'OPTIONS'])
+@verify_token
+def verify_user_email(user_uid):
+    """Admin endpoint to manually verify a user's email in Firebase."""
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
+
+    try:
+        admin_id = g.user['uid']
+
+        # Check if current user is admin
+        if mongo_db is not None:
+            admin_doc = mongo_db.users.find_one({'uid': admin_id})
+            if not admin_doc or admin_doc.get('role') != 'admin':
+                return jsonify({"success": False, "error": "Admin access required"}), 403
+        else:
+            return jsonify({"success": False, "error": "Database not available"}), 500
+
+        # Update email_verified in Firebase Auth
+        auth.update_user(user_uid, email_verified=True)
+
+        # Also update in MongoDB so the flag is cached locally
+        if mongo_db is not None:
+            mongo_db.users.update_one(
+                {'uid': user_uid},
+                {'$set': {'emailVerified': True, 'updatedAt': datetime.now()}}
+            )
+
+        logger.info(f"Admin {admin_id} verified email for user {user_uid}")
+        return jsonify({
+            "success": True,
+            "message": "User email verified successfully"
+        }), 200
+
+    except auth.UserNotFoundError:
+        return jsonify({"success": False, "error": "User not found in Firebase"}), 404
+    except Exception as e:
+        logger.error(f"Verify user email error: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 @app.route('/api/admin/users/<user_uid>', methods=['GET'])
 @verify_token
@@ -2917,10 +2962,23 @@ def delete_user_admin(user_uid):
                     "error": "Cannot delete other admin users"
                 }), 400
             
-            # Delete user and related data
+            # Delete user from Firebase Auth
+            try:
+                auth.delete_user(user_uid)
+                logger.info(f"Deleted user {user_uid} from Firebase Auth")
+            except auth.UserNotFoundError:
+                logger.warning(f"User {user_uid} not found in Firebase Auth (already deleted?)")
+            except Exception as fb_err:
+                logger.error(f"Failed to delete user {user_uid} from Firebase: {fb_err}")
+                return jsonify({
+                    "success": False,
+                    "error": f"Failed to delete user from Firebase: {str(fb_err)}"
+                }), 500
+
+            # Delete user and related data from MongoDB
             mongo_db.users.delete_one({'uid': user_uid})
             
-            # Clean up related data (optional - you can add more cleanup here)
+            # Clean up related data
             mongo_db.chat_sessions.delete_many({'user_id': user_uid})
             mongo_db.chat_history.delete_many({'user_id': user_uid})
             mongo_db.message_feedback.delete_many({'user_id': user_uid})
@@ -2929,7 +2987,7 @@ def delete_user_admin(user_uid):
             
             return jsonify({
                 "success": True,
-                "message": "User deleted successfully"
+                "message": "User deleted from both Firebase and MongoDB successfully"
             }), 200
         else:
             return jsonify({"success": False, "error": "Database not available"}), 500

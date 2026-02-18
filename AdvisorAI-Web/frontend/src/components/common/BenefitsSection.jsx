@@ -26,7 +26,7 @@ const BenefitsSection = () => {
     <div className="benefits-section">
       <div className="benefits-container">
         <div className="benefits-header">
-          <h2 className="benefits-title">Why Choose AdvisorAI</h2>
+          <h2 className="benefits-title">Why Choose <a href="https://advisoraii.web.app" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'underline', textUnderlineOffset: '4px' }}>AdvisorAI</a></h2>
           <p className="benefits-subtitle">
             Join thousands of students making smarter academic decisions
           </p>
