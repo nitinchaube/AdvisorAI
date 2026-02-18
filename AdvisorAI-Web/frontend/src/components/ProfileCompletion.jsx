@@ -50,7 +50,7 @@ import {
 } from "lucide-react";
 import "./ProfileCompletion.css";
 import ThemeSelector from "./ThemeSelector";
-import ProfileHeader from "./ProfileHeader";
+import Header from "./Header";
 
 const ProfileCompletion = () => {
   const [currentView, setCurrentView] = useState(0); // 0: Upload, 1: Profile Form
@@ -1637,7 +1637,7 @@ const ProfileCompletion = () => {
                       height: 88,
                       borderRadius: "50%",
                       overflow: "hidden",
-                      background: "linear-gradient(135deg, #e2e8f0, #cbd5e1)",
+                      background: `linear-gradient(to bottom right, var(--theme-accent-light), var(--theme-accent-mid))`,
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
@@ -2202,7 +2202,9 @@ const ProfileCompletion = () => {
       )}
 
       {/* Header */}
-      <ProfileHeader />
+      <div className="sticky top-0" style={{ zIndex: 1000 }}>
+        <Header />
+      </div>
 
       {/* Main Content Area */}
       <div className="main-content">
