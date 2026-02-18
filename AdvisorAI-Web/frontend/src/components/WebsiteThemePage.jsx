@@ -18,10 +18,17 @@ const WebsiteThemePage = () => {
 
   const themeOptions = getWebsiteThemeOptions();
 
-  const handleApply = () => {
-    changeTheme(previewTheme);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
+  const handleApply = async () => {
+    try {
+      await changeTheme(previewTheme);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (err) {
+      console.error("Failed to apply theme:", err);
+      // Theme is still applied locally even if persist fails
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    }
   };
 
   return (
