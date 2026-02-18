@@ -19,12 +19,12 @@ logger = logging.getLogger("chatbot")
 
 class ChatbotIntegrationService:
     """Wraps the LangGraph orchestrator for the Flask app."""
-
+    
     def __init__(self):
         self.orchestrator: LangGraphOrchestrator = None  # type: ignore
         self._event_loop = None
         self._initialize_orchestrator()
-
+    
     # ------------------------------------------------------------------
     # Initialisation
     # ------------------------------------------------------------------
@@ -36,7 +36,7 @@ class ChatbotIntegrationService:
         except Exception as e:
             logger.error("Orchestrator init failed: %s", e, exc_info=True)
             self.orchestrator = None
-
+    
     def _get_event_loop(self):
         """Return a reusable event loop (avoids RuntimeError from nested asyncio.run)."""
         if self._event_loop is None or self._event_loop.is_closed():
@@ -126,7 +126,7 @@ class ChatbotIntegrationService:
         """Convert frontend chat messages into ``Q: … / A: …`` text."""
         if not chat_history:
             return ""
-
+        
         parts: List[str] = []
         current_query = None
 
@@ -168,7 +168,7 @@ class ChatbotIntegrationService:
     # ------------------------------------------------------------------
     # System info
     # ------------------------------------------------------------------
-
+    
     def get_system_stats(self) -> Dict:
         """Return basic health / stats about the chatbot subsystem."""
         if not self.orchestrator:
@@ -184,9 +184,9 @@ class ChatbotIntegrationService:
             }
         except Exception as e:
             return {"error": str(e), "orchestrator_available": True}
-
+    
     def stream_query(self, user_query: str, user_id: str = None,
-                     chat_history: List[Dict] = None):
+                    chat_history: List[Dict] = None):
         """Generator that yields SSE-style dicts: status → tokens → done.
 
         Tokens now arrive directly from the LLM streaming (true streaming)
@@ -286,4 +286,4 @@ chatbot_integration = ChatbotIntegrationService()
 
 def get_chatbot_integration():
     """Return the global ChatbotIntegrationService instance."""
-    return chatbot_integration
+    return chatbot_integration 
