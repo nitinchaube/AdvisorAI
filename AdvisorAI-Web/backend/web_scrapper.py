@@ -151,7 +151,7 @@ def duckduckgo_search_urls(query, num_results=5):
         links = _dedup_urls(links, num_results)
         if links:
             logger.info(f"Found {len(links)} URLs from DuckDuckGo API: {links}")
-            return links
+        return links
     except Exception as e:
         logger.warning(f"DuckDuckGo API failed: {e}")
 
@@ -295,7 +295,7 @@ def scrape_top3(query, num_results=5, api_key=None):
     if not urls:
         logger.warning("No URLs found from any search engine")
         return []
-
+    
     logger.info(f"Scraping {len(urls)} URLs: {urls}")
 
     headers = {
@@ -330,7 +330,7 @@ def scrape_top3(query, num_results=5, api_key=None):
     # Maintain original URL order
     url_order = {url: i for i, url in enumerate(urls)}
     results.sort(key=lambda r: url_order.get(r["url"], 999))
-
+    
     return results
 
 
@@ -344,16 +344,16 @@ def scrape_web_content(query, num_results=5, api_key=None):
           - urls (list[str]): the URLs that were successfully scraped
     """
     results = scrape_top3(query, num_results=num_results, api_key=api_key)
-
+    
     if not results:
         return {"content": "", "urls": []}
-
+    
     combined_content = []
     urls = []
     for result in results:
         combined_content.append(f"Source: {result['url']}\n{result['content']}\n")
         urls.append(result["url"])
-
+    
     return {
         "content": "\n---\n".join(combined_content),
         "urls": urls,
