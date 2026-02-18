@@ -2944,6 +2944,48 @@ def sync_firebase_claims():
         logger.error(f"Sync Firebase claims error: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
 
+# ── Website Settings API (theme, etc.) ──────────────────────────────────────
+
+@app.route('/api/settings/theme', methods=['GET'])
+def get_website_theme():
+    """Public endpoint — returns the admin-configured website theme."""
+    try:
+        if mongo_db is None:
+            return jsonify({"success": True, "theme": "blue"}), 200
+
+        doc = mongo_db.website_settings.find_one({"key": "theme"})
+        theme_name = doc["value"] if doc else "blue"
+        return jsonify({"success": True, "theme": theme_name}), 200
+    except Exception as e:
+        logger.error(f"Get website theme error: {e}")
+        return jsonify({"success": True, "theme": "blue"}), 200  # fallback
+
+
+@app.route('/api/settings/theme', methods=['PUT'])
+@admin_required
+def set_website_theme():
+    """Admin-only — persist the selected theme in MongoDB."""
+    try:
+        data = request.get_json()
+        theme_name = data.get("theme")
+        if not theme_name:
+            return jsonify({"success": False, "error": "Missing 'theme' field"}), 400
+
+        if mongo_db is None:
+            return jsonify({"success": False, "error": "Database not available"}), 500
+
+        mongo_db.website_settings.update_one(
+            {"key": "theme"},
+            {"$set": {"key": "theme", "value": theme_name, "updatedAt": datetime.now()}},
+            upsert=True,
+        )
+        logger.info(f"Website theme updated to: {theme_name}")
+        return jsonify({"success": True, "theme": theme_name}), 200
+    except Exception as e:
+        logger.error(f"Set website theme error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 if __name__ == '__main__':
     # This block only runs for local development (python app.py).
     # In production, gunicorn imports the `app` object directly.
