@@ -6,7 +6,6 @@ import {
   Star,
   BookOpen,
   Bot,
-  TrendingUp,
   Brain,
   Sparkles,
   Briefcase,
@@ -74,15 +73,6 @@ const Sidebar = () => {
       icon: BookOpen,
       description: "Browse and search courses",
       path: "/course-explorer",
-    },
-    
-    
-    {
-      id: "analytics",
-      label: "Analytics",
-      icon: TrendingUp,
-      description: "View your academic insights",
-      path: "/analytics",
     },
   ];
 

@@ -646,6 +646,7 @@ export async function fetchWebsiteTheme() {
     const res = await fetch(`${API_BASE_URL}/settings/theme`, {
       method: "GET",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
     });
     if (!res.ok) return "blue";
     const data = await res.json();
@@ -666,6 +667,7 @@ export async function saveWebsiteTheme(themeName) {
       "Content-Type": "application/json",
       ...authHeaders,
     },
+    credentials: "include",
     body: JSON.stringify({ theme: themeName }),
   });
   if (!res.ok) {
@@ -822,6 +824,7 @@ export const adminAPI = {
         "Content-Type": "application/json",
         ...authHeaders,
       },
+      credentials: "include",
     });
     if (!response.ok) throw new Error("Failed to fetch users");
     return await response.json();
@@ -835,6 +838,7 @@ export const adminAPI = {
         "Content-Type": "application/json",
         ...authHeaders,
       },
+      credentials: "include",
     });
     if (!response.ok) throw new Error("Failed to fetch user details");
     return await response.json();
@@ -849,6 +853,7 @@ export const adminAPI = {
         ...authHeaders,
       },
       body: JSON.stringify(userData),
+      credentials: "include",
     });
     if (!response.ok) throw new Error("Failed to update user");
     return await response.json();
@@ -862,6 +867,7 @@ export const adminAPI = {
         "Content-Type": "application/json",
         ...authHeaders,
       },
+      credentials: "include",
     });
     if (!response.ok) throw new Error("Failed to delete user");
     return await response.json();
@@ -876,8 +882,23 @@ export const adminAPI = {
         ...authHeaders,
       },
       body: JSON.stringify({ role }),
+      credentials: "include",
     });
     if (!response.ok) throw new Error("Failed to update user role");
+    return await response.json();
+  },
+
+  async verifyUser(userUid) {
+    const authHeaders = await apiService.getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/admin/users/${userUid}/verify`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders,
+      },
+      credentials: "include",
+    });
+    if (!response.ok) throw new Error("Failed to verify user");
     return await response.json();
   },
 
@@ -889,6 +910,7 @@ export const adminAPI = {
         "Content-Type": "application/json",
         ...authHeaders,
       },
+      credentials: "include",
     });
     if (!response.ok) throw new Error("Failed to sync Firebase claims");
     return await response.json();

@@ -276,7 +276,7 @@ const Signup = () => {
                 <div className="footer-logo-icon-wrapper">
                   <img src={logo} alt="AdvisorAI Logo" className="footer-logo-icon" style={{ width: '1.5rem', height: '1.5rem', objectFit: 'contain' }} />
                 </div>
-                <span>AdvisorAI</span>
+                <a href="https://advisoraii.web.app" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>AdvisorAI</a>
               </div>
               <p className="footer-text">
                 Empowering students with AI-driven academic guidance for a brighter future. Make smarter decisions, achieve your goals, and unlock your potential.
@@ -319,7 +319,7 @@ const Signup = () => {
           </div>
           
           <div className="footer-bottom">
-            <p>&copy; {new Date().getFullYear()} AdvisorAI. All rights reserved.</p>
+            <p>&copy; {new Date().getFullYear()} <a href="https://advisoraii.web.app" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'underline', textUnderlineOffset: '3px' }}>AdvisorAI</a>. All rights reserved.</p>
             <div className="footer-social">
               <a href="#" className="social-link">
                 <Mail className="footer-social-icon" />
