@@ -5,7 +5,6 @@ import {
   History,
   Star,
   BookOpen,
-  TrendingUp,
   Calendar,
   FileText,
   Menu,
@@ -59,13 +58,6 @@ const CompactSidebar = ({ sidebarOpen }) => {
       label: "Ratings & Reviews",
       path: "/ratings",
       color: "yellow",
-    },
-    {
-      id: "analytics",
-      icon: TrendingUp,
-      label: "Analytics",
-      path: "/analytics",
-      color: "indigo",
     },
   ];
 

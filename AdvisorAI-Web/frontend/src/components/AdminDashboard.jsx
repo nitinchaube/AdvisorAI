@@ -109,6 +109,12 @@ const AdminDashboard = () => {
       } else if (activeTab === "users") {
         const response = await adminAPI.getAllUsers();
         setUsers(response.users || []);
+        if (response.synced_from_firebase > 0) {
+          showNotification(
+            `${response.synced_from_firebase} new user(s) imported from Firebase`,
+            "success"
+          );
+        }
       }
     } catch (error) {
       showNotification("Failed to load data: " + error.message, "error");
@@ -248,9 +254,9 @@ const AdminDashboard = () => {
         } else {
           // Update user information
           const updateData = {
-            fullName: formData["Full Name"],
-            email: formData["Email"],
-            role: formData["Role"]
+            fullName: formData["fullName"],
+            email: formData["email"],
+            role: formData["role"]
           };
           await adminAPI.updateUser(selectedItem.uid, updateData);
           await loadData();
@@ -909,7 +915,7 @@ const AdminDashboard = () => {
                       <tbody className="bg-white/50 divide-y divide-slate-200/30">
                         {paginatedData.map((item, index) => (
                           <tr
-                            key={item.id || index}
+                            key={item.uid || item.id || index}
                             className="hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-purple-50/30 transition-all duration-300 hover:shadow-sm"
                           >
                             {activeTab === "courses" ? (
