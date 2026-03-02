@@ -57,9 +57,11 @@ const Dashboard = () => {
 
   const handleSessionSelect = (sessionId) => {
     setCurrentSessionId(sessionId);
-    localStorage.setItem("currentChatSessionId", sessionId); // <-- Add this line
+    localStorage.setItem("currentChatSessionId", sessionId);
     loadSessionTitle(sessionId);
     setChatHistoryOpen(false);
+    // Switch to chat tab to continue the conversation
+    setActiveTab("chat");
   };
 
   const handleSessionUpdate = (sessionId, newTitle) => {

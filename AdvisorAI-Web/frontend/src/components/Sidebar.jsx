@@ -6,17 +6,19 @@ import {
   Star,
   BookOpen,
   Bot,
-  TrendingUp,
   Brain,
   Sparkles,
   Briefcase,
   GraduationCap,
+  Palette,
 } from "lucide-react";
+import { useAuth } from "../contexts/AuthContext";
 
 const Sidebar = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const sidebarRef = useRef(null);
+  const { isAdmin } = useAuth();
 
   // Preserve scroll position when navigating
   useEffect(() => {
@@ -72,15 +74,6 @@ const Sidebar = () => {
       description: "Browse and search courses",
       path: "/course-explorer",
     },
-    
-    
-    {
-      id: "analytics",
-      label: "Analytics",
-      icon: TrendingUp,
-      description: "View your academic insights",
-      path: "/analytics",
-    },
   ];
 
   const getActiveTab = () => {
@@ -91,8 +84,17 @@ const Sidebar = () => {
 
   const activeTab = getActiveTab();
 
+  const activeItemStyle = {
+    background: `linear-gradient(to right, var(--theme-sidebar-active-from), var(--theme-sidebar-active-to))`,
+    borderColor: `var(--theme-sidebar-active-border)`,
+    boxShadow: `0 4px 15px var(--theme-sidebar-active-from)`,
+  };
+  const activeIconStyle = {
+    background: `linear-gradient(to bottom right, var(--theme-sidebar-icon-from), var(--theme-sidebar-icon-to))`,
+  };
+
   return (
-    <div className="h-full w-72 sm:w-80 bg-gradient-to-br from-white via-slate-50 to-blue-50/30 backdrop-blur-xl border-r border-slate-200/60 shadow-xl flex flex-col">
+    <div className="h-full w-72 sm:w-80 backdrop-blur-xl border-r border-slate-200/60 shadow-xl flex flex-col" style={{ background: "linear-gradient(to bottom right, white, #f8fafc, rgba(239,246,255,0.5))" }}>
       {/* Navigation */}
       <div className="flex-1 overflow-y-auto" ref={sidebarRef}>
         <nav className="p-6">
@@ -101,25 +103,23 @@ const Sidebar = () => {
             <div className="mb-6">
               <button
                 onClick={() => handleNavigation("/chat")}
-                className={`w-full flex items-center space-x-4 px-6 py-5 rounded-2xl transition-all duration-300 text-left group hover:scale-105 ${
+                className={`w-full flex items-center space-x-4 px-6 py-5 rounded-2xl transition-all duration-300 text-left group hover:scale-105 border-2 ${
                   activeTab === "chat"
-                    ? "bg-gradient-to-r from-blue-400/20 to-cyan-500/20 text-slate-800 border-2 border-blue-400/60 shadow-lg shadow-blue-400/20 backdrop-blur-sm"
-                    : "bg-white/80 text-slate-700 border border-slate-200/60 shadow-sm hover:shadow-md hover:border-blue-400/50"
+                    ? "text-slate-800 shadow-lg backdrop-blur-sm"
+                    : "bg-white/80 text-slate-700 border-transparent border shadow-sm hover:shadow-md"
                 }`}
+                style={activeTab === "chat" ? activeItemStyle : {}}
               >
                 <div
-                  className={`p-3 rounded-xl transition-all duration-300 ${
-                    activeTab === "chat"
-                      ? "bg-gradient-to-br from-blue-400 to-cyan-500 text-white shadow-md"
-                      : "bg-slate-100 text-slate-600"
-                  }`}
+                  className="p-3 rounded-xl transition-all duration-300 shadow-md text-white"
+                  style={activeTab === "chat" ? activeIconStyle : { background: "var(--theme-accent-bg)", color: "var(--theme-accent-dark)" }}
                 >
                   <MessageCircle className="w-6 h-6" />
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center space-x-2 mb-1">
                     <span className="font-bold text-lg">Chat with AI</span>
-                    <div className="w-2 h-2 bg-gradient-to-r from-blue-400 to-cyan-500 rounded-full animate-pulse"></div>
+                    <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: "var(--theme-accent)" }}></div>
                   </div>
                   <p className="text-sm text-slate-600">
                     Your intelligent academic assistant
@@ -136,18 +136,16 @@ const Sidebar = () => {
                   <button
                     key={item.id}
                     onClick={() => handleNavigation(item.path)}
-                    className={`w-full flex items-center space-x-4 px-4 py-4 rounded-2xl transition-all duration-300 text-left group hover:scale-105 ${
+                    className={`w-full flex items-center space-x-4 px-4 py-4 rounded-2xl transition-all duration-300 text-left group hover:scale-105 border ${
                       activeTab === item.id
-                        ? "bg-gradient-to-r from-blue-500/20 to-purple-500/20 text-slate-800 border border-blue-400/50 shadow-lg shadow-blue-500/20 backdrop-blur-sm"
-                        : "text-slate-600 hover:bg-white/80 hover:text-slate-800 hover:shadow-md border border-transparent hover:border-slate-200/60"
+                        ? "text-slate-800 shadow-lg backdrop-blur-sm"
+                        : "text-slate-600 hover:bg-white/80 hover:text-slate-800 hover:shadow-md border-transparent hover:border-slate-200/60"
                     }`}
+                    style={activeTab === item.id ? activeItemStyle : {}}
                   >
                     <div
-                      className={`p-2 rounded-xl transition-all duration-300 ${
-                        activeTab === item.id
-                          ? "bg-gradient-to-br from-blue-500 to-purple-600 text-white shadow-md"
-                          : "bg-slate-100 text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600"
-                      }`}
+                      className="p-2 rounded-xl transition-all duration-300 text-white shadow-md"
+                      style={activeTab === item.id ? activeIconStyle : { background: "var(--theme-accent-bg)", color: "var(--theme-accent-dark)" }}
                     >
                       <item.icon className="w-5 h-5" />
                     </div>
@@ -174,6 +172,41 @@ const Sidebar = () => {
                   </button>
                 ))}
             </div>
+
+            {/* Admin Tools Section */}
+            {isAdmin && isAdmin() && (
+              <div className="mt-8 pt-6 border-t border-slate-200/60">
+                <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4">
+                  Admin Tools
+                </h3>
+                <div className="space-y-3">
+                  <button
+                    onClick={() => handleNavigation("/website-theme")}
+                    className={`w-full flex items-center space-x-4 px-4 py-4 rounded-2xl transition-all duration-300 text-left group hover:scale-105 border ${
+                      activeTab === "website-theme"
+                        ? "text-slate-800 shadow-lg backdrop-blur-sm"
+                        : "text-slate-600 hover:bg-white/80 hover:text-slate-800 hover:shadow-md border-transparent hover:border-slate-200/60"
+                    }`}
+                    style={activeTab === "website-theme" ? activeItemStyle : {}}
+                  >
+                    <div
+                      className="p-2 rounded-xl transition-all duration-300 text-white shadow-md"
+                      style={activeTab === "website-theme" ? activeIconStyle : { background: "var(--theme-accent-bg)", color: "var(--theme-accent-dark)" }}
+                    >
+                      <Palette className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1">
+                      <span className={`font-semibold ${activeTab === "website-theme" ? "text-slate-800" : "text-slate-600 group-hover:text-slate-800"}`}>
+                        Website Theme
+                      </span>
+                      <p className={`text-xs mt-1 ${activeTab === "website-theme" ? "text-slate-600" : "text-slate-500 group-hover:text-slate-600"}`}>
+                        Customize the website's color theme
+                      </p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </nav>
       </div>

@@ -1,5 +1,11 @@
 """
 Integration service – bridges the LangGraph chatbot with the Flask backend.
+
+Concurrency-safe: uses threading.local() for per-thread event loops so
+multiple gunicorn threads (or uvicorn threadpool tasks) can run LLM
+queries simultaneously without event-loop collisions.
+
+Also exposes native async methods for FastAPI endpoints.
 """
 
 import sys
@@ -7,7 +13,8 @@ import os
 import asyncio
 import logging
 import time
-from typing import Dict, Any, List
+import threading
+from typing import Dict, Any, List, AsyncGenerator
 
 # Ensure the chatbot package is importable
 sys.path.append(os.path.join(os.path.dirname(__file__), "chatbot"))
@@ -18,11 +25,15 @@ logger = logging.getLogger("chatbot")
 
 
 class ChatbotIntegrationService:
-    """Wraps the LangGraph orchestrator for the Flask app."""
+    """Wraps the LangGraph orchestrator for the Flask/FastAPI app.
+
+    Thread-safe: each thread gets its own asyncio event loop via
+    ``threading.local()``, so concurrent requests never collide.
+    """
 
     def __init__(self):
         self.orchestrator: LangGraphOrchestrator = None  # type: ignore
-        self._event_loop = None
+        self._local = threading.local()  # Per-thread event loop storage
         self._initialize_orchestrator()
 
     # ------------------------------------------------------------------
@@ -38,13 +49,16 @@ class ChatbotIntegrationService:
             self.orchestrator = None
 
     def _get_event_loop(self):
-        """Return a reusable event loop (avoids RuntimeError from nested asyncio.run)."""
-        if self._event_loop is None or self._event_loop.is_closed():
-            self._event_loop = asyncio.new_event_loop()
-        return self._event_loop
+        """Return a per-thread event loop (thread-safe for gunicorn threads)."""
+        loop = getattr(self._local, "event_loop", None)
+        if loop is None or loop.is_closed():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            self._local.event_loop = loop
+        return loop
 
     # ------------------------------------------------------------------
-    # Query processing
+    # Sync query processing (Flask routes)
     # ------------------------------------------------------------------
 
     def process_query(
@@ -81,34 +95,7 @@ class ChatbotIntegrationService:
                     start,
                 )
 
-            metadata = result.get("metadata", {})
-
-            reflection = metadata.get("reflection", {})
-
-            reasoning = metadata.get("reasoning_result", {}) or {}
-            web_meta = metadata.get("web_search", {}) or {}
-            reasoning["web_search"] = web_meta
-
-            return {
-                "response": result["answer"],
-                "sources": {
-                    "collections_used": metadata.get("tools_used", []),
-                    "documents_retrieved": 0,
-                    "web_search_performed": metadata.get("web_search_performed", False),
-                    "user_info_included": bool(user_id),
-                    "chat_history_included": bool(formatted_history),
-                    "general_tool_used": metadata.get("used_general_tool", False),
-                    "reasoning": reasoning,
-                    "reflection": {
-                        "score": reflection.get("score"),
-                        "was_refined": not reflection.get("is_acceptable", True),
-                    },
-                    "top_documents": [],
-                },
-                "processing_time": time.time() - start,
-                "error": False,
-                "chat_name": metadata.get("chat_name", "New Chat"),
-            }
+            return self._build_sync_response(result, user_id, formatted_history, start)
 
         except Exception as e:
             logger.error("Integration error: %s", e, exc_info=True)
@@ -116,6 +103,209 @@ class ChatbotIntegrationService:
                 "I'm experiencing technical difficulties. Please try again.",
                 start,
             )
+
+    def stream_query(
+        self,
+        user_query: str,
+        user_id: str = None,
+        chat_history: List[Dict] = None,
+    ):
+        """Sync generator that yields SSE-style dicts (for Flask routes).
+
+        Uses per-thread event loop to drive the async generator.
+        """
+        start = time.time()
+
+        if not self.orchestrator:
+            yield {
+                "type": "token",
+                "content": "The chatbot system is currently unavailable. Please try again later.",
+            }
+            yield {
+                "type": "done",
+                "chat_name": "Error",
+                "sources": {},
+                "processing_time": 0,
+                "error": True,
+            }
+            return
+
+        formatted_history = self._format_chat_history(chat_history or [])
+        loop = self._get_event_loop()
+
+        async_gen = self.orchestrator.stream_process_query(
+            query=user_query,
+            user_id=user_id or "default",
+            chat_history=formatted_history,
+        )
+
+        result = None
+
+        while True:
+            try:
+                event = loop.run_until_complete(async_gen.__anext__())
+            except StopAsyncIteration:
+                break
+
+            etype = event.get("type")
+            if etype == "status":
+                yield {
+                    "type": "status",
+                    "content": event.get("content", ""),
+                    "node": event.get("node"),
+                    "urls": event.get("urls"),
+                    "sources": event.get("sources"),
+                }
+            elif etype == "token":
+                yield {"type": "token", "content": event.get("content", "")}
+            elif etype == "result":
+                result = event
+
+        # -- Fallback if no result -----------------------------------------
+        if result is None or not result.get("success"):
+            err_msg = (
+                result.get("answer", "")
+                if result
+                else "I'm having trouble processing your request. Please try again."
+            )
+            yield {"type": "token", "content": err_msg}
+            yield {
+                "type": "done",
+                "chat_name": "Error",
+                "sources": {},
+                "processing_time": time.time() - start,
+                "error": True,
+            }
+            return
+
+        yield self._build_done_event(result, user_id, formatted_history, start)
+
+    # ------------------------------------------------------------------
+    # Native async methods (FastAPI routes – no event-loop bridge)
+    # ------------------------------------------------------------------
+
+    async def async_process_query(
+        self,
+        user_query: str,
+        user_id: str = None,
+        chat_history: List[Dict] = None,
+    ) -> Dict:
+        """Process a user query natively async (called from FastAPI routes)."""
+        start = time.time()
+
+        if not self.orchestrator:
+            return self._error_response(
+                "The chatbot system is currently unavailable. Please try again later.",
+                start,
+            )
+
+        try:
+            formatted_history = self._format_chat_history(chat_history or [])
+
+            result = await self.orchestrator.process_query(
+                query=user_query,
+                user_id=user_id or "default",
+                chat_history=formatted_history,
+            )
+
+            if not result.get("success"):
+                logger.warning("Chatbot returned failure: %s", result.get("error"))
+                return self._error_response(
+                    "I'm having trouble processing your request. Please try again.",
+                    start,
+                )
+
+            return self._build_sync_response(result, user_id, formatted_history, start)
+
+        except Exception as e:
+            logger.error("Async integration error: %s", e, exc_info=True)
+            return self._error_response(
+                "I'm experiencing technical difficulties. Please try again.",
+                start,
+            )
+
+    async def async_stream_query(
+        self,
+        user_query: str,
+        user_id: str = None,
+        chat_history: List[Dict] = None,
+    ) -> AsyncGenerator[Dict, None]:
+        """Native async generator for FastAPI SSE streaming.
+
+        No sync-to-async bridge — runs directly on the event loop.
+        """
+        start = time.time()
+
+        if not self.orchestrator:
+            yield {
+                "type": "token",
+                "content": "The chatbot system is currently unavailable. Please try again later.",
+            }
+            yield {
+                "type": "done",
+                "chat_name": "Error",
+                "sources": {},
+                "processing_time": 0,
+                "error": True,
+            }
+            return
+
+        formatted_history = self._format_chat_history(chat_history or [])
+
+        result = None
+
+        try:
+            async for event in self.orchestrator.stream_process_query(
+                query=user_query,
+                user_id=user_id or "default",
+                chat_history=formatted_history,
+            ):
+                etype = event.get("type")
+                if etype == "status":
+                    yield {
+                        "type": "status",
+                        "content": event.get("content", ""),
+                        "node": event.get("node"),
+                        "urls": event.get("urls"),
+                        "sources": event.get("sources"),
+                    }
+                elif etype == "token":
+                    yield {"type": "token", "content": event.get("content", "")}
+                elif etype == "result":
+                    result = event
+        except Exception as exc:
+            logger.error("Async stream error: %s", exc, exc_info=True)
+            yield {
+                "type": "token",
+                "content": "I'm sorry, I ran into an issue. Please try again.",
+            }
+            yield {
+                "type": "done",
+                "chat_name": "Error",
+                "sources": {},
+                "processing_time": time.time() - start,
+                "error": True,
+            }
+            return
+
+        # -- Fallback if no result -----------------------------------------
+        if result is None or not result.get("success"):
+            err_msg = (
+                result.get("answer", "")
+                if result
+                else "I'm having trouble processing your request. Please try again."
+            )
+            yield {"type": "token", "content": err_msg}
+            yield {
+                "type": "done",
+                "chat_name": "Error",
+                "sources": {},
+                "processing_time": time.time() - start,
+                "error": True,
+            }
+            return
+
+        yield self._build_done_event(result, user_id, formatted_history, start)
 
     # ------------------------------------------------------------------
     # Chat history formatting
@@ -185,66 +375,52 @@ class ChatbotIntegrationService:
         except Exception as e:
             return {"error": str(e), "orchestrator_available": True}
 
-    def stream_query(self, user_query: str, user_id: str = None,
-                     chat_history: List[Dict] = None):
-        """Generator that yields SSE-style dicts: status → tokens → done.
+    # ------------------------------------------------------------------
+    # Shared helpers
+    # ------------------------------------------------------------------
 
-        Tokens now arrive directly from the LLM streaming (true streaming)
-        instead of waiting for the full answer then word-chunking.
-        """
-        start = time.time()
-
-        if not self.orchestrator:
-            yield {"type": "token", "content": "The chatbot system is currently unavailable. Please try again later."}
-            yield {"type": "done", "chat_name": "Error", "sources": {}, "processing_time": 0, "error": True}
-            return
-
-        formatted_history = self._format_chat_history(chat_history or [])
-        loop = self._get_event_loop()
-
-        async_gen = self.orchestrator.stream_process_query(
-            query=user_query,
-            user_id=user_id or "default",
-            chat_history=formatted_history,
-        )
-
-        result = None
-
-        while True:
-            try:
-                event = loop.run_until_complete(async_gen.__anext__())
-            except StopAsyncIteration:
-                break
-
-            etype = event.get("type")
-            if etype == "status":
-                yield {"type": "status", "content": event.get("content", ""),
-                       "node": event.get("node"), "urls": event.get("urls"),
-                       "sources": event.get("sources")}
-            elif etype == "token":
-                # Forward LLM tokens directly to frontend (true streaming)
-                yield {"type": "token", "content": event.get("content", "")}
-            elif etype == "result":
-                result = event
-
-        # -- Fallback if no result -------------------------------------------
-        if result is None or not result.get("success"):
-            err_msg = (
-                result.get("answer", "") if result
-                else "I'm having trouble processing your request. Please try again."
-            )
-            yield {"type": "token", "content": err_msg}
-            yield {"type": "done", "chat_name": "Error", "sources": {},
-                   "processing_time": time.time() - start, "error": True}
-            return
-
+    @staticmethod
+    def _build_sync_response(
+        result: Dict, user_id: str, formatted_history: str, start: float
+    ) -> Dict:
         metadata = result.get("metadata", {})
         reflection = metadata.get("reflection", {})
         reasoning = metadata.get("reasoning_result", {}) or {}
         web_meta = metadata.get("web_search", {}) or {}
         reasoning["web_search"] = web_meta
 
-        yield {
+        return {
+            "response": result["answer"],
+            "sources": {
+                "collections_used": metadata.get("tools_used", []),
+                "documents_retrieved": 0,
+                "web_search_performed": metadata.get("web_search_performed", False),
+                "user_info_included": bool(user_id),
+                "chat_history_included": bool(formatted_history),
+                "general_tool_used": metadata.get("used_general_tool", False),
+                "reasoning": reasoning,
+                "reflection": {
+                    "score": reflection.get("score"),
+                    "was_refined": not reflection.get("is_acceptable", True),
+                },
+                "top_documents": [],
+            },
+            "processing_time": time.time() - start,
+            "error": False,
+            "chat_name": metadata.get("chat_name", "New Chat"),
+        }
+
+    @staticmethod
+    def _build_done_event(
+        result: Dict, user_id: str, formatted_history: str, start: float
+    ) -> Dict:
+        metadata = result.get("metadata", {})
+        reflection = metadata.get("reflection", {})
+        reasoning = metadata.get("reasoning_result", {}) or {}
+        web_meta = metadata.get("web_search", {}) or {}
+        reasoning["web_search"] = web_meta
+
+        return {
             "type": "done",
             "chat_name": metadata.get("chat_name", "New Chat"),
             "sources": {
@@ -264,10 +440,6 @@ class ChatbotIntegrationService:
             "processing_time": time.time() - start,
             "error": False,
         }
-
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
 
     @staticmethod
     def _error_response(message: str, start_time: float) -> Dict:

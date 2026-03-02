@@ -25,6 +25,9 @@ RUN rm -f .env .env.example
 # Cloud Run sets PORT=8080 by default
 EXPOSE 8080
 
-# gunicorn with 1 worker + 4 threads (ML models need single-process)
-# --timeout 300 to handle slow LLM / web-scrape calls
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "4", "--timeout", "300", "--access-logfile", "-", "--error-logfile", "-", "app:app"]
+# uvicorn with FastAPI — runs the async chat endpoints natively and
+# mounts the Flask app via WSGIMiddleware for all other routes.
+# --workers 2: each worker handles hundreds of concurrent SSE streams
+# --limit-concurrency 200: prevent overload
+# --timeout-keep-alive 30: clean up idle SSE connections
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "2", "--limit-concurrency", "200", "--timeout-keep-alive", "30", "--access-log", "--log-level", "info"]

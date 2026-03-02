@@ -171,7 +171,7 @@ const Home = () => {
               <>
                 <NavLink to="/signup" className="primary-button">
                   <Play className="button-icon" />
-                  Get Started Free
+                  Get Started
                 </NavLink>
                 <NavLink to="/login" className="secondary-button">
                   <User className="button-icon" />
@@ -184,10 +184,10 @@ const Home = () => {
       </section>
 
       {/* Features Section */}
-      <section className="features-section" style={{ padding: '6rem 0', background: 'linear-gradient(to bottom, #f8fafc, #ffffff)' }}>
+      <section className="features-section" style={{ padding: '6rem 0', background: `linear-gradient(to bottom, var(--theme-page-bg-from), #ffffff)` }}>
         <div className="how-it-works-container" style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 2rem' }}>
           <div className="section-header" style={{ textAlign: 'center', marginBottom: '4rem' }}>
-            <div className="section-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)', borderRadius: '9999px', color: 'white', fontSize: '0.875rem', fontWeight: '600', marginBottom: '1rem' }}>
+            <div className="section-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', background: 'linear-gradient(to right, var(--theme-sidebar-icon-from), var(--theme-sidebar-icon-to))', borderRadius: '9999px', color: 'white', fontSize: '0.875rem', fontWeight: '600', marginBottom: '1rem' }}>
               <Zap className="badge-icon" style={{ width: '1rem', height: '1rem' }} />
               <span>Complete Feature Set</span>
             </div>
@@ -320,13 +320,13 @@ const Home = () => {
       {/* Why Stevens Section */}
       <section style={{ 
         padding: '6rem 0', 
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        background: 'linear-gradient(to bottom right, var(--theme-sidebar-icon-from), var(--theme-sidebar-icon-to))',
         color: 'white'
       }}>
         <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 2rem' }}>
           <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
             <h2 style={{ fontSize: '2.5rem', fontWeight: 'bold', marginBottom: '1rem' }}>
-              Why Choose AdvisorAI for Stevens?
+              Why Choose <a href="https://advisoraii.web.app" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'underline', textUnderlineOffset: '4px' }}>AdvisorAI</a> for Stevens?
             </h2>
             <p style={{ fontSize: '1.125rem', opacity: 0.9, maxWidth: '700px', margin: '0 auto' }}>
               Built specifically for Stevens Institute of Technology students with comprehensive knowledge of courses, faculty, and campus resources
@@ -435,7 +435,7 @@ const Home = () => {
                 <div className="footer-logo-icon-wrapper">
                   <img src={logo} alt="AdvisorAI Logo" className="footer-logo-icon" style={{ width: '1.5rem', height: '1.5rem', objectFit: 'contain' }} />
                 </div>
-                <span>AdvisorAI</span>
+                <a href="https://advisoraii.web.app" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>AdvisorAI</a>
               </div>
               <p className="footer-text">
                 Empowering Stevens Institute of Technology students with AI-driven academic guidance. Get personalized advice about courses, professors, admissions, and career opportunities.
@@ -444,7 +444,7 @@ const Home = () => {
           </div>
           
           <div className="footer-bottom">
-            <p>&copy; {new Date().getFullYear()} AdvisorAI for Stevens Institute of Technology. All rights reserved.</p>
+            <p>&copy; {new Date().getFullYear()} <a href="https://advisoraii.web.app" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'underline', textUnderlineOffset: '3px' }}>AdvisorAI</a> for Stevens Institute of Technology. All rights reserved.</p>
             <div className="footer-social">
               <a href="#" className="social-link">
                 <Mail className="social-icon" />
