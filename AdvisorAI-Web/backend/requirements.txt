@@ -9,6 +9,10 @@ Flask-Session
 Flask-JWT-Extended
 gunicorn
 
+# ----- Async Framework (FastAPI + uvicorn) -----
+fastapi
+uvicorn[standard]
+
 # ----- Auth & Security -----
 firebase-admin
 python-dotenv
