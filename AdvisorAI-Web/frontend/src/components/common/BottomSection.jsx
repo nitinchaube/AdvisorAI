@@ -7,7 +7,7 @@ const BottomSection = () => {
     "AI-Powered Course Recommendations",
     "Personalized Academic Planning",
     "24/7 AI Support & Guidance",
-    "Career Path Optimization"
+    "Career Path Optimization",
   ];
 
   return (
@@ -25,10 +25,6 @@ const BottomSection = () => {
       </div>
 
       <div className="stats-preview">
-        <div className="stat-item">
-          <div className="stat-number">10K+</div>
-          <div className="stat-label">Students</div>
-        </div>
         <div className="stat-item">
           <div className="stat-number">95%</div>
           <div className="stat-label">Satisfaction</div>

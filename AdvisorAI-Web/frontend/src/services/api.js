@@ -636,6 +636,47 @@ apiService.postProfessorReview = async function (professorId, data) {
   return await res.json();
 };
 
+// ── Website Settings (theme) ────────────────────────────────────────────────
+
+/**
+ * Fetch the global website theme from the backend (public, no auth needed).
+ */
+export async function fetchWebsiteTheme() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/settings/theme`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+    });
+    if (!res.ok) return "blue";
+    const data = await res.json();
+    return data.theme || "blue";
+  } catch {
+    return "blue"; // fallback
+  }
+}
+
+/**
+ * Save the global website theme (admin-only, requires auth).
+ */
+export async function saveWebsiteTheme(themeName) {
+  const authHeaders = await apiService.getAuthHeaders();
+  const res = await fetch(`${API_BASE_URL}/settings/theme`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders,
+    },
+    credentials: "include",
+    body: JSON.stringify({ theme: themeName }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || "Failed to save theme");
+  }
+  return await res.json();
+}
+
 // Admin API methods
 export const adminAPI = {
   // Courses Admin API
@@ -783,6 +824,7 @@ export const adminAPI = {
         "Content-Type": "application/json",
         ...authHeaders,
       },
+      credentials: "include",
     });
     if (!response.ok) throw new Error("Failed to fetch users");
     return await response.json();
@@ -796,6 +838,7 @@ export const adminAPI = {
         "Content-Type": "application/json",
         ...authHeaders,
       },
+      credentials: "include",
     });
     if (!response.ok) throw new Error("Failed to fetch user details");
     return await response.json();
@@ -810,6 +853,7 @@ export const adminAPI = {
         ...authHeaders,
       },
       body: JSON.stringify(userData),
+      credentials: "include",
     });
     if (!response.ok) throw new Error("Failed to update user");
     return await response.json();
@@ -823,6 +867,7 @@ export const adminAPI = {
         "Content-Type": "application/json",
         ...authHeaders,
       },
+      credentials: "include",
     });
     if (!response.ok) throw new Error("Failed to delete user");
     return await response.json();
@@ -837,8 +882,23 @@ export const adminAPI = {
         ...authHeaders,
       },
       body: JSON.stringify({ role }),
+      credentials: "include",
     });
     if (!response.ok) throw new Error("Failed to update user role");
+    return await response.json();
+  },
+
+  async verifyUser(userUid) {
+    const authHeaders = await apiService.getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/admin/users/${userUid}/verify`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders,
+      },
+      credentials: "include",
+    });
+    if (!response.ok) throw new Error("Failed to verify user");
     return await response.json();
   },
 
@@ -850,6 +910,7 @@ export const adminAPI = {
         "Content-Type": "application/json",
         ...authHeaders,
       },
+      credentials: "include",
     });
     if (!response.ok) throw new Error("Failed to sync Firebase claims");
     return await response.json();

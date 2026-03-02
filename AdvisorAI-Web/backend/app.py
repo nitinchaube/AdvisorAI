@@ -20,6 +20,7 @@ from faculty_data_mapper import mongo_faculty_to_admin_format, admin_format_to_m
 import logging
 import time
 from functools import wraps
+from typing import Dict, List, Any
 import uuid
 from langchain_core.documents import Document
 
@@ -33,15 +34,29 @@ from pymongo import MongoClient
 from bson import ObjectId
 MONGO_URI = os.environ.get('MONGO_URI')
 MONGO_DB_NAME = os.environ.get('MONGO_DB_NAME', 'AdvisorAI')
-mongo_client = MongoClient(MONGO_URI)
+mongo_client = MongoClient(
+    MONGO_URI,
+    maxPoolSize=50,          # Connections per worker (handles 16+ threads)
+    minPoolSize=5,
+    maxIdleTimeMS=30000,     # 30s idle timeout
+    connectTimeoutMS=5000,
+    serverSelectionTimeoutMS=5000,
+    retryWrites=True,
+)
 mongo_db = mongo_client[MONGO_DB_NAME]
 
-# Ensure unique index on portfolioName
+# --- MongoDB Indexes for scale (idempotent – safe to run every startup) ---
 try:
     mongo_db.users.create_index("portfolioName", unique=True, sparse=True)
-    logger.info("Ensured unique index on portfolioName")
+    mongo_db.users.create_index("uid", unique=True)
+    mongo_db.chat_sessions.create_index([("user_id", 1), ("last_updated", -1)])
+    mongo_db.chat_history.create_index([("user_id", 1), ("timestamp", -1)])
+    mongo_db.chat_history.create_index("session_id")
+    mongo_db.message_feedback.create_index("user_id")
+    mongo_db.website_settings.create_index("key", unique=True)
+    logger.info("MongoDB indexes ensured for scale")
 except Exception as e:
-    logger.warning(f"Could not create unique index on portfolioName: {e}")
+    logger.warning(f"Could not create MongoDB indexes: {e}")
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -224,12 +239,38 @@ def sanitize_profile_picture_url(profile_picture_url):
 
     return cleaned_url
 
+# ── Token verification cache (avoids repeated Firebase + MongoDB calls) ───
+_user_cache: Dict[str, dict] = {}
+_user_cache_lock = threading.Lock()
+_USER_CACHE_TTL = 300  # 5 minutes
+
+def _get_cached_user(user_id: str):
+    """Return cached user doc if it exists and hasn't expired."""
+    with _user_cache_lock:
+        entry = _user_cache.get(user_id)
+        if entry and (time.time() - entry["ts"]) < _USER_CACHE_TTL:
+            return entry["user"]
+    return None
+
+def _set_cached_user(user_id: str, user_doc: dict):
+    """Cache a user doc with current timestamp."""
+    with _user_cache_lock:
+        _user_cache[user_id] = {"user": user_doc, "ts": time.time()}
+
+def _invalidate_cached_user(user_id: str):
+    """Remove a user from the cache (e.g. after profile update)."""
+    with _user_cache_lock:
+        _user_cache.pop(user_id, None)
+
+
 def verify_token(f):
     """Authentication decorator that requires a valid Firebase ID token AND verified email.
     
+    Uses an in-memory cache (TTL 5 min) so repeated requests from the same user
+    skip the MongoDB + Firebase round-trips, dramatically reducing latency at scale.
+    
     If MongoDB says email is unverified, this decorator re-checks Firebase Auth
     directly (the source of truth) and syncs the status before deciding.
-    This prevents stale MongoDB data from blocking users who already verified.
     """
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -248,6 +289,13 @@ def verify_token(f):
             decoded_token = auth.verify_id_token(id_token)
             user_id = decoded_token['uid']
             
+            # ── Fast path: serve from cache ──────────────────────────
+            cached = _get_cached_user(user_id)
+            if cached and cached.get('emailVerified'):
+                g.user = cached
+                return f(*args, **kwargs)
+            
+            # ── Slow path: full lookup ───────────────────────────────
             if mongo_db is not None:
                 user_doc = mongo_db.users.find_one({'uid': user_id})
                 
@@ -274,11 +322,9 @@ def verify_token(f):
                 
                 # Check email verification – sync from Firebase if MongoDB is stale
                 if not user_doc.get('emailVerified', False):
-                    # MongoDB says unverified – double-check with Firebase (source of truth)
                     try:
                         firebase_user = auth.get_user(user_id)
                         if firebase_user.email_verified:
-                            # Firebase says verified – sync to MongoDB
                             mongo_db.users.update_one(
                                 {'uid': user_id},
                                 {'$set': {'emailVerified': True, 'emailVerifiedAt': datetime.now()}}
@@ -286,7 +332,6 @@ def verify_token(f):
                             user_doc['emailVerified'] = True
                             logger.info(f"Synced email verification from Firebase for user {user_id}")
                         else:
-                            # Genuinely unverified
                             return jsonify({
                                 "error": "Email not verified",
                                 "emailVerified": False,
@@ -302,7 +347,8 @@ def verify_token(f):
                             "requiresEmailVerification": True
                         }), 403
                 
-                # Store user info in g for use in the route
+                # Cache the verified user doc for future requests
+                _set_cached_user(user_id, user_doc)
                 g.user = user_doc
             else:
                 g.user = decoded_token
@@ -336,14 +382,37 @@ def verify_email_optional(f):
             if not decoded_token:
                 return jsonify({"error": "Invalid token"}), 401
             
+            user_id = decoded_token['uid']
+            
             # Get user from MongoDB
             if mongo_db is not None:
-                user_doc = mongo_db.users.find_one({'uid': decoded_token['uid']})
+                user_doc = mongo_db.users.find_one({'uid': user_id})
+                
+                # If user doesn't exist in MongoDB, create a minimal profile
                 if not user_doc:
-                    return jsonify({"error": "User not found"}), 404
+                    logger.warning(f"User {user_id} not found in MongoDB during verify_email_optional, creating minimal profile")
+                    try:
+                        firebase_user = auth.get_user(user_id)
+                        user_doc = {
+                            'uid': user_id,
+                            'email': firebase_user.email,
+                            'fullName': firebase_user.display_name or '',
+                            'createdAt': datetime.now(),
+                            'profileCompleted': False,
+                            'resumeData': {},
+                            'role': 'user',
+                            'emailVerified': firebase_user.email_verified
+                        }
+                        mongo_db.users.insert_one(user_doc)
+                        logger.info(f"Created minimal profile for user {user_id} in verify_email_optional")
+                    except Exception as create_error:
+                        logger.error(f"Failed to create minimal profile in verify_email_optional: {create_error}")
+                        return jsonify({"error": "User profile creation failed"}), 500
                 
                 # Store user info in g for use in the route
                 g.user = user_doc
+            else:
+                g.user = decoded_token
             
             return f(*args, **kwargs)
         except Exception as e:
@@ -536,6 +605,12 @@ def signin():
                     )
                     logger.info(f"Synced email verification during signin for user {user_record.uid}")
                 
+                # Update last login time
+                mongo_db.users.update_one(
+                    {'uid': user_record.uid},
+                    {'$set': {'lastLoginAt': datetime.now()}}
+                )
+
                 # Sync Firebase custom claims with MongoDB role
                 try:
                     mongo_role = user_doc.get('role')
@@ -565,7 +640,7 @@ def signin():
             "verification_required": not email_verified
         }), 200
 
-    except Exception as e:
+    except Exception as e: 
         logger.error(f"Signin error: {str(e)}")
         return jsonify({"error": "Invalid credentials"}), 401
 
@@ -604,6 +679,12 @@ def signin_with_token():
                     )
                     logger.info(f"Synced email verification during signin for user {user_id}")
                 
+                # Update last login time
+                mongo_db.users.update_one(
+                    {'uid': user_id},
+                    {'$set': {'lastLoginAt': datetime.now()}}
+                )
+
                 # Sync Firebase custom claims with MongoDB role
                 try:
                     mongo_role = user_doc.get('role')
@@ -805,16 +886,20 @@ def upload_and_parse_resume():
             result = resume_processor.process_resume(file_path, file.content_type)
             
             if result['success']:
-                # Update user document in Firestore
+                # Update user document in MongoDB
+                # The user document is guaranteed to exist because the decorator creates it
                 if mongo_db is not None:
                     user_ref = mongo_db.users.find_one({'uid': user_id})
                     if user_ref:
                         # Update existing document
                         user_ref['resumeData'] = result['parsedData']
-                        user_ref['profileCompleted'] = True
+                        user_ref['profileCompleted'] = False  # Don't auto-complete on upload, user needs to review
                         user_ref['lastResumeUpdate'] = datetime.now()
                         user_ref['resumeText'] = result['originalText']
                         mongo_db.users.replace_one({'uid': user_id}, user_ref)
+                    else:
+                        logger.error(f"User {user_id} not found in MongoDB after resume upload - this should not happen")
+                        return jsonify({"error": "User profile not found"}), 500
                 
                 return jsonify({
                     "success": True,
@@ -843,49 +928,19 @@ def upload_and_parse_resume():
 def get_user_profile():
     """Get user profile data"""
     try:
-        user_id = g.user['uid']
+        # User is guaranteed to exist in g.user by the decorator
+        # The decorator creates a minimal profile if it doesn't exist
+        user_doc = g.user
         
-        if mongo_db is not None:
-            user_doc = mongo_db.users.find_one({'uid': user_id})
-            if user_doc:
-                # Ensure profileCompleted field is always present
-                profile = mongo_doc_to_json(user_doc)
-                if 'profileCompleted' not in profile:
-                    profile['profileCompleted'] = False
-                return jsonify({
-                    "success": True,
-                    "profile": profile
-                }), 200
-            else:
-                # If user doesn't exist in MongoDB, create a minimal profile
-                logger.warning(f"User {user_id} not found in MongoDB, creating minimal profile")
-                try:
-                    # Get user record from Firebase
-                    firebase_user = auth.get_user(user_id)
-                    
-                    # Create minimal user document
-                    minimal_user_doc = {
-                        'uid': user_id,
-                        'email': firebase_user.email,
-                        'fullName': firebase_user.display_name or '',
-                        'createdAt': datetime.now(),
-                        'profileCompleted': False,
-                        'resumeData': {},
-                        'role': 'user',
-                        'emailVerified': firebase_user.email_verified
-                    }
-                    mongo_db.users.insert_one(minimal_user_doc)
-                    logger.info(f"Created minimal profile for user {user_id}")
-                    
-                    return jsonify({
-                        "success": True,
-                        "profile": minimal_user_doc
-                    }), 200
-                except Exception as create_error:
-                    logger.error(f"Failed to create minimal profile: {create_error}")
-                    return jsonify({"error": "User profile creation failed"}), 500
-        else:
-            return jsonify({"error": "Database not available"}), 500
+        # Ensure profileCompleted field is always present
+        profile = mongo_doc_to_json(user_doc)
+        if 'profileCompleted' not in profile:
+            profile['profileCompleted'] = False
+        
+        return jsonify({
+            "success": True,
+            "profile": profile
+        }), 200
             
     except Exception as e:
         logger.error(f"Get profile error: {str(e)}")
@@ -965,7 +1020,7 @@ def get_public_profile(user_id):
                 # Only include public/important fields
                 public_fields = [
                     'fullName', 'email', 'location', 'summary',
-                    'github', 'linkedin',
+                    'github', 'linkedin', 'resumeLink',
                     'experience', 'education', 'skills', 'certifications', 'projects',
                     'portfolioTheme', 'profilePicture'
                 ]
@@ -999,7 +1054,7 @@ def get_portfolio_by_name(portfolio_name):
                 # Only include public/important fields
                 public_fields = [
                     'fullName', 'email', 'location', 'summary',
-                    'github', 'linkedin',
+                    'github', 'linkedin', 'resumeLink',
                     'experience', 'education', 'skills', 'certifications', 'projects',
                     'portfolioTheme', 'profilePicture'
                 ]
@@ -1090,81 +1145,62 @@ def chat_query():
         
         logger.info(f"Backend: Final chat_name to be used: '{chat_name}'")
         
-        # Save messages to session document if available and session_id provided
+        # Save messages to session document using atomic $push (no read-modify-write)
         if mongo_db is not None and result.get('response') and session_id:
             try:
-                # Get the session document
-                session_ref = mongo_db.chat_sessions.find_one({'_id': ObjectId(session_id)})
-                
-                if session_ref:
-                    session_data = session_ref
-                    messages = session_data.get('messages', [])
-                    
-                    # Add user message with context for fine-tuning
-                    user_message = {
-                        'id': f"user_{int(time.time() * 1000)}",
-                        'role': 'user',
-                        'content': query,
-                        'timestamp': datetime.now().isoformat(),
-                        'context': {
-                            'chat_history': chat_history,  # Full context for fine-tuning
-                            'session_id': session_id,
-                            'user_id': user_id,
-                            'timestamp': datetime.now().isoformat()
-                        }
+                user_message = {
+                    'id': f"user_{int(time.time() * 1000)}",
+                    'role': 'user',
+                    'content': query,
+                    'timestamp': datetime.now().isoformat(),
+                }
+                ai_message = {
+                    'id': f"ai_{int(time.time() * 1000)}",
+                    'role': 'assistant',
+                    'content': result['response'],
+                    'timestamp': datetime.now().isoformat(),
+                    'sources': result.get('sources', {}),
+                    'processing_time': result.get('processing_time', 0),
+                    'agent_metadata': {
+                        'tools_used': result.get('sources', {}).get('collections_used', []),
+                        'web_search_performed': result.get('sources', {}).get('web_search_performed', False),
+                        'general_tool_used': result.get('sources', {}).get('general_tool_used', False),
+                        'chat_history_included': result.get('sources', {}).get('chat_history_included', False)
                     }
-                    messages.append(user_message)
-                    
-                    # Add AI response with context and agent metadata
-                    ai_message = {
-                        'id': f"ai_{int(time.time() * 1000)}",
-                        'role': 'assistant',
-                        'content': result['response'],
-                        'timestamp': datetime.now().isoformat(),
-                        'sources': result.get('sources', {}),
-                        'processing_time': result.get('processing_time', 0),
-                        'context': {
-                            'user_question': query,
-                            'chat_history': chat_history,  # Full context for fine-tuning
-                            'session_id': session_id,
-                            'user_id': user_id,
-                            'timestamp': datetime.now().isoformat()
+                }
+
+                # Atomic $push — no read-modify-write, no race conditions
+                update_ops = {
+                    '$push': {'messages': {'$each': [user_message, ai_message]}},
+                    '$set': {'last_updated': datetime.now()},
+                    '$inc': {'message_count': 2},
+                }
+                # Update title only if still "New Chat"
+                if chat_name and chat_name != 'New Chat':
+                    update_ops['$set']['title'] = chat_name
+                    # Only set title if it's currently "New Chat"
+                    mongo_db.chat_sessions.update_one(
+                        {'_id': ObjectId(session_id), 'title': 'New Chat'},
+                        update_ops,
+                    )
+                    # Also push messages even if title wasn't "New Chat"
+                    mongo_db.chat_sessions.update_one(
+                        {'_id': ObjectId(session_id), 'title': {'$ne': 'New Chat'}},
+                        {
+                            '$push': {'messages': {'$each': [user_message, ai_message]}},
+                            '$set': {'last_updated': datetime.now()},
+                            '$inc': {'message_count': 2},
                         },
-                        'agent_metadata': {
-                            'tools_used': result.get('sources', {}).get('collections_used', []),
-                            'web_search_performed': result.get('sources', {}).get('web_search_performed', False),
-                            'general_tool_used': result.get('sources', {}).get('general_tool_used', False),
-                            'chat_history_included': result.get('sources', {}).get('chat_history_included', False)
-                        }
-                    }
-                    messages.append(ai_message)
-                    
-                    # Update session with new messages and chat name if it's still "New Chat"
-                    update_data = {
-                        **session_data,
-                        'messages': messages,
-                        'last_updated': datetime.now(),
-                        'message_count': len(messages)
-                    }
-                    
-                    # Update chat name if it's still "New Chat" and we have a better name
-                    if session_data.get('title') == 'New Chat' and chat_name != 'New Chat':
-                        update_data['title'] = chat_name
-                        logger.info(f"Backend: Updating chat title from 'New Chat' to: '{chat_name}'")
-                        logger.debug(f"Backend: Session data before update: {session_data.get('title')}")
-                        logger.info(f"Backend: New chat_name: '{chat_name}'")
-                    else:
-                        logger.info(f"Backend: Not updating title. Current: '{session_data.get('title')}', New: '{chat_name}'")
-                    
-                    mongo_db.chat_sessions.replace_one({'_id': ObjectId(session_id)}, update_data)
-                    
-                    logger.info(f"Chat messages saved to session {session_id} for user {user_id}")
+                    )
                 else:
-                    logger.warning(f"Session {session_id} not found")
-                    
+                    mongo_db.chat_sessions.update_one(
+                        {'_id': ObjectId(session_id)},
+                        update_ops,
+                    )
+
+                logger.info(f"Chat messages saved to session {session_id} for user {user_id}")
             except Exception as e:
                 logger.error(f"Error saving chat messages to session: {e}")
-                # Don't fail the request if session saving fails
         
         # Also save to legacy chat_history for backward compatibility
         if mongo_db is not None and result.get('response'):
@@ -1177,12 +1213,6 @@ def chat_query():
                     'sources': result.get('sources', {}),
                     'processing_time': result.get('processing_time', 0),
                     'session_id': session_id,
-                    'context': {
-                        'chat_history': chat_history,  # Full context for fine-tuning
-                        'session_id': session_id,
-                        'user_id': user_id,
-                        'timestamp': datetime.now().isoformat()
-                    }
                 }
                 mongo_db.chat_history.insert_one(chat_doc)
             except Exception as e:
@@ -1275,38 +1305,44 @@ def chat_stream():
             if not full_answer or not session_id:
                 return
 
-            # Save to session document
+            # Save to session document using atomic $push (no read-modify-write)
             if mongo_db is not None:
                 try:
-                    # Find session by _id (ObjectId) and verify it belongs to the user
-                    session_data = mongo_db.chat_sessions.find_one(
-                        {"_id": ObjectId(session_id), "user_id": user_id}
-                    )
-                    if session_data:
-                        messages = session_data.get("messages", [])
-                        messages.append({
-                            'id': f"user_{int(time.time() * 1000)}",
-                            'role': 'user',
-                            'content': query,
-                            'timestamp': datetime.now().isoformat(),
-                        })
-                        messages.append({
-                            'id': f"ai_{int(time.time() * 1000)}",
-                            'role': 'assistant',
-                            'content': full_answer,
-                            'timestamp': datetime.now().isoformat(),
-                            'sources': meta.get("sources", {}),
-                        })
-                        update = {
-                            **session_data,
-                            'messages': messages,
-                            'last_updated': datetime.now(),
-                            'message_count': len(messages),
-                        }
-                        if chat_name != "New Chat" and session_data.get("title") in (None, "New Chat"):
-                            update["title"] = chat_name
+                    user_msg = {
+                        'id': f"user_{int(time.time() * 1000)}",
+                        'role': 'user',
+                        'content': query,
+                        'timestamp': datetime.now().isoformat(),
+                    }
+                    ai_msg = {
+                        'id': f"ai_{int(time.time() * 1000)}",
+                        'role': 'assistant',
+                        'content': full_answer,
+                        'timestamp': datetime.now().isoformat(),
+                        'sources': meta.get("sources", {}),
+                    }
+
+                    # Atomic $push — concurrent-safe, no read-modify-write
+                    update_ops = {
+                        '$push': {'messages': {'$each': [user_msg, ai_msg]}},
+                        '$set': {'last_updated': datetime.now()},
+                        '$inc': {'message_count': 2},
+                    }
+                    if chat_name and chat_name != "New Chat":
+                        # Update title only if still "New Chat"
                         mongo_db.chat_sessions.update_one(
-                            {"_id": session_data["_id"]}, {"$set": update}
+                            {"_id": ObjectId(session_id), "user_id": user_id, "title": "New Chat"},
+                            {**update_ops, '$set': {**update_ops['$set'], 'title': chat_name}},
+                        )
+                        # Push messages even if title was already set
+                        mongo_db.chat_sessions.update_one(
+                            {"_id": ObjectId(session_id), "user_id": user_id, "title": {"$ne": "New Chat"}},
+                            update_ops,
+                        )
+                    else:
+                        mongo_db.chat_sessions.update_one(
+                            {"_id": ObjectId(session_id), "user_id": user_id},
+                            update_ops,
                         )
                 except Exception as e:
                     logger.error(f"Stream: session persist error: {e}")
@@ -1895,6 +1931,9 @@ def admin_required(fn):
     @wraps(fn)
     @verify_token
     def wrapper(*args, **kwargs):
+        # Skip admin check for CORS preflight
+        if request.method == 'OPTIONS':
+            return fn(*args, **kwargs)
         user_id = g.user['uid']
         if mongo_db is None:
             return jsonify({"error": "Database not available"}), 500
@@ -2197,7 +2236,6 @@ def submit_feedback():
 # Job and Internship Search API Endpoints
 import csv
 import math
-from typing import List, Dict, Any
 
 def read_csv_data(file_path: str) -> List[Dict[str, Any]]:
     """Read CSV file and return list of dictionaries"""
@@ -2631,7 +2669,13 @@ def admin_trigger_scraper():
 @app.route('/api/admin/users', methods=['GET'])
 @verify_token
 def get_all_users():
-    """Get all users for admin management"""
+    """Get all users for admin management.
+    
+    Merges MongoDB users with Firebase Auth users so that users who
+    signed up but never completed their profile are still visible.
+    Any Firebase-only user is auto-inserted into MongoDB with a
+    minimal document.
+    """
     try:
         user_id = g.user['uid']
         
@@ -2641,8 +2685,8 @@ def get_all_users():
             if not user_doc or user_doc.get('role') != 'admin':
                 return jsonify({"success": False, "error": "Admin access required"}), 403
             
-            # Get all users with sensitive information filtered out
-            users = list(mongo_db.users.find({}, {
+            # ── 1. Collect existing MongoDB UIDs ────────────────────────
+            mongo_users = list(mongo_db.users.find({}, {
                 'uid': 1,
                 'email': 1,
                 'fullName': 1,
@@ -2652,15 +2696,117 @@ def get_all_users():
                 'updatedAt': 1,
                 'lastLoginAt': 1
             }))
-            
-            # Convert ObjectId to string for JSON serialization
+            mongo_uid_set = {u['uid'] for u in mongo_users if 'uid' in u}
+
+            # ── 2. Iterate Firebase Auth users; insert missing ones ─────
+            firebase_users_map = {}  # uid → FirebaseUserRecord
+            new_mongo_docs = []
+            try:
+                page = auth.list_users()
+                while page:
+                    for fb_user in page.users:
+                        firebase_users_map[fb_user.uid] = fb_user
+                        if fb_user.uid not in mongo_uid_set:
+                            # Create minimal MongoDB document
+                            new_doc = {
+                                'uid': fb_user.uid,
+                                'email': fb_user.email or '',
+                                'fullName': fb_user.display_name or '',
+                                'createdAt': fb_user.user_metadata.creation_timestamp
+                                             and datetime.fromtimestamp(fb_user.user_metadata.creation_timestamp / 1000)
+                                             or datetime.now(),
+                                'lastLoginAt': fb_user.user_metadata.last_sign_in_timestamp
+                                               and datetime.fromtimestamp(fb_user.user_metadata.last_sign_in_timestamp / 1000)
+                                               or None,
+                                'profileCompleted': False,
+                                'resumeData': {},
+                                'role': 'user',
+                                'emailVerified': fb_user.email_verified
+                            }
+                            new_mongo_docs.append(new_doc)
+                    page = page.get_next_page()
+            except Exception as fb_err:
+                logger.warning(f"Could not list Firebase users: {fb_err}")
+
+            # Bulk-insert new documents
+            if new_mongo_docs:
+                try:
+                    mongo_db.users.insert_many(new_mongo_docs, ordered=False)
+                    logger.info(f"Inserted {len(new_mongo_docs)} Firebase-only users into MongoDB")
+                except Exception as insert_err:
+                    logger.warning(f"Bulk insert partially failed: {insert_err}")
+
+            # ── 3. Re-read all MongoDB users (now includes new ones) ────
+            users = list(mongo_db.users.find({}, {
+                'uid': 1,
+                'email': 1,
+                'fullName': 1,
+                'role': 1,
+                'profileCompleted': 1,
+                'createdAt': 1,
+                'updatedAt': 1,
+                'lastLoginAt': 1,
+                'emailVerified': 1
+            }))
+
+            # ── 4. Enrich each user with Firebase data ─────────────────
             for user in users:
                 if '_id' in user:
                     user['_id'] = str(user['_id'])
+
+                fb_user = firebase_users_map.get(user.get('uid'))
+                if fb_user:
+                    # Always reflect the live Firebase email_verified status
+                    user['emailVerified'] = fb_user.email_verified
+
+                    # Firebase sync status
+                    firebase_claims = fb_user.custom_claims or {}
+                    firebase_role = firebase_claims.get('role', 'user')
+                    mongo_role = user.get('role', 'user')
+                    user['firebaseSynced'] = (firebase_role == mongo_role)
+
+                    # Backfill lastLoginAt from Firebase if missing in MongoDB
+                    if not user.get('lastLoginAt') and fb_user.user_metadata.last_sign_in_timestamp:
+                        fb_last_login = datetime.fromtimestamp(
+                            fb_user.user_metadata.last_sign_in_timestamp / 1000
+                        )
+                        user['lastLoginAt'] = fb_last_login
+                        # Also persist it to MongoDB so it sticks
+                        try:
+                            mongo_db.users.update_one(
+                                {'uid': user['uid']},
+                                {'$set': {'lastLoginAt': fb_last_login}}
+                            )
+                        except Exception:
+                            pass  # non-critical
+
+                    # Backfill createdAt from Firebase if missing
+                    if not user.get('createdAt') and fb_user.user_metadata.creation_timestamp:
+                        fb_created = datetime.fromtimestamp(
+                            fb_user.user_metadata.creation_timestamp / 1000
+                        )
+                        user['createdAt'] = fb_created
+                        try:
+                            mongo_db.users.update_one(
+                                {'uid': user['uid']},
+                                {'$set': {'createdAt': fb_created}}
+                            )
+                        except Exception:
+                            pass
+                else:
+                    user['firebaseSynced'] = False
             
+            # ── 5. Serialize datetime fields to ISO strings ────────────
+            for user in users:
+                for dt_field in ('createdAt', 'updatedAt', 'lastLoginAt'):
+                    val = user.get(dt_field)
+                    if isinstance(val, datetime):
+                        user[dt_field] = val.isoformat()
+
             return jsonify({
                 "success": True,
-                "users": users
+                "users": users,
+                "synced_from_firebase": len(new_mongo_docs)
             }), 200
         else:
             return jsonify({"success": False, "error": "Database not available"}), 500
@@ -2668,6 +2814,47 @@ def get_all_users():
     except Exception as e:
         logger.error(f"Get all users error: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/admin/users/<user_uid>/verify', methods=['POST', 'OPTIONS'])
+@verify_token
+def verify_user_email(user_uid):
+    """Admin endpoint to manually verify a user's email in Firebase."""
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
+
+    try:
+        admin_id = g.user['uid']
+
+        # Check if current user is admin
+        if mongo_db is not None:
+            admin_doc = mongo_db.users.find_one({'uid': admin_id})
+            if not admin_doc or admin_doc.get('role') != 'admin':
+                return jsonify({"success": False, "error": "Admin access required"}), 403
+        else:
+            return jsonify({"success": False, "error": "Database not available"}), 500
+
+        # Update email_verified in Firebase Auth
+        auth.update_user(user_uid, email_verified=True)
+
+        # Also update in MongoDB so the flag is cached locally
+        if mongo_db is not None:
+            mongo_db.users.update_one(
+                {'uid': user_uid},
+                {'$set': {'emailVerified': True, 'updatedAt': datetime.now()}}
+            )
+
+        logger.info(f"Admin {admin_id} verified email for user {user_uid}")
+        return jsonify({
+            "success": True,
+            "message": "User email verified successfully"
+        }), 200
+
+    except auth.UserNotFoundError:
+        return jsonify({"success": False, "error": "User not found in Firebase"}), 404
+    except Exception as e:
+        logger.error(f"Verify user email error: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 @app.route('/api/admin/users/<user_uid>', methods=['GET'])
 @verify_token
@@ -2801,10 +2988,23 @@ def delete_user_admin(user_uid):
                     "error": "Cannot delete other admin users"
                 }), 400
             
-            # Delete user and related data
+            # Delete user from Firebase Auth
+            try:
+                auth.delete_user(user_uid)
+                logger.info(f"Deleted user {user_uid} from Firebase Auth")
+            except auth.UserNotFoundError:
+                logger.warning(f"User {user_uid} not found in Firebase Auth (already deleted?)")
+            except Exception as fb_err:
+                logger.error(f"Failed to delete user {user_uid} from Firebase: {fb_err}")
+                return jsonify({
+                    "success": False,
+                    "error": f"Failed to delete user from Firebase: {str(fb_err)}"
+                }), 500
+
+            # Delete user and related data from MongoDB
             mongo_db.users.delete_one({'uid': user_uid})
             
-            # Clean up related data (optional - you can add more cleanup here)
+            # Clean up related data
             mongo_db.chat_sessions.delete_many({'user_id': user_uid})
             mongo_db.chat_history.delete_many({'user_id': user_uid})
             mongo_db.message_feedback.delete_many({'user_id': user_uid})
@@ -2813,7 +3013,7 @@ def delete_user_admin(user_uid):
             
             return jsonify({
                 "success": True,
-                "message": "User deleted successfully"
+                "message": "User deleted from both Firebase and MongoDB successfully"
             }), 200
         else:
             return jsonify({"success": False, "error": "Database not available"}), 500
@@ -2946,6 +3146,52 @@ def sync_firebase_claims():
     except Exception as e:
         logger.error(f"Sync Firebase claims error: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
+
+# ── Website Settings API (theme, etc.) ──────────────────────────────────────
+
+@app.route('/api/settings/theme', methods=['GET', 'OPTIONS'])
+def get_website_theme():
+    """Public endpoint — returns the admin-configured website theme."""
+    if request.method == 'OPTIONS':
+        return '', 200
+    try:
+        if mongo_db is None:
+            return jsonify({"success": True, "theme": "blue"}), 200
+
+        doc = mongo_db.website_settings.find_one({"key": "theme"})
+        theme_name = doc["value"] if doc else "blue"
+        return jsonify({"success": True, "theme": theme_name}), 200
+    except Exception as e:
+        logger.error(f"Get website theme error: {e}")
+        return jsonify({"success": True, "theme": "blue"}), 200  # fallback
+
+
+@app.route('/api/settings/theme', methods=['PUT', 'OPTIONS'])
+@admin_required
+def set_website_theme():
+    """Admin-only — persist the selected theme in MongoDB."""
+    if request.method == 'OPTIONS':
+        return '', 200
+    try:
+        data = request.get_json()
+        theme_name = data.get("theme")
+        if not theme_name:
+            return jsonify({"success": False, "error": "Missing 'theme' field"}), 400
+
+        if mongo_db is None:
+            return jsonify({"success": False, "error": "Database not available"}), 500
+
+        mongo_db.website_settings.update_one(
+            {"key": "theme"},
+            {"$set": {"key": "theme", "value": theme_name, "updatedAt": datetime.now()}},
+            upsert=True,
+        )
+        logger.info(f"Website theme updated to: {theme_name}")
+        return jsonify({"success": True, "theme": theme_name}), 200
+    except Exception as e:
+        logger.error(f"Set website theme error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 if __name__ == '__main__':
     # This block only runs for local development (python app.py).

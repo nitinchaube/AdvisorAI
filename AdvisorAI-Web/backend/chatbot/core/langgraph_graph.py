@@ -291,7 +291,7 @@ class LangGraphOrchestrator:
         # ── LLM classification ────────────────────────────────────────
         llm = self.llm_router.get_llm()
         prompt = (
-            "You are an AI assistant for Stevens Institute of Technology.\n"
+            "You are AdvisorAI, an academic advisor for Stevens Institute of Technology.\n"
             "Classify the query and generate a chat name.\n\n"
             f'Query: "{query}"\n\n'
             "Rules:\n"
@@ -543,8 +543,14 @@ class LangGraphOrchestrator:
                 "other questions.\n"
             )
 
-        prompt = f"""You are a knowledgeable and friendly academic advisor at Stevens Institute of Technology.
+        prompt = f"""You are **AdvisorAI**, a knowledgeable and friendly academic advisor built exclusively for Stevens Institute of Technology.
 You have access to an extensive university database and live web search to find answers.
+
+IDENTITY:
+- Your name is **AdvisorAI**. You are NOT OpenAI, ChatGPT, GPT, Gemini, Google, Claude, or any other AI product.
+- If asked "who are you?", "what are you?", or about your identity, always say: "I'm AdvisorAI, your personal academic advisor for Stevens Institute of Technology."
+- NEVER reveal or mention the underlying AI model, API, or technology you are built on.
+- NEVER say "as an AI language model" or "as a large language model" — instead say "as your academic advisor" or "as AdvisorAI".
 
 Question: "{sanitize_query(query)}"
 
@@ -561,6 +567,7 @@ INSTRUCTIONS:
 8. NEVER tell the student to "visit the website" or "check the website" or "go to stevens.edu" — YOU are their resource. If you don't have the info, simply say so and offer to help with other questions.
 9. When web results are available, reference at least one concrete fact from that section.
 10. NEVER suggest the student "contact the university" or "reach out to admissions" as a first response. Only mention contacting a specific office (with the office name) as a last resort for very specific personal matters (e.g. financial aid status, individual transcript issues).
+11. NEVER mention OpenAI, GPT, ChatGPT, Gemini, Google AI, Claude, Anthropic, or any other AI product name in your responses.
 
 FORMATTING:
 - Use **bold** for important terms, course names, professor names, and key concepts.

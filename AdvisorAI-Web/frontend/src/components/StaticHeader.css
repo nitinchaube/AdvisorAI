@@ -5,7 +5,7 @@
   left: 0;
   right: 0;
   z-index: 1000;
-  background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+  background: var(--theme-header-gradient);
   backdrop-filter: blur(20px);
   border-bottom: 1px solid rgba(148, 163, 184, 0.2);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -35,18 +35,18 @@
 .static-logo-icon-wrapper {
   width: 2.5rem;
   height: 2.5rem;
-  background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+  background: linear-gradient(to bottom right, var(--theme-sidebar-icon-from), var(--theme-sidebar-icon-to));
   border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
   border: 2px solid rgba(255, 255, 255, 0.1);
 }
 
 .static-logo-icon-wrapper:hover {
   transform: scale(1.05);
-  box-shadow: 0 8px 25px rgba(59, 130, 246, 0.6);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
   border-color: rgba(255, 255, 255, 0.2);
 }
 
@@ -73,7 +73,7 @@
 }
 
 .static-logo-highlight {
-  background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+  background: linear-gradient(to right, var(--theme-sidebar-icon-from), var(--theme-sidebar-icon-to));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -112,7 +112,7 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+  background: linear-gradient(to right, var(--theme-sidebar-icon-from), var(--theme-sidebar-icon-to));
   color: #ffffff;
   text-decoration: none;
   padding: 1rem 2rem;
@@ -122,13 +122,13 @@
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   border: none;
   cursor: pointer;
-  box-shadow: 0 8px 25px rgba(59, 130, 246, 0.4);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
   border: 2px solid rgba(255, 255, 255, 0.1);
 }
 
 .static-nav-button:hover {
   transform: translateY(-3px);
-  box-shadow: 0 12px 30px rgba(59, 130, 246, 0.6);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
   border-color: rgba(255, 255, 255, 0.2);
 }
 

@@ -6,11 +6,7 @@ import {
   ChevronDown,
   ChevronUp,
   MapPin,
-  Building,
-  Briefcase,
   Globe,
-  Users,
-  Calendar,
 } from "lucide-react";
 
 const FilterPanel = ({
@@ -40,9 +36,6 @@ const FilterPanel = ({
       search: "",
       workModel: "all",
       location: "",
-      companySize: "all",
-      industry: "",
-      ...(isInternship ? { hireTime: "" } : { h1bSponsored: "all" }),
     };
     setLocalFilters(clearedFilters);
     onFiltersChange(clearedFilters);
@@ -53,18 +46,7 @@ const FilterPanel = ({
     if (localFilters.search) count++;
     if (localFilters.workModel !== "all") count++;
     if (localFilters.location) count++;
-    if (localFilters.companySize !== "all") count++;
-    if (localFilters.industry) count++;
-    if (isInternship && localFilters.hireTime) count++;
-    if (!isInternship && localFilters.h1bSponsored !== "all") count++;
     return count;
-  };
-
-  const formatStatLabel = (key, value) => {
-    if (key === "company_sizes") {
-      return value === "Unknown" ? "Not specified" : `${value} employees`;
-    }
-    return value === "Unknown" ? "Not specified" : value;
   };
 
   return (
@@ -157,107 +139,6 @@ const FilterPanel = ({
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
           />
         </div>
-
-        {/* Company Size Filter */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            <Users className="w-4 h-4 inline mr-2" />
-            Company Size
-          </label>
-          <select
-            value={localFilters.companySize || "all"}
-            onChange={(e) => handleFilterChange("companySize", e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
-          >
-            <option value="all">All Company Sizes</option>
-            {stats.company_sizes &&
-              Object.entries(stats.company_sizes)
-                .sort(([a], [b]) => {
-                  // Sort company sizes logically
-                  const order = [
-                    "1-10",
-                    "11-50",
-                    "51-200",
-                    "201-500",
-                    "501-1000",
-                    "1001-5000",
-                    "5001-10000",
-                    "10000+",
-                  ];
-                  const aIndex = order.indexOf(a);
-                  const bIndex = order.indexOf(b);
-                  if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
-                  if (aIndex !== -1) return -1;
-                  if (bIndex !== -1) return 1;
-                  return a.localeCompare(b);
-                })
-                .map(([size, count]) => (
-                  <option key={size} value={size}>
-                    {formatStatLabel("company_sizes", size)} ({count})
-                  </option>
-                ))}
-          </select>
-        </div>
-
-        {/* Industry Filter */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            <Briefcase className="w-4 h-4 inline mr-2" />
-            Industry
-          </label>
-          <input
-            type="text"
-            value={localFilters.industry || ""}
-            onChange={(e) => handleFilterChange("industry", e.target.value)}
-            placeholder="Enter industry (e.g., Technology, Finance)"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
-          />
-        </div>
-
-        {/* H1B Sponsorship Filter (Jobs only) */}
-        {!isInternship && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              <Building className="w-4 h-4 inline mr-2" />
-              H1B Sponsorship
-            </label>
-            <select
-              value={localFilters.h1bSponsored || "all"}
-              onChange={(e) =>
-                handleFilterChange("h1bSponsored", e.target.value)
-              }
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
-            >
-              <option value="all">All H1B Status</option>
-              {stats.h1b_sponsorship &&
-                Object.entries(stats.h1b_sponsorship).map(([status, count]) => (
-                  <option key={status} value={status}>
-                    {status === "not sure"
-                      ? "Not Specified"
-                      : status.charAt(0).toUpperCase() + status.slice(1)}{" "}
-                    ({count})
-                  </option>
-                ))}
-            </select>
-          </div>
-        )}
-
-        {/* Hire Time Filter (Internships only) */}
-        {isInternship && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              <Calendar className="w-4 h-4 inline mr-2" />
-              Hiring Timeline
-            </label>
-            <input
-              type="text"
-              value={localFilters.hireTime || ""}
-              onChange={(e) => handleFilterChange("hireTime", e.target.value)}
-              placeholder="Enter hiring timeline (e.g., Summer 2026)"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
-            />
-          </div>
-        )}
       </div>
 
       {/* Stats Summary */}
@@ -272,17 +153,6 @@ const FilterPanel = ({
               </div>
               {stats.work_models && (
                 <div>Remote: {stats.work_models["Remote"] || 0}</div>
-              )}
-              {!isInternship && stats.h1b_sponsorship && (
-                <div>H1B Sponsored: {stats.h1b_sponsorship["yes"] || 0}</div>
-              )}
-              {isInternship && stats.hire_times && (
-                <div>
-                  Summer 2026:{" "}
-                  {Object.entries(stats.hire_times).find(([key]) =>
-                    key.includes("2026-Summer")
-                  )?.[1] || 0}
-                </div>
               )}
             </div>
           </div>
