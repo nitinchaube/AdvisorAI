@@ -20,6 +20,7 @@ from faculty_data_mapper import mongo_faculty_to_admin_format, admin_format_to_m
 import logging
 import time
 from functools import wraps
+from typing import Dict, List, Any
 import uuid
 from langchain_core.documents import Document
 
@@ -33,15 +34,29 @@ from pymongo import MongoClient
 from bson import ObjectId
 MONGO_URI = os.environ.get('MONGO_URI')
 MONGO_DB_NAME = os.environ.get('MONGO_DB_NAME', 'AdvisorAI')
-mongo_client = MongoClient(MONGO_URI)
+mongo_client = MongoClient(
+    MONGO_URI,
+    maxPoolSize=50,          # Connections per worker (handles 16+ threads)
+    minPoolSize=5,
+    maxIdleTimeMS=30000,     # 30s idle timeout
+    connectTimeoutMS=5000,
+    serverSelectionTimeoutMS=5000,
+    retryWrites=True,
+)
 mongo_db = mongo_client[MONGO_DB_NAME]
 
-# Ensure unique index on portfolioName
+# --- MongoDB Indexes for scale (idempotent – safe to run every startup) ---
 try:
     mongo_db.users.create_index("portfolioName", unique=True, sparse=True)
-    logger.info("Ensured unique index on portfolioName")
+    mongo_db.users.create_index("uid", unique=True)
+    mongo_db.chat_sessions.create_index([("user_id", 1), ("last_updated", -1)])
+    mongo_db.chat_history.create_index([("user_id", 1), ("timestamp", -1)])
+    mongo_db.chat_history.create_index("session_id")
+    mongo_db.message_feedback.create_index("user_id")
+    mongo_db.website_settings.create_index("key", unique=True)
+    logger.info("MongoDB indexes ensured for scale")
 except Exception as e:
-    logger.warning(f"Could not create unique index on portfolioName: {e}")
+    logger.warning(f"Could not create MongoDB indexes: {e}")
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -224,12 +239,38 @@ def sanitize_profile_picture_url(profile_picture_url):
 
     return cleaned_url
 
+# ── Token verification cache (avoids repeated Firebase + MongoDB calls) ───
+_user_cache: Dict[str, dict] = {}
+_user_cache_lock = threading.Lock()
+_USER_CACHE_TTL = 300  # 5 minutes
+
+def _get_cached_user(user_id: str):
+    """Return cached user doc if it exists and hasn't expired."""
+    with _user_cache_lock:
+        entry = _user_cache.get(user_id)
+        if entry and (time.time() - entry["ts"]) < _USER_CACHE_TTL:
+            return entry["user"]
+    return None
+
+def _set_cached_user(user_id: str, user_doc: dict):
+    """Cache a user doc with current timestamp."""
+    with _user_cache_lock:
+        _user_cache[user_id] = {"user": user_doc, "ts": time.time()}
+
+def _invalidate_cached_user(user_id: str):
+    """Remove a user from the cache (e.g. after profile update)."""
+    with _user_cache_lock:
+        _user_cache.pop(user_id, None)
+
+
 def verify_token(f):
     """Authentication decorator that requires a valid Firebase ID token AND verified email.
     
+    Uses an in-memory cache (TTL 5 min) so repeated requests from the same user
+    skip the MongoDB + Firebase round-trips, dramatically reducing latency at scale.
+    
     If MongoDB says email is unverified, this decorator re-checks Firebase Auth
     directly (the source of truth) and syncs the status before deciding.
-    This prevents stale MongoDB data from blocking users who already verified.
     """
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -248,6 +289,13 @@ def verify_token(f):
             decoded_token = auth.verify_id_token(id_token)
             user_id = decoded_token['uid']
             
+            # ── Fast path: serve from cache ──────────────────────────
+            cached = _get_cached_user(user_id)
+            if cached and cached.get('emailVerified'):
+                g.user = cached
+                return f(*args, **kwargs)
+            
+            # ── Slow path: full lookup ───────────────────────────────
             if mongo_db is not None:
                 user_doc = mongo_db.users.find_one({'uid': user_id})
                 
@@ -274,11 +322,9 @@ def verify_token(f):
                 
                 # Check email verification – sync from Firebase if MongoDB is stale
                 if not user_doc.get('emailVerified', False):
-                    # MongoDB says unverified – double-check with Firebase (source of truth)
                     try:
                         firebase_user = auth.get_user(user_id)
                         if firebase_user.email_verified:
-                            # Firebase says verified – sync to MongoDB
                             mongo_db.users.update_one(
                                 {'uid': user_id},
                                 {'$set': {'emailVerified': True, 'emailVerifiedAt': datetime.now()}}
@@ -286,7 +332,6 @@ def verify_token(f):
                             user_doc['emailVerified'] = True
                             logger.info(f"Synced email verification from Firebase for user {user_id}")
                         else:
-                            # Genuinely unverified
                             return jsonify({
                                 "error": "Email not verified",
                                 "emailVerified": False,
@@ -302,7 +347,8 @@ def verify_token(f):
                             "requiresEmailVerification": True
                         }), 403
                 
-                # Store user info in g for use in the route
+                # Cache the verified user doc for future requests
+                _set_cached_user(user_id, user_doc)
                 g.user = user_doc
             else:
                 g.user = decoded_token
@@ -594,7 +640,7 @@ def signin():
             "verification_required": not email_verified
         }), 200
 
-    except Exception as e:
+    except Exception as e: 
         logger.error(f"Signin error: {str(e)}")
         return jsonify({"error": "Invalid credentials"}), 401
 
@@ -1099,81 +1145,62 @@ def chat_query():
         
         logger.info(f"Backend: Final chat_name to be used: '{chat_name}'")
         
-        # Save messages to session document if available and session_id provided
+        # Save messages to session document using atomic $push (no read-modify-write)
         if mongo_db is not None and result.get('response') and session_id:
             try:
-                # Get the session document
-                session_ref = mongo_db.chat_sessions.find_one({'_id': ObjectId(session_id)})
-                
-                if session_ref:
-                    session_data = session_ref
-                    messages = session_data.get('messages', [])
-                    
-                    # Add user message with context for fine-tuning
-                    user_message = {
-                        'id': f"user_{int(time.time() * 1000)}",
-                        'role': 'user',
-                        'content': query,
-                        'timestamp': datetime.now().isoformat(),
-                        'context': {
-                            'chat_history': chat_history,  # Full context for fine-tuning
-                            'session_id': session_id,
-                            'user_id': user_id,
-                            'timestamp': datetime.now().isoformat()
-                        }
+                user_message = {
+                    'id': f"user_{int(time.time() * 1000)}",
+                    'role': 'user',
+                    'content': query,
+                    'timestamp': datetime.now().isoformat(),
+                }
+                ai_message = {
+                    'id': f"ai_{int(time.time() * 1000)}",
+                    'role': 'assistant',
+                    'content': result['response'],
+                    'timestamp': datetime.now().isoformat(),
+                    'sources': result.get('sources', {}),
+                    'processing_time': result.get('processing_time', 0),
+                    'agent_metadata': {
+                        'tools_used': result.get('sources', {}).get('collections_used', []),
+                        'web_search_performed': result.get('sources', {}).get('web_search_performed', False),
+                        'general_tool_used': result.get('sources', {}).get('general_tool_used', False),
+                        'chat_history_included': result.get('sources', {}).get('chat_history_included', False)
                     }
-                    messages.append(user_message)
-                    
-                    # Add AI response with context and agent metadata
-                    ai_message = {
-                        'id': f"ai_{int(time.time() * 1000)}",
-                        'role': 'assistant',
-                        'content': result['response'],
-                        'timestamp': datetime.now().isoformat(),
-                        'sources': result.get('sources', {}),
-                        'processing_time': result.get('processing_time', 0),
-                        'context': {
-                            'user_question': query,
-                            'chat_history': chat_history,  # Full context for fine-tuning
-                            'session_id': session_id,
-                            'user_id': user_id,
-                            'timestamp': datetime.now().isoformat()
+                }
+
+                # Atomic $push — no read-modify-write, no race conditions
+                update_ops = {
+                    '$push': {'messages': {'$each': [user_message, ai_message]}},
+                    '$set': {'last_updated': datetime.now()},
+                    '$inc': {'message_count': 2},
+                }
+                # Update title only if still "New Chat"
+                if chat_name and chat_name != 'New Chat':
+                    update_ops['$set']['title'] = chat_name
+                    # Only set title if it's currently "New Chat"
+                    mongo_db.chat_sessions.update_one(
+                        {'_id': ObjectId(session_id), 'title': 'New Chat'},
+                        update_ops,
+                    )
+                    # Also push messages even if title wasn't "New Chat"
+                    mongo_db.chat_sessions.update_one(
+                        {'_id': ObjectId(session_id), 'title': {'$ne': 'New Chat'}},
+                        {
+                            '$push': {'messages': {'$each': [user_message, ai_message]}},
+                            '$set': {'last_updated': datetime.now()},
+                            '$inc': {'message_count': 2},
                         },
-                        'agent_metadata': {
-                            'tools_used': result.get('sources', {}).get('collections_used', []),
-                            'web_search_performed': result.get('sources', {}).get('web_search_performed', False),
-                            'general_tool_used': result.get('sources', {}).get('general_tool_used', False),
-                            'chat_history_included': result.get('sources', {}).get('chat_history_included', False)
-                        }
-                    }
-                    messages.append(ai_message)
-                    
-                    # Update session with new messages and chat name if it's still "New Chat"
-                    update_data = {
-                        **session_data,
-                        'messages': messages,
-                        'last_updated': datetime.now(),
-                        'message_count': len(messages)
-                    }
-                    
-                    # Update chat name if it's still "New Chat" and we have a better name
-                    if session_data.get('title') == 'New Chat' and chat_name != 'New Chat':
-                        update_data['title'] = chat_name
-                        logger.info(f"Backend: Updating chat title from 'New Chat' to: '{chat_name}'")
-                        logger.debug(f"Backend: Session data before update: {session_data.get('title')}")
-                        logger.info(f"Backend: New chat_name: '{chat_name}'")
-                    else:
-                        logger.info(f"Backend: Not updating title. Current: '{session_data.get('title')}', New: '{chat_name}'")
-                    
-                    mongo_db.chat_sessions.replace_one({'_id': ObjectId(session_id)}, update_data)
-                    
-                    logger.info(f"Chat messages saved to session {session_id} for user {user_id}")
+                    )
                 else:
-                    logger.warning(f"Session {session_id} not found")
-                    
+                    mongo_db.chat_sessions.update_one(
+                        {'_id': ObjectId(session_id)},
+                        update_ops,
+                    )
+
+                logger.info(f"Chat messages saved to session {session_id} for user {user_id}")
             except Exception as e:
                 logger.error(f"Error saving chat messages to session: {e}")
-                # Don't fail the request if session saving fails
         
         # Also save to legacy chat_history for backward compatibility
         if mongo_db is not None and result.get('response'):
@@ -1186,12 +1213,6 @@ def chat_query():
                     'sources': result.get('sources', {}),
                     'processing_time': result.get('processing_time', 0),
                     'session_id': session_id,
-                    'context': {
-                        'chat_history': chat_history,  # Full context for fine-tuning
-                        'session_id': session_id,
-                        'user_id': user_id,
-                        'timestamp': datetime.now().isoformat()
-                    }
                 }
                 mongo_db.chat_history.insert_one(chat_doc)
             except Exception as e:
@@ -1284,38 +1305,44 @@ def chat_stream():
             if not full_answer or not session_id:
                 return
 
-            # Save to session document
+            # Save to session document using atomic $push (no read-modify-write)
             if mongo_db is not None:
                 try:
-                    # Find session by _id (ObjectId) and verify it belongs to the user
-                    session_data = mongo_db.chat_sessions.find_one(
-                        {"_id": ObjectId(session_id), "user_id": user_id}
-                    )
-                    if session_data:
-                        messages = session_data.get("messages", [])
-                        messages.append({
-                            'id': f"user_{int(time.time() * 1000)}",
-                            'role': 'user',
-                            'content': query,
-                            'timestamp': datetime.now().isoformat(),
-                        })
-                        messages.append({
-                            'id': f"ai_{int(time.time() * 1000)}",
-                            'role': 'assistant',
-                            'content': full_answer,
-                            'timestamp': datetime.now().isoformat(),
-                            'sources': meta.get("sources", {}),
-                        })
-                        update = {
-                            **session_data,
-                            'messages': messages,
-                            'last_updated': datetime.now(),
-                            'message_count': len(messages),
-                        }
-                        if chat_name != "New Chat" and session_data.get("title") in (None, "New Chat"):
-                            update["title"] = chat_name
+                    user_msg = {
+                        'id': f"user_{int(time.time() * 1000)}",
+                        'role': 'user',
+                        'content': query,
+                        'timestamp': datetime.now().isoformat(),
+                    }
+                    ai_msg = {
+                        'id': f"ai_{int(time.time() * 1000)}",
+                        'role': 'assistant',
+                        'content': full_answer,
+                        'timestamp': datetime.now().isoformat(),
+                        'sources': meta.get("sources", {}),
+                    }
+
+                    # Atomic $push — concurrent-safe, no read-modify-write
+                    update_ops = {
+                        '$push': {'messages': {'$each': [user_msg, ai_msg]}},
+                        '$set': {'last_updated': datetime.now()},
+                        '$inc': {'message_count': 2},
+                    }
+                    if chat_name and chat_name != "New Chat":
+                        # Update title only if still "New Chat"
                         mongo_db.chat_sessions.update_one(
-                            {"_id": session_data["_id"]}, {"$set": update}
+                            {"_id": ObjectId(session_id), "user_id": user_id, "title": "New Chat"},
+                            {**update_ops, '$set': {**update_ops['$set'], 'title': chat_name}},
+                        )
+                        # Push messages even if title was already set
+                        mongo_db.chat_sessions.update_one(
+                            {"_id": ObjectId(session_id), "user_id": user_id, "title": {"$ne": "New Chat"}},
+                            update_ops,
+                        )
+                    else:
+                        mongo_db.chat_sessions.update_one(
+                            {"_id": ObjectId(session_id), "user_id": user_id},
+                            update_ops,
                         )
                 except Exception as e:
                     logger.error(f"Stream: session persist error: {e}")
@@ -2209,7 +2236,6 @@ def submit_feedback():
 # Job and Internship Search API Endpoints
 import csv
 import math
-from typing import List, Dict, Any
 
 def read_csv_data(file_path: str) -> List[Dict[str, Any]]:
     """Read CSV file and return list of dictionaries"""

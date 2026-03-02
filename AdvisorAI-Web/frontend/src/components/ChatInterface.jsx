@@ -393,22 +393,6 @@ const ChatInterface = ({
     loadSessionMessages(currentSessionId);
   }, [currentSessionId]);
 
-  // Ensure chat history consistency - always maintain last 3 Q&A pairs
-  const ensureChatHistoryConsistency = (messages) => {
-    if (!messages || messages.length === 0) return messages;
-    
-    // Filter to only user and AI messages (exclude system messages)
-    const conversationMessages = messages.filter(msg => msg.type === 'user' || msg.type === 'ai');
-    
-    // If we have more than 6 messages, ensure we keep the last 6 (3 Q&A pairs)
-    if (conversationMessages.length > 6) {
-      const lastSixMessages = conversationMessages.slice(-6);
-      console.log("📱 Ensuring chat history consistency - keeping last 6 messages:", lastSixMessages.length);
-      return lastSixMessages;
-    }
-    
-    return conversationMessages;
-  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -534,8 +518,7 @@ const ChatInterface = ({
                   }
                 : m
             );
-            const consistent = ensureChatHistoryConsistency(updated);
-            if (currentSessionId) chatCache.setSessionMessages(currentSessionId, consistent);
+            if (currentSessionId) chatCache.setSessionMessages(currentSessionId, updated);
             return updated;
           });
 
@@ -564,8 +547,7 @@ const ChatInterface = ({
         const updated = hasPlaceholder
           ? prev.map(m => (m.id === aiMsgId ? errorMessage : m))
           : [...prev, errorMessage];
-        const consistent = ensureChatHistoryConsistency(updated);
-        if (currentSessionId) chatCache.setSessionMessages(currentSessionId, consistent);
+        if (currentSessionId) chatCache.setSessionMessages(currentSessionId, updated);
         return updated;
       });
     } finally {
