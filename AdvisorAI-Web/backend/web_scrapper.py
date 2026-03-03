@@ -13,7 +13,6 @@ logger = logging.getLogger(__name__)
 def _normalise_url(raw: str) -> str:
     """URL-decode and strip tracking query params so duplicates are caught."""
     url = unquote(raw).split("&")[0]   # remove trailing DDG params like &rut=…
-    url = url.rstrip("/")
     return url
 
 

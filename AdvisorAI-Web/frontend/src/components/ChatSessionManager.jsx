@@ -213,7 +213,7 @@ const ChatSessionManager = ({
 
   // Filter sessions based on search
   const filteredSessions = sessions.filter(session =>
-    session.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (session.title || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     getLastMessagePreview(session).toLowerCase().includes(searchTerm.toLowerCase())
   );
 

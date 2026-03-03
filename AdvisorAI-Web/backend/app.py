@@ -1175,23 +1175,23 @@ def chat_query():
                     '$set': {'last_updated': datetime.now()},
                     '$inc': {'message_count': 2},
                 }
-                # Update title only if still "New Chat"
                 if chat_name and chat_name != 'New Chat':
                     update_ops['$set']['title'] = chat_name
-                    # Only set title if it's currently "New Chat"
-                    mongo_db.chat_sessions.update_one(
+                    # Try to set title atomically if still "New Chat"
+                    res = mongo_db.chat_sessions.update_one(
                         {'_id': ObjectId(session_id), 'title': 'New Chat'},
                         update_ops,
                     )
-                    # Also push messages even if title wasn't "New Chat"
-                    mongo_db.chat_sessions.update_one(
-                        {'_id': ObjectId(session_id), 'title': {'$ne': 'New Chat'}},
-                        {
-                            '$push': {'messages': {'$each': [user_message, ai_message]}},
-                            '$set': {'last_updated': datetime.now()},
-                            '$inc': {'message_count': 2},
-                        },
-                    )
+                    if res.matched_count == 0:
+                        # Title already changed — just push messages (without title override)
+                        mongo_db.chat_sessions.update_one(
+                            {'_id': ObjectId(session_id)},
+                            {
+                                '$push': {'messages': {'$each': [user_message, ai_message]}},
+                                '$set': {'last_updated': datetime.now()},
+                                '$inc': {'message_count': 2},
+                            },
+                        )
                 else:
                     mongo_db.chat_sessions.update_one(
                         {'_id': ObjectId(session_id)},
@@ -1329,16 +1329,17 @@ def chat_stream():
                         '$inc': {'message_count': 2},
                     }
                     if chat_name and chat_name != "New Chat":
-                        # Update title only if still "New Chat"
-                        mongo_db.chat_sessions.update_one(
+                        # Try to set title atomically if still "New Chat"
+                        result = mongo_db.chat_sessions.update_one(
                             {"_id": ObjectId(session_id), "user_id": user_id, "title": "New Chat"},
                             {**update_ops, '$set': {**update_ops['$set'], 'title': chat_name}},
                         )
-                        # Push messages even if title was already set
-                        mongo_db.chat_sessions.update_one(
-                            {"_id": ObjectId(session_id), "user_id": user_id, "title": {"$ne": "New Chat"}},
-                            update_ops,
-                        )
+                        if result.matched_count == 0:
+                            # Title was already changed — just push messages
+                            mongo_db.chat_sessions.update_one(
+                                {"_id": ObjectId(session_id), "user_id": user_id},
+                                update_ops,
+                            )
                     else:
                         mongo_db.chat_sessions.update_one(
                             {"_id": ObjectId(session_id), "user_id": user_id},
@@ -1374,8 +1375,18 @@ def get_chat_sessions():
         user_id = g.user['uid']
         
         if mongo_db is not None:
-            # Query chat sessions from Firestore (without ordering to avoid index requirement)
-            session_refs = mongo_db.chat_sessions.find({'user_id': user_id})
+            # Only fetch fields needed for the sidebar; include the last message for preview
+            session_refs = mongo_db.chat_sessions.find(
+                {'user_id': user_id},
+                {
+                    'user_id': 1,
+                    'title': 1,
+                    'created_at': 1,
+                    'last_updated': 1,
+                    'message_count': 1,
+                    'messages': {'$slice': -1},
+                },
+            )
             
             sessions = []
             for session_ref in session_refs:
@@ -1477,23 +1488,15 @@ def update_chat_session(session_id):
             return jsonify({"error": "Title is required"}), 400
         
         if mongo_db is not None:
-            # Verify session belongs to user
-            session_ref = mongo_db.chat_sessions.find_one({'_id': ObjectId(session_id)})
-            
-            if not session_ref:
-                return jsonify({"error": "Chat session not found"}), 404
-                
-            session_data = mongo_doc_to_json(session_ref)
-            if session_data['user_id'] != user_id:
-                return jsonify({"error": "Unauthorized access to chat session"}), 403
-            
-            # Update session title
-            mongo_db.chat_sessions.replace_one({'_id': ObjectId(session_id)}, {
-                **session_data,
-                'title': title,
-                'last_updated': datetime.now()
-            })
-            
+            # Atomic title update — concurrent-safe, never erases messages
+            result = mongo_db.chat_sessions.update_one(
+                {'_id': ObjectId(session_id), 'user_id': user_id},
+                {'$set': {'title': title, 'last_updated': datetime.now()}},
+            )
+
+            if result.matched_count == 0:
+                return jsonify({"error": "Chat session not found or unauthorized"}), 404
+
             return jsonify({
                 "success": True,
                 "message": "Chat session updated successfully"
