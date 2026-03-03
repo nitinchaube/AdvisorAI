@@ -70,6 +70,7 @@ from agents.chroma_agent import ChromaAgent
 from agents.general_agent import GeneralAgent
 from agents.history_agent import HistoryAgent
 from agents.web_agent import WebAgent
+from config.settings import settings
 from core.llm_router import LLMRouter
 from core.memory_store import get_memory_store
 from core.utils import clean_response, parse_llm_json, sanitize_query
@@ -94,6 +95,9 @@ class ChatState(TypedDict, total=False):
     query_type: str  # "general" | "domain" | "blocked"
     is_follow_up: bool
 
+    # ── Query rewriting ──
+    rewritten_query: str
+
     # ── Tool outputs ──
     chroma_results: Dict[str, Any]
     collections_searched: List[str]
@@ -117,6 +121,7 @@ class ChatState(TypedDict, total=False):
 
     # ── Final ──
     answer: str
+    saved: bool
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -155,6 +160,12 @@ _BLOCKED_PATTERNS = [
     r"\b(?:kill|murder|attack|bomb|weapon|gun|shoot|assault|terrorism|terrorist)\b",
     # Drugs / illegal
     r"\b(?:how\s+to\s+(?:make|cook|produce|manufacture)\s+(?:drug|meth|cocaine|heroin))\b",
+    # Profanity / foul language
+    r"\b(?:fuck|shit|bitch|asshole|bastard|damn|crap|dick|pussy|cunt|wtf|stfu)\b",
+    # AdvisorAI internals / tech stack probing
+    r"\b(?:what\s+(?:tech|stack|framework|database|model|llm|api|backend|frontend)\s+(?:do\s+you|are\s+you|is\s+advisorai))\b",
+    r"\b(?:chromadb|chroma\s*db|langchain|langgraph|langsmith|vector\s*(?:db|database|store)|embedding\s+model)\b",
+    r"\b(?:your\s+(?:source\s*code|codebase|backend|architecture|infrastructure|tech\s*stack|api\s*key))\b",
     # Hate speech
     r"\b(?:hate\s+(?:speech|group)|racist|racism|sexist|sexism|homophobic)\b",
     # Explicit / sexual
@@ -187,7 +198,6 @@ class LangGraphOrchestrator:
 
     _SIMILARITY_THRESHOLD = 1.2
     _MIN_GOOD_DOCS = 2
-    _REFLECTION_THRESHOLD = 7
 
     def __init__(self):
         self.llm_router = LLMRouter()
@@ -206,41 +216,53 @@ class LangGraphOrchestrator:
     def _build_graph(self) -> StateGraph:
         """Build the LangGraph workflow.
 
-        Optimised pipeline
-        ==================
-        General:  router → gather → generate → save            (2 nodes + save)
-        Domain:   router → gather_all → generate → save        (2 nodes + save)
-        Blocked:  router → save                                (instant)
+        Pipeline (REFLECTION_ENABLED=true)
+        ===================================
+        General:  router → gather → generate → reflect → [refine] → save
+        Domain:   router → gather_all → generate → reflect → [refine] → save
+        Blocked:  router → save  (instant)
 
-        ``gather_all`` runs history, chroma AND web search in **parallel**
-        (no separate evaluate / web_search nodes), cutting total wall-clock
-        time roughly in half compared to sequential execution.
-
-        Reflection is skipped to save an extra LLM call; the generate
-        prompt is comprehensive enough to produce high-quality answers.
+        Pipeline (REFLECTION_ENABLED=false)
+        ====================================
+        General:  router → gather → generate → save
+        Domain:   router → gather_all → generate → save
+        Blocked:  router → save
         """
         wf = StateGraph(ChatState)
 
         wf.add_node("router", self._router_node)
-        wf.add_node("gather", self._gather_node)           # general path
-        wf.add_node("gather_all", self._gather_all_node)   # domain path: parallel chroma+history+web
+        wf.add_node("gather", self._gather_node)
+        wf.add_node("gather_all", self._gather_all_node)
         wf.add_node("generate", self._generate_node)
         wf.add_node("save", self._save_node)
 
         wf.set_entry_point("router")
 
-        # router → blocked: save | general: gather | domain: gather_all
         wf.add_conditional_edges(
             "router",
             self._route_after_router_v2,
             {"blocked": "save", "gather": "gather", "gather_all": "gather_all"},
         )
 
-        wf.add_edge("gather", "generate")      # general fast path
-        wf.add_edge("gather_all", "generate")   # domain path (already has web)
+        wf.add_edge("gather", "generate")
+        wf.add_edge("gather_all", "generate")
 
-        # After generate: straight to save (no reflection overhead)
-        wf.add_edge("generate", "save")
+        if settings.REFLECTION_ENABLED:
+            wf.add_node("reflect", self._reflect_node)
+            wf.add_node("refine", self._refine_node)
+
+            wf.add_edge("generate", "reflect")
+            wf.add_conditional_edges(
+                "reflect",
+                self._route_after_reflect,
+                {"save": "save", "refine": "refine"},
+            )
+            wf.add_edge("refine", "save")
+            logger.info("Graph: reflection pipeline ENABLED (threshold=%d)", settings.REFLECTION_THRESHOLD)
+        else:
+            wf.add_edge("generate", "save")
+            logger.info("Graph: reflection pipeline DISABLED")
+
         wf.add_edge("save", END)
 
         return wf.compile()
@@ -302,7 +324,9 @@ class LangGraphOrchestrator:
             '- "domain" → ANYTHING Stevens-related or that may be in university '
             "docs (courses, professors, admissions, campus, etc.).\n"
             '- "blocked" → query is harmful, inappropriate, offensive, contains '
-            "violence, hate speech, explicit content, requests to cheat, or is "
+            "violence, hate speech, explicit content, foul language, profanity, "
+            "requests to cheat, asks about AdvisorAI's internal technology / "
+            "backend / database / source code / architecture, or is "
             "completely unrelated to education / academics / university life.\n\n"
             "Return ONLY valid JSON:\n"
             '{"query_type":"general"|"domain"|"blocked",'
@@ -402,23 +426,52 @@ class LangGraphOrchestrator:
         """
         query = state.get("query", "")
 
-        # Build a simple search query WITHOUT an LLM call (saves ~1.5s)
-        search_q = self._quick_search_query(query)
+        # ── Query rewriting for follow-ups (runs BEFORE parallel dispatch) ──
+        # This ensures both chroma and web get the rewritten query.
+        effective_query = query
+        is_follow_up = state.get("is_follow_up", False)
+        if is_follow_up and state.get("chat_history"):
+            try:
+                rewritten = await self.chroma_agent.chroma_tool._rewrite_query(
+                    sanitize_query(query),
+                    self.chroma_agent._parse_history_string(
+                        state.get("chat_history", "")
+                    ),
+                )
+                if rewritten and rewritten != query:
+                    effective_query = rewritten
+                    state["rewritten_query"] = effective_query
+                    logger.info(
+                        "GatherAll: query rewritten '%s' → '%s'",
+                        query[:60], effective_query[:60],
+                    )
+            except Exception as e:
+                logger.warning("GatherAll: query rewriting failed: %s", e)
+
+        # Build a web search query from the (possibly rewritten) query
+        search_q = self._quick_search_query(effective_query)
         state["web_search_query"] = search_q
 
-        # Prepare web search state
+        # Prepare states — chroma and web both use the effective query
+        chroma_state = state.copy()
+        chroma_state["query"] = effective_query
+
         web_state = state.copy()
         web_state["query"] = search_q
 
         # Run all three in parallel
         tasks = [
             self.history_agent.process(state.copy()),
-            self.chroma_agent.process(state.copy()),
+            self.chroma_agent.process(chroma_state),
             self.web_agent.process(web_state),
         ]
         names = ["history", "chroma", "web"]
 
-        logger.info("GatherAll: running %s in parallel (query='%s')", names, query[:60])
+        logger.info(
+            "GatherAll: running %s in parallel (query='%s'%s)",
+            names, effective_query[:60],
+            f", rewritten from '{query[:40]}'" if effective_query != query else "",
+        )
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         _KEYS = {
@@ -469,7 +522,7 @@ class LangGraphOrchestrator:
     # ──────────────────────────────────────────────────────────────────
 
     async def _generate_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        query = state.get("query", "")
+        query = state.get("rewritten_query") or state.get("query", "")
         history_results = state.get("history_results", {})
         llm = self.llm_router.get_llm()
 
@@ -509,7 +562,7 @@ class LangGraphOrchestrator:
                 for i, url in enumerate(web_urls[:3], 1):
                     ctx.append(f"- [{i}] {url}")
             ctx.append("Web content:")
-            ctx.append(wc[:1500])  # 1500 chars instead of 3000
+            ctx.append(wc[:settings.WEB_CONTENT_MAX_CHARS])
             has_info = True
 
         gen = state.get("general_answer")
@@ -552,6 +605,13 @@ IDENTITY:
 - NEVER reveal or mention the underlying AI model, API, or technology you are built on.
 - NEVER say "as an AI language model" or "as a large language model" — instead say "as your academic advisor" or "as AdvisorAI".
 
+STRICT BOUNDARIES:
+- NEVER mention or reveal ANY internal technology: no database names (ChromaDB, MongoDB, etc.), no frameworks (LangChain, LangGraph, Flask, React, etc.), no embedding models, no vector stores, no APIs, no backend/frontend architecture.
+- If asked about your technology, source code, how you work internally, or your architecture, politely say: "I'm AdvisorAI, built to help you with everything about Stevens! How can I assist you with your academics?"
+- NEVER respond to foul language, profanity, or offensive content. Politely redirect: "I'm here to help with your Stevens-related questions! What can I assist you with?"
+- ONLY answer questions related to Stevens Institute of Technology: courses, professors, programs, admissions, campus, academic policies, student life, career services, research, and general academic topics.
+- For questions completely unrelated to Stevens or academics, politely decline and offer to help with Stevens-related topics instead.
+
 Question: "{sanitize_query(query)}"
 
 {context_text}
@@ -568,6 +628,8 @@ INSTRUCTIONS:
 9. When web results are available, reference at least one concrete fact from that section.
 10. NEVER suggest the student "contact the university" or "reach out to admissions" as a first response. Only mention contacting a specific office (with the office name) as a last resort for very specific personal matters (e.g. financial aid status, individual transcript issues).
 11. NEVER mention OpenAI, GPT, ChatGPT, Gemini, Google AI, Claude, Anthropic, or any other AI product name in your responses.
+12. NEVER mention any technical terms like database, vector store, ChromaDB, MongoDB, embeddings, LangChain, API, backend, frontend, retrieval, or any internal system detail in your response. Your answer must read as if it comes from a knowledgeable human advisor.
+13. If the query contains profanity or foul language, do NOT engage with the content. Respond with a polite redirect to Stevens-related topics.
 
 FORMATTING:
 - Use **bold** for important terms, course names, professor names, and key concepts.
@@ -614,14 +676,17 @@ Answer:"""
             )
             answer = clean_response(raw_answer)
             state["draft_answer"] = answer
-            state["answer"] = answer  # No reflection, so set final answer directly
-            logger.info("Generate: answer %d chars", len(answer))
+            if not settings.REFLECTION_ENABLED:
+                state["answer"] = answer
+            logger.info("Generate: draft %d chars", len(answer))
         except Exception as exc:
             logger.error("Generate error: %s", exc, exc_info=True)
-            state["draft_answer"] = (
+            fallback = (
                 "I'm sorry, I ran into an issue while looking that up. "
                 "Could you try asking again? I'm here to help!"
             )
+            state["draft_answer"] = fallback
+            state["answer"] = fallback
 
         return state
 
@@ -631,9 +696,11 @@ Answer:"""
 
     async def _reflect_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Score the draft answer 1-10 and provide improvement feedback."""
-        query = state.get("query", "")
+        query = state.get("rewritten_query") or state.get("query", "")
         draft = state.get("draft_answer", "")
         llm = self.llm_router.get_llm()
+
+        threshold = settings.REFLECTION_THRESHOLD
 
         sources: List[str] = []
         if state.get("chroma_results", {}).get("documents"):
@@ -664,6 +731,9 @@ Evaluate on these criteria:
 4. **Helpfulness** – Is it actionable and student-friendly?
 5. **Tone** – Is it warm, conversational, and confident?
 6. **Self-sufficiency** – Does it AVOID telling the student to "visit the website", "check the website", "go to stevens.edu", or "contact the university"? The chatbot should be the student's resource, not a redirect service. (Score lower if it deflects to a website.)
+7. **Web source usage** – If web search results were available, does the answer actually USE specific facts from those results? (Score lower if it ignores web data.)
+8. **No tech leakage** – Does the answer avoid mentioning ANY internal technology (database, ChromaDB, MongoDB, vector store, embeddings, LangChain, API, backend, frontend, retrieval system, etc.)? Score 1 if ANY internal tech detail is exposed.
+9. **Appropriate content** – Does the answer refuse to engage with profanity, foul language, or off-topic non-academic queries? Score 1 if the answer entertains inappropriate content.
 
 Return ONLY valid JSON:
 {{
@@ -685,7 +755,7 @@ Return ONLY valid JSON:
                     "strengths": parsed.get("strengths", ""),
                     "weaknesses": parsed.get("weaknesses", ""),
                     "suggestion": parsed.get("suggestion", ""),
-                    "is_acceptable": score >= self._REFLECTION_THRESHOLD,
+                    "is_acceptable": score >= threshold,
                 }
             else:
                 reflection = {
@@ -697,11 +767,12 @@ Return ONLY valid JSON:
 
             if reflection["is_acceptable"]:
                 state["answer"] = draft
-                logger.info("Reflect: score=%d → ACCEPT", reflection["score"])
+                logger.info("Reflect: score=%d (threshold=%d) → ACCEPT", reflection["score"], threshold)
             else:
                 logger.info(
-                    "Reflect: score=%d → REFINE (weaknesses: %s)",
-                    reflection["score"], reflection.get("weaknesses", "")[:120],
+                    "Reflect: score=%d (threshold=%d) → REFINE (weaknesses: %s)",
+                    reflection["score"], threshold,
+                    reflection.get("weaknesses", "")[:120],
                 )
         except Exception as exc:
             logger.error("Reflect error: %s", exc, exc_info=True)
@@ -724,10 +795,20 @@ Return ONLY valid JSON:
 
     async def _refine_node(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Re-generate the answer incorporating reflection feedback."""
-        query = state.get("query", "")
+        query = state.get("rewritten_query") or state.get("query", "")
         draft = state.get("draft_answer", "")
         refl = state.get("reflection", {})
         llm = self.llm_router.get_llm()
+
+        # Include web context in refine prompt so the LLM can use it
+        web = state.get("web_results", {})
+        wc = web.get("scraped_content") or web.get("web_content", "")
+        web_section = ""
+        if wc and len(wc.strip()) > 20:
+            web_section = (
+                f"\n\nAVAILABLE WEB DATA (use this to improve the answer):\n"
+                f"{wc[:settings.WEB_CONTENT_MAX_CHARS]}\n"
+            )
 
         prompt = f"""You are a friendly academic advisor at Stevens Institute of Technology.
 
@@ -741,17 +822,19 @@ PREVIOUS ANSWER:
 \"\"\"
 {draft[:2000]}
 \"\"\"
-
+{web_section}
 Rewrite the answer to fix the issues above. Keep what was good:
 - Strengths: {refl.get('strengths', 'N/A')}
 
 RULES:
 1. Fix the specific weaknesses identified.
 2. Keep factual content that was correct.
-3. Do NOT add information not present in the original answer's sources.
+3. If web data is provided above, use specific facts from it.
 4. Be conversational, specific, and helpful.
 5. NEVER tell the student to "visit the website" or "check stevens.edu" — YOU are their resource.
 6. NEVER include meta-commentary like "here is my improved answer".
+7. NEVER mention any internal technology (database, ChromaDB, MongoDB, vector store, embeddings, LangChain, API, backend, frontend, retrieval). Your answer must read as if from a knowledgeable human advisor.
+8. If the question contains profanity or is off-topic, politely decline and redirect to Stevens-related topics.
 
 Improved Answer:"""
 
@@ -766,7 +849,7 @@ Improved Answer:"""
             logger.error("Refine error: %s", exc, exc_info=True)
             state["answer"] = draft
 
-            return state
+        return state
             
     # ──────────────────────────────────────────────────────────────────
     # 8. SAVE – persist the conversation
@@ -792,6 +875,7 @@ Improved Answer:"""
                 ),
             },
         )
+        state["saved"] = True
         return state
     
     # ══════════════════════════════════════════════════════════════════
@@ -804,6 +888,8 @@ Improved Answer:"""
         "gather":      "Searching knowledge base…",
         "gather_all":  "Searching database & web simultaneously…",
         "generate":    "Generating response…",
+        "reflect":     "Reviewing answer quality…",
+        "refine":      "Improving response…",
         "save":        "Finishing up…",
     }
 
@@ -950,21 +1036,31 @@ Improved Answer:"""
     def _detect_completed_node(
         state: Dict[str, Any], already_seen: set
     ) -> str | None:
-        """Infer which pipeline node just completed based on state keys."""
-        _NODE_MARKERS = [
-            ("save",        lambda s: "answer" in s and s.get("answer")),
-            ("generate",    lambda s: "draft_answer" in s),
+        """Infer which pipeline node just completed based on state keys.
+
+        Markers are checked in reverse-pipeline order.  The ``already_seen``
+        set ensures each node is only reported once; once a node is
+        detected it is added to ``already_seen`` by the caller.
+        """
+        markers: list[tuple[str, Any]] = [
+            ("router",      lambda s: "query_type" in s),
+            ("gather",      lambda s: ("history_results" in s or "general_answer" in s)
+                                       and s.get("query_type") == "general"),
             ("gather_all",  lambda s: ("web_results" in s or "chroma_results" in s)
                                        and "history_results" in s
                                        and s.get("query_type") != "general"),
-            ("gather",      lambda s: ("history_results" in s or "general_answer" in s)
-                                       and s.get("query_type") == "general"),
-            ("router",      lambda s: "query_type" in s),
+            ("generate",    lambda s: "draft_answer" in s),
+            ("reflect",     lambda s: "reflection" in s),
+            ("refine",      lambda s: "reflection" in s
+                                      and not s["reflection"].get("is_acceptable", True)
+                                      and "answer" in s and s.get("answer")),
+            ("save",        lambda s: s.get("saved")),
         ]
-        for node, check in _NODE_MARKERS:
+        detected = None
+        for node, check in markers:
             if node not in already_seen and check(state):
-                return node
-        return None
+                detected = node
+        return detected
 
     # ── helpers ────────────────────────────────────────────────────────
 
