@@ -75,9 +75,9 @@ const ChatHistoryView = ({ onSessionSelect, onNewChat }) => {
 
   // Filter sessions based on search
   const filteredSessions = chatHistory.filter(session =>
-    session.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    session.messages.some(msg => 
-      msg.content.toLowerCase().includes(searchTerm.toLowerCase())
+    (session.title || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (session.messages || []).some(msg => 
+      (msg.content || '').toLowerCase().includes(searchTerm.toLowerCase())
     )
   );
 

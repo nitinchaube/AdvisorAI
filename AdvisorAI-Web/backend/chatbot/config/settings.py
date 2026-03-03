@@ -20,16 +20,22 @@ class Settings(BaseSettings):
     CLAUDE_MODEL: str = os.getenv("CLAUDE_MODEL", "claude-3-5-haiku-20241022")
 
     # Vector Database Configuration
-    VECTORDB_DIR: str = os.getenv("VECTORDB_DIR", "./VectorDB")
-    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+    VECTORDB_DIR: str = os.getenv("VECTORDB_DIR", "./VectorDB_v2")
+    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
 
     # Retrieval Configuration
-    TOP_K_PER_COLLECTION: int = int(os.getenv("TOP_K_PER_COLLECTION", "3"))
-    MAX_TOTAL_DOCS: int = int(os.getenv("MAX_TOTAL_DOCS", "3"))
+    TOP_K_PER_COLLECTION: int = int(os.getenv("TOP_K_PER_COLLECTION", "5"))
+    MAX_TOTAL_DOCS: int = int(os.getenv("MAX_TOTAL_DOCS", "5"))
+    QUERY_REWRITING_ENABLED: bool = os.getenv("QUERY_REWRITING_ENABLED", "true").lower() == "true"
+
+    # Reflection / Quality Gate
+    REFLECTION_ENABLED: bool = os.getenv("REFLECTION_ENABLED", "true").lower() == "true"
+    REFLECTION_THRESHOLD: int = int(os.getenv("REFLECTION_THRESHOLD", "7"))
 
     # Web Search Configuration
     WEB_SEARCH_ENABLED: bool = os.getenv("WEB_SEARCH_ENABLED", "true").lower() == "true"
     WEB_SEARCH_RESULTS: int = int(os.getenv("WEB_SEARCH_RESULTS", "3"))
+    WEB_CONTENT_MAX_CHARS: int = int(os.getenv("WEB_CONTENT_MAX_CHARS", "3000"))
 
     # Memory Configuration
     MEMORY_TYPE: str = os.getenv("MEMORY_TYPE", "in_memory")

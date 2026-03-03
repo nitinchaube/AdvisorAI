@@ -20,6 +20,25 @@ except ImportError:
     duckduckgo_search_urls = None
     serpapi_search_urls = None
 
+# Patterns that indicate non-informational noise in scraped pages.
+_NOISE_PATTERNS = re.compile(
+    r"(?i)"
+    r"cookie\s*(?:policy|consent|settings|preferences)|"
+    r"privacy\s*(?:policy|notice|statement)|"
+    r"terms\s*(?:of\s*(?:use|service))|"
+    r"accept\s*(?:all\s*)?cookies|"
+    r"sign\s*(?:in|up)\s*(?:to|with|for)|"
+    r"subscribe\s*(?:to\s*our|now)|"
+    r"follow\s*us\s*on|"
+    r"share\s*(?:on|this)|"
+    r"©\s*\d{4}|"
+    r"all\s*rights\s*reserved|"
+    r"skip\s*to\s*(?:main\s*)?content|"
+    r"toggle\s*(?:navigation|menu)|"
+    r"breadcrumb|"
+    r"back\s*to\s*top"
+)
+
 
 class WebTool:
     """Search the web and scrape content from top results."""
@@ -27,6 +46,7 @@ class WebTool:
     def __init__(self):
         self.search_enabled = settings.WEB_SEARCH_ENABLED
         self.max_results = settings.WEB_SEARCH_RESULTS
+        self.max_content_chars = settings.WEB_CONTENT_MAX_CHARS
 
     # ------------------------------------------------------------------
     # Query helpers
@@ -72,13 +92,10 @@ class WebTool:
                 content = str(raw)
                 urls = []
 
-            content = self._clean_content(content)
+            content = self._clean_content(content, self.max_content_chars)
 
-            # Consider shorter but still meaningful content as usable context.
-            # This makes it more likely that web results are included in the
-            # final answer even when pages are brief.
             if len(content) < 50:
-                logger.debug("Web search returned very short content")
+                logger.debug("Web search returned very short content (%d chars)", len(content))
                 content = ""
 
             return {
@@ -106,12 +123,30 @@ class WebTool:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _clean_content(text: str) -> str:
-        """Normalise and truncate scraped web content."""
+    def _clean_content(text: str, max_chars: int = 3000) -> str:
+        """Clean, de-noise, and truncate scraped web content."""
         if not text:
             return ""
-        text = re.sub(r"<[^>]+>", "", text)  # strip HTML tags
+
+        text = re.sub(r"<[^>]+>", "", text)
         text = re.sub(r"Source:\s*https?://\S+\s*", "", text)
         text = re.sub(r"---\s*", " ", text)
-        text = re.sub(r"\s+", " ", text).strip()
-        return text[:5000]
+
+        # Remove noisy boilerplate lines
+        lines = text.split("\n")
+        cleaned: list[str] = []
+        for line in lines:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if len(stripped) < 4:
+                continue
+            if _NOISE_PATTERNS.search(stripped):
+                continue
+            cleaned.append(stripped)
+
+        text = "\n".join(cleaned)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        text = re.sub(r"[ \t]{2,}", " ", text)
+
+        return text[:max_chars].strip()
