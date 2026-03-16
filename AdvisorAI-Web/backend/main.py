@@ -249,14 +249,23 @@ async def chat_stream(request: Request, user: dict = Depends(verify_firebase_tok
             yield f"data: {json.dumps(event)}\n\n"
 
     async def stream_and_persist():
-        async for chunk in event_generator():
-            yield chunk
-
-        # Persist after stream completes
-        full_answer = collected_answer.strip()
-        if full_answer and session_id:
-            chat_name = collected_meta.get("chat_name", "New Chat")
-            _persist_session(user_id, session_id, query, full_answer, collected_meta, chat_name)
+        try:
+            async for chunk in event_generator():
+                yield chunk
+        except Exception as exc:
+            logger.error("Stream generator error: %s", exc, exc_info=True)
+            yield f"data: {json.dumps({'type': 'error', 'content': str(exc)})}\n\n"
+        finally:
+            # Persist after stream completes — runs even if client disconnects
+            full_answer = collected_answer.strip()
+            if full_answer and session_id:
+                chat_name = collected_meta.get("chat_name", "New Chat")
+                logger.info("Persisting stream result: session=%s answer_len=%d", session_id, len(full_answer))
+                _persist_session(user_id, session_id, query, full_answer, collected_meta, chat_name)
+            elif not full_answer:
+                logger.warning("Stream completed but collected_answer is empty — nothing to persist")
+            elif not session_id:
+                logger.warning("Stream completed but session_id is missing — nothing to persist")
 
     return StreamingResponse(
         stream_and_persist(),
@@ -352,21 +361,23 @@ def _persist_session(
         }
 
         if chat_name and chat_name != "New Chat":
-            # Update title only if still "New Chat"
-            mongo_db.chat_sessions.update_one(
+            # Try to set title atomically if still "New Chat"
+            result = mongo_db.chat_sessions.update_one(
                 {"_id": ObjectId(session_id), "user_id": user_id, "title": "New Chat"},
                 {**update_ops, "$set": {**update_ops["$set"], "title": chat_name}},
             )
-            # Push messages even if title was already set
-            mongo_db.chat_sessions.update_one(
-                {"_id": ObjectId(session_id), "user_id": user_id, "title": {"$ne": "New Chat"}},
-                update_ops,
-            )
+            if result.matched_count == 0:
+                # Title was already changed — just push messages
+                mongo_db.chat_sessions.update_one(
+                    {"_id": ObjectId(session_id), "user_id": user_id},
+                    update_ops,
+                )
         else:
             mongo_db.chat_sessions.update_one(
                 {"_id": ObjectId(session_id), "user_id": user_id},
                 update_ops,
             )
+        logger.info("Persisted messages to session %s for user %s", session_id, user_id)
     except Exception as e:
         logger.error("Session persist error: %s", e)
 

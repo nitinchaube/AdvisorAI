@@ -32,6 +32,9 @@ frontend/dist-ssr/
 *.swo
 .DS_Store
 
+data/
+VectorDB_v2/
+VectorDB/
 # ----- Uploads (user data) -----
 backend/uploads/
 
