@@ -64,18 +64,23 @@ const MarkdownRenderer = ({ content }) => {
         remarkPlugins={[remarkGfm]}
         components={{
         // Custom styling for code blocks
-        code({ node, inline, className, children, ...props }) {
+        code({ node, className, children, ...props }) {
           const match = /language-(\w+)/.exec(className || '');
-          const language = match ? match[1] : '';
-          
-          return !inline ? (
-            <CodeBlock language={language} {...props}>
+          const content = String(children).replace(/\n$/, '');
+          const isBlock = match || content.includes('\n');
+
+          if (isBlock) {
+            return (
+              <CodeBlock language={match?.[1] || ''} {...props}>
+                {children}
+              </CodeBlock>
+            );
+          }
+
+          return (
+            <span className="font-semibold" {...props}>
               {children}
-            </CodeBlock>
-          ) : (
-            <code className="bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-sm font-mono text-slate-800 dark:text-slate-200" {...props}>
-              {children}
-            </code>
+            </span>
           );
         },
         // Custom styling for links
@@ -303,7 +308,6 @@ const ChatInterface = ({
   // Load messages for current session
   const loadSessionMessages = async (sessionId) => {
     if (!sessionId) {
-      // No session selected, show welcome message
       const welcomeMessage = {
         id: 1,
         type: 'ai',
@@ -318,11 +322,10 @@ const ChatInterface = ({
       return;
     }
 
-    // Try to load from cache first
+    // Show cached messages instantly while we revalidate from the API
     const cached = chatCache.getSessionMessages(sessionId);
     if (cached && Array.isArray(cached) && cached.length > 0) {
-      console.log("📱 Loaded messages from cache:", cached.length);
-      // Ensure all cached messages have feedback and context fields
+      console.log("📱 Showing cached messages:", cached.length);
       const validatedMessages = cached.map(msg => ({
         ...msg,
         feedback: msg.feedback || null,
@@ -330,11 +333,11 @@ const ChatInterface = ({
       }));
       setMessages(validatedMessages);
       setSessionInitialized(true);
-      return;
     }
 
+    // Always fetch from API (revalidate) to ensure we have the latest
     try {
-      setLoading(true);
+      if (!cached || cached.length === 0) setLoading(true);
       const response = await apiService.getChatSessionMessages(sessionId);
       if (response.success) {
         const formattedMessages = response.messages.map(msg => ({
@@ -343,42 +346,47 @@ const ChatInterface = ({
           content: msg.content,
           timestamp: new Date(msg.timestamp).toLocaleTimeString(),
           sources: msg.sources || null,
-          feedback: msg.feedback || null, // Preserve feedback data
-          context: msg.context || null // Preserve context data
+          feedback: msg.feedback || null,
+          context: msg.context || null
         }));
         
         if (formattedMessages.length === 0) {
-          // No messages in session, show welcome message
-          const welcomeMessage = {
-            id: 1,
-            type: 'ai',
-            content: "Hello! I'm your AI academic advisor. I can help you with course selection, professor recommendations, academic planning, and much more. What would you like to know?",
-            timestamp: new Date().toLocaleTimeString(),
-            sources: null,
-            feedback: null,
-            context: null
-          };
-          setMessages([welcomeMessage]);
+          if (!cached || cached.length === 0) {
+            const welcomeMessage = {
+              id: 1,
+              type: 'ai',
+              content: "Hello! I'm your AI academic advisor. I can help you with course selection, professor recommendations, academic planning, and much more. What would you like to know?",
+              timestamp: new Date().toLocaleTimeString(),
+              sources: null,
+              feedback: null,
+              context: null
+            };
+            setMessages([welcomeMessage]);
+          }
         } else {
-          console.log("📱 Loaded messages from API:", formattedMessages.length);
-          setMessages(formattedMessages);
+          // Update with API data if it has more/different messages than cache
+          if (!cached || formattedMessages.length !== cached.length) {
+            console.log("📱 Updated messages from API:", formattedMessages.length);
+            setMessages(formattedMessages);
+          }
         }
         
-        // Cache the messages with feedback and context
         chatCache.setSessionMessages(sessionId, formattedMessages);
       }
     } catch (error) {
       console.error('Error loading session messages:', error);
-      const errorMessage = {
-        id: 1,
-        type: 'ai',
-        content: "Could not restore your previous chat session. Please start a new chat.",
-        timestamp: new Date().toLocaleTimeString(),
-        sources: null,
-        feedback: null,
-        context: null
-      };
-      setMessages([errorMessage]);
+      if (!cached || cached.length === 0) {
+        const errorMessage = {
+          id: 1,
+          type: 'ai',
+          content: "Could not restore your previous chat session. Please start a new chat.",
+          timestamp: new Date().toLocaleTimeString(),
+          sources: null,
+          feedback: null,
+          context: null
+        };
+        setMessages([errorMessage]);
+      }
     } finally {
       setLoading(false);
       setSessionInitialized(true);

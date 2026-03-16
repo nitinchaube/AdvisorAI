@@ -1,211 +1,152 @@
-"""ChromaDB vector-search tool – routes queries to the right collections."""
+"""ChromaDB vector-search tool — entity-aware hybrid retrieval + query rewriting.
 
-import hashlib
+Replaces the old LLM-based collection router with a deterministic
+HybridRetriever that uses regex entity detection, metadata filtering,
+and semantic search.  Query rewriting is applied to follow-up and
+ambiguous queries to produce standalone, retrieval-optimised queries.
+"""
+
 import logging
 import os
-from typing import Dict, Any, List
-
-import chromadb
-from langchain_core.documents import Document
-from langchain_community.vectorstores import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
+import sys
+from typing import Any, Dict, List, Optional
 
 from config.settings import settings
 from core.llm_router import LLMRouter
-from core.utils import parse_llm_json_array, sanitize_query
+from core.utils import sanitize_query
+
+# backend/ must be on sys.path for the newprocessingdata import
+_BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if _BACKEND_DIR not in sys.path:
+    sys.path.append(_BACKEND_DIR)
+
+from newprocessingdata.hybrid_retriever import HybridRetriever
 
 logger = logging.getLogger("chatbot")
 
 
 class ChromaTool:
-    """Search across ChromaDB vector collections using LLM-based routing."""
+    """Entity-aware vector search across ChromaDB collections."""
 
     def __init__(self):
-        self.embedding_model = HuggingFaceEmbeddings(model_name=settings.EMBEDDING_MODEL)
         self.llm_router = LLMRouter()
-        self.collections = self._load_collections()
+
+        # Resolve VECTORDB_DIR to an absolute path anchored to backend/
+        vectordb_dir = settings.VECTORDB_DIR
+        if not os.path.isabs(vectordb_dir):
+            vectordb_dir = os.path.join(_BACKEND_DIR, vectordb_dir)
+        vectordb_dir = os.path.realpath(vectordb_dir)
+
+        logger.info("ChromaTool: resolved VECTORDB_DIR=%s", vectordb_dir)
+
+        self.retriever = HybridRetriever(
+            vectordb_dir=vectordb_dir,
+            embedding_model=settings.EMBEDDING_MODEL,
+            top_k=settings.TOP_K_PER_COLLECTION,
+        )
         logger.info(
-            "ChromaTool initialised with %d collections: %s",
-            len(self.collections),
-            list(self.collections.keys()),
+            "ChromaTool initialised with HybridRetriever "
+            "(collections=%s, model=%s, top_k=%d)",
+            self.retriever.get_collection_names(),
+            settings.EMBEDDING_MODEL,
+            settings.TOP_K_PER_COLLECTION,
         )
 
     # ------------------------------------------------------------------
-    # Collection loading
+    # Query rewriting (for follow-ups and ambiguous queries)
     # ------------------------------------------------------------------
 
-    def _load_collections(self) -> Dict[str, Chroma]:
-        """Discover and load all Chroma collections from VECTORDB_DIR."""
-        collections: Dict[str, Chroma] = {}
+    async def _rewrite_query(
+        self,
+        query: str,
+        chat_history: Optional[List[Dict[str, str]]] = None,
+    ) -> str:
+        """Rewrite the query into a standalone, retrieval-optimised form.
 
-        if not os.path.exists(settings.VECTORDB_DIR):
-            logger.warning("VectorDB dir does not exist: %s", settings.VECTORDB_DIR)
-            return collections
+        Only invoked for follow-up / context-dependent queries where the
+        raw query (e.g. "what about that course?") would fail retrieval.
+        Returns the original query unchanged if rewriting fails.
+        """
+        if not chat_history:
+            return query
 
-        for folder in os.listdir(settings.VECTORDB_DIR):
-            full_path = os.path.join(settings.VECTORDB_DIR, folder)
-            if not os.path.isdir(full_path):
-                continue
+        history_text = "\n".join(
+            f"Q: {h.get('query', '')[:200]}\nA: {h.get('response', '')[:300]}"
+            for h in chat_history[-3:]
+        )
 
-            wrapper = self._try_load_collection(folder, full_path)
-            if wrapper is not None:
-                collections[folder] = wrapper
-
-        return collections
-
-    def _try_load_collection(self, name: str, path: str):
-        """Attempt to load a single Chroma collection; returns wrapper or None."""
-        # Primary approach – PersistentClient
-        try:
-            client = chromadb.PersistentClient(path=path)
-            collection = client.get_collection(name=name)
-            count = collection.count()
-            if count == 0:
-                logger.debug("Collection %s is empty, skipping", name)
-                return None
-
-            wrapper = Chroma(
-                client=client,
-                collection_name=name,
-                embedding_function=self.embedding_model,
-            )
-            logger.info("Loaded collection %s (%d docs)", name, count)
-            return wrapper
-
-        except Exception as primary_err:
-            logger.debug("Primary load failed for %s: %s", name, primary_err)
-
-        # Fallback – simple Chroma constructor
-        try:
-            wrapper = Chroma(
-                collection_name=name,
-                persist_directory=path,
-                embedding_function=self.embedding_model,
-            )
-            logger.info("Loaded collection %s via fallback", name)
-            return wrapper
-        except Exception as fallback_err:
-            logger.error("Failed to load collection %s: %s", name, fallback_err)
-            return None
-
-    # ------------------------------------------------------------------
-    # LLM-based collection routing
-    # ------------------------------------------------------------------
-
-    async def _select_collections(self, query: str) -> List[str]:
-        """Ask the LLM which collections are relevant for *query*."""
-        available = list(self.collections.keys())
-        if not available:
-            return []
-
-        safe_query = sanitize_query(query)
         prompt = (
-            "You are a smart router in a RAG system for Stevens Institute of Technology.\n\n"
-            f"Available collections: {available}\n\n"
-            f'User question: "{safe_query}"\n\n'
-            "Return ONLY a valid JSON array of relevant collection names. No explanation.\n\n"
-            "Examples:\n"
-            '- Course questions → ["AllCourseRelatedData"]\n'
-            '- Faculty questions → ["AllFacultyGeneralInformation", "AllFacultyResearchInformation"]\n'
-            "- If unsure → return all collections"
+            "You are a query rewriter for a university knowledge base search.\n\n"
+            "Given the conversation history and latest question, produce a SINGLE "
+            "standalone search query that captures the user's full intent. "
+            "Resolve all pronouns ('it', 'that', 'they') and implicit references.\n\n"
+            f"=== Conversation History ===\n{history_text}\n\n"
+            f"=== Latest Question ===\n{query}\n\n"
+            "Rules:\n"
+            "- Output ONLY the rewritten query, nothing else.\n"
+            "- Keep course codes, professor names, and specific terms intact.\n"
+            "- If the question is already standalone, return it as-is.\n"
+            "- Do NOT answer the question. Only rewrite it.\n\n"
+            "Rewritten query:"
         )
 
         try:
             llm = self.llm_router.get_llm()
-            response = await llm.ainvoke([{"role": "user", "content": prompt}])
+            resp = await llm.ainvoke([{"role": "user", "content": prompt}])
+            rewritten = resp.content.strip().strip('"').strip("'")
 
-            selected = parse_llm_json_array(response.content) or []
-            valid = [c for c in selected if c in available]
-
-            if not valid:
-                logger.debug("No valid collections selected, using all")
-                return available
-
-            logger.debug("Router selected collections: %s", valid)
-            return valid
-
-        except Exception as e:
-            logger.warning("Collection routing error, using all: %s", e)
-            return available
-
-    # ------------------------------------------------------------------
-    # Retrieval
-    # ------------------------------------------------------------------
-
-    async def _retrieve_documents(
-        self, query: str, collection_names: List[str]
-    ) -> List[Document]:
-        """Retrieve, de-duplicate, and rank documents from the given collections."""
-        if not collection_names:
-            return []
-
-        all_docs: List[Document] = []
-
-        for name in collection_names:
-            store = self.collections.get(name)
-            if store is None:
-                continue
-            try:
-                docs_with_scores = store.similarity_search_with_score(
-                    query, k=settings.TOP_K_PER_COLLECTION
+            if rewritten and 5 < len(rewritten) < 500:
+                logger.info(
+                    "Query rewritten: '%s' → '%s'",
+                    query[:60], rewritten[:60],
                 )
-                for doc, score in docs_with_scores:
-                    doc.metadata["collection"] = name
-                    doc.metadata["source"] = "vector_db"
-                    doc.metadata["similarity_score"] = score
-                all_docs.extend(doc for doc, _ in docs_with_scores)
-                logger.debug("Retrieved %d docs from %s", len(docs_with_scores), name)
-            except Exception as e:
-                logger.error("Retrieval error in %s: %s", name, e)
+                return rewritten
+        except Exception as e:
+            logger.warning("Query rewriting failed, using original: %s", e)
 
-        # Sort by similarity (lower = better for cosine distance)
-        all_docs.sort(key=lambda d: d.metadata.get("similarity_score", 1e6))
-
-        # De-duplicate by content hash
-        seen = set()
-        unique: List[Document] = []
-        for doc in all_docs:
-            h = hashlib.md5(doc.page_content.encode()).hexdigest()
-            if h not in seen:
-                seen.add(h)
-                unique.append(doc)
-
-        return unique[: settings.MAX_TOTAL_DOCS]
+        return query
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
-    async def search_collections(self, query: str) -> Dict[str, Any]:
-        """High-level search: route → retrieve → serialise."""
+    async def search_collections(
+        self,
+        query: str,
+        chat_history: Optional[List[Dict[str, str]]] = None,
+        is_follow_up: bool = False,
+    ) -> Dict[str, Any]:
+        """High-level search: entity detect → route → retrieve.
+
+        Query rewriting is handled upstream by the orchestrator's
+        _gather_all_node so that both chroma and web searches benefit
+        from the rewritten query.  The query arriving here is already
+        the effective (possibly rewritten) query.
+
+        Return format is identical to the previous ChromaTool for
+        drop-in compatibility with ChromaAgent and the generate node.
+        """
         try:
-            if not self.collections:
-                return {
-                    "documents": [],
-                    "collections_used": [],
-                    "success": False,
-                    "error": "No collections available",
-                }
+            safe_query = sanitize_query(query)
 
-            selected = await self._select_collections(query)
-            docs = await self._retrieve_documents(query, selected)
-
-            logger.info(
-                "Chroma search: %d docs from %s", len(docs), selected
+            result = await self.retriever.search(
+                safe_query, top_k=settings.MAX_TOTAL_DOCS
             )
 
-            return {
-                "documents": [
-                    {
-                        "content": d.page_content,
-                        "metadata": d.metadata,
-                        "collection": d.metadata.get("collection", "unknown"),
-                    }
-                    for d in docs
-                ],
-                "collections_used": selected,
-                "success": True,
-            }
+            result["original_query"] = safe_query
+
+            logger.info(
+                "ChromaTool: %d docs, collections=%s, entities=%s",
+                len(result.get("documents", [])),
+                result.get("collections_used", []),
+                {
+                    k: v
+                    for k, v in result.get("entities_detected", {}).items()
+                    if k != "raw_query"
+                },
+            )
+
+            return result
 
         except Exception as e:
             logger.error("ChromaTool search error: %s", e, exc_info=True)
@@ -217,20 +158,11 @@ class ChromaTool:
             }
 
     # ------------------------------------------------------------------
-    # Utility accessors
+    # Utility accessors (backward-compatible)
     # ------------------------------------------------------------------
 
-    def get_collection(self, name: str):
-        return self.collections.get(name)
-
     def get_collection_names(self) -> List[str]:
-        return list(self.collections.keys())
+        return self.retriever.get_collection_names()
 
     def get_collection_stats(self) -> Dict[str, Any]:
-        stats = {}
-        for name, col in self.collections.items():
-            try:
-                stats[name] = {"document_count": col._collection.count()}
-            except Exception as e:
-                stats[name] = {"error": str(e)}
-        return stats
+        return self.retriever.get_collection_stats()
