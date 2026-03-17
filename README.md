@@ -17,7 +17,7 @@
 [![Docker](https://img.shields.io/badge/Docker-Cloud_Run-2496ED?logo=docker&logoColor=white)](https://cloud.google.com/run)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-[Live Demo](https://advisoraii.web.app) · [Research Paper](/AdvisorAI_Research_Paper.pdf) · [Fine-Tuning & Dataset](https://github.com/nitinchaube/StevensDomainFineTunedLM) . [HuggingFace] (https://huggingface.co/datasets/chauben/stevens-qa-finetuning-87k)
+[Live Demo](https://advisoraii.web.app) · [Research Paper](/AdvisorAI_Research_Paper.pdf) · [Fine-Tuning & Dataset](https://github.com/nitinchaube/StevensDomainFineTunedLM) . [HuggingFace](https://huggingface.co/datasets/chauben/stevens-qa-finetuning-87k)
 
 </div>
 
