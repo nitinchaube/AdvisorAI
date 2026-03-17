@@ -23,6 +23,14 @@
 
 ---
 
+## Authors
+
+| Name | Github |
+|---|---|
+| **Nitin Chaube** | https://github.com/nitinchaube |
+| **Paras Jadhav** | https://github.com/parasjadhav2610 |
+| **Keval Sompura** | https://github.com/keval-som |
+
 ## Overview
 
 AdvisorAI is a production-grade academic advising chatbot that answers questions about courses, professors, programs, admissions, and campus life at **Stevens Institute of Technology** — with zero hallucination.
@@ -58,7 +66,7 @@ Unlike a simple ChatGPT wrapper, AdvisorAI uses a **multi-agent RAG (Retrieval-A
                          │ HTTPS / SSE Streaming
                          ▼
 ┌──────────────────────────────────────────────────────┐
-│             API Layer (FastAPI + Flask)               │
+│             API Layer (FastAPI )               │
 │   /api/chat/stream (SSE) · /api/chat/query · REST    │
 └────────────────────────┬─────────────────────────────┘
                          │
@@ -92,7 +100,6 @@ Unlike a simple ChatGPT wrapper, AdvisorAI uses a **multi-agent RAG (Retrieval-A
 | Frontend | React 19, Vite 5, Tailwind CSS, Framer Motion |
 | Authentication | Firebase Auth (email/password + verification) |
 | Backend (Async) | FastAPI + Uvicorn |
-| Backend (REST) | Flask (WSGI Middleware) |
 | Database | MongoDB Atlas |
 | Vector Database | ChromaDB 0.5.23 |
 | Embedding Model | BAAI/bge-small-en-v1.5 |
@@ -260,23 +267,13 @@ We have written a detailed research paper documenting the architecture, fine-tun
 
 ---
 
-## Authors
 
-| Name | Role |
-|---|---|
-| **Nitin Chaube** | Full-Stack Development, LangGraph Pipeline, Fine-Tuning |
-| **Paras Jadhav** | Backend Architecture, RAG Pipeline, Deployment |
-| **Keval Sompura** | Frontend Development, Admin Dashboard, Data Collection |
 
 *Stevens Institute of Technology, Hoboken, NJ*
 
 ---
 
-## License
 
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
-
----
 
 <div align="center">
 
