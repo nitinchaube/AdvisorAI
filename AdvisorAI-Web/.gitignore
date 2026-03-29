@@ -10,7 +10,9 @@
 *.key
 **/serviceAccountKey*.json
 **/firebase_key*.json
-
+.env.production
+.env.staging
+.env.development
 # ----- Python -----
 __pycache__/
 *.py[cod]
