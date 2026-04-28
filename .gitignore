@@ -18,6 +18,9 @@ coverage/
 *.log
 *firebase_key.json
 *firebae_key1.json
+.env.production
+.env.staging
+.env.development
 
 uploads/
 # Python

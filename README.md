@@ -16,7 +16,7 @@
 [![Docker](https://img.shields.io/badge/Docker-Cloud_Run-2496ED?logo=docker&logoColor=white)](https://cloud.google.com/run)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-[Live Demo](https://advisoraii.web.app) · [Research Paper](AdvisorAI-Web/AdvisorAI_Research_Paper.pdf) · [Fine-Tuning & Dataset](https://github.com/nitinchaube/StevensDomainFineTunedLM)
+[Live Demo](https://advisoraii.web.app) · [Research Paper](AdvisorAI-Web/AdvisorAI_Research_Paper.pdf) · [Fine-Tuning & Dataset](https://github.com/nitinchaube/StevensDomainFineTunedLM) · [HuggingFace Dataset](https://huggingface.co/datasets/chauben/stevens-qa-finetuning-87k) · [HuggingFace Model](https://huggingface.co/chauben/advisorai-llama2-7b-stevens)
 
 </div>
 
@@ -261,11 +261,11 @@ We have written a detailed research paper documenting the architecture, fine-tun
 
 ## Authors
 
-| Name | Role |
-|---|---|
-| **Nitin Chaube** | Full-Stack Development, LangGraph Pipeline, Fine-Tuning |
-| **Paras Jadhav** | Backend Architecture, RAG Pipeline, Deployment |
-| **Keval Sompura** | Frontend Development, Admin Dashboard, Data Collection |
+| Name | Role | GitHub |
+|---|---|---|
+| **Nitin Chaube** | Full-Stack Development, LangGraph Pipeline, Fine-Tuning | [@nitinchaube](https://github.com/nitinchaube) |
+| **Paras Jadhav** | Backend Architecture, RAG Pipeline, Deployment | [@parasjadhav2610](https://github.com/parasjadhav2610) |
+| **Keval Sompura** | Frontend Development, Admin Dashboard, Data Collection | [@keval-som](https://github.com/keval-som) |
 
 *Stevens Institute of Technology, Hoboken, NJ*
 
