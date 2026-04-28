@@ -17,6 +17,7 @@ import {
 import { auth } from "../config/firebase";
 import { apiService } from "../services/api";
 import { chatCache } from "../utils/chatCache";
+import { startVerifyEmailCooldown } from "../utils/verifyEmailCooldown";
 
 const AuthContext = createContext();
 
@@ -48,6 +49,11 @@ export function AuthProvider({ children }) {
 
       // Send email verification
       await sendEmailVerification(result.user);
+
+      // Start the resend cooldown immediately so the user sees a live
+      // timer the moment they land on /email-verification, instead of
+      // being able to spam Resend right after signup.
+      startVerifyEmailCooldown();
 
       return result;
     } catch (error) {

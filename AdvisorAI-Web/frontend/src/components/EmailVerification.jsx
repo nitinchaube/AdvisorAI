@@ -4,9 +4,13 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { sendEmailVerification, applyActionCode } from 'firebase/auth';
 import { auth } from '../config/firebase';
 import { apiService } from '../services/api';
+import {
+  VERIFY_EMAIL_COOLDOWN_SECONDS,
+  startVerifyEmailCooldown,
+  getRemainingVerifyEmailCooldown,
+  clearVerifyEmailCooldown,
+} from '../utils/verifyEmailCooldown';
 import './EmailVerification.css';
-
-const COOLDOWN_SECONDS = 120; // 2 minutes
 
 const EmailVerification = () => {
   const { 
@@ -23,16 +27,15 @@ const EmailVerification = () => {
   const [cooldown, setCooldown] = useState(0);
   const cooldownRef = useRef(null);
 
-  // Restore cooldown from localStorage on mount
+  // Restore cooldown from localStorage on mount.
+  // This also covers the "first send happened during signup" case:
+  // AuthContext.signup() writes the same key after sending the
+  // initial verification email, so the timer is already running
+  // by the time this page renders.
   useEffect(() => {
-    const savedExpiry = localStorage.getItem('verifyEmailCooldownExpiry');
-    if (savedExpiry) {
-      const remaining = Math.ceil((parseInt(savedExpiry, 10) - Date.now()) / 1000);
-      if (remaining > 0) {
-        setCooldown(remaining);
-      } else {
-        localStorage.removeItem('verifyEmailCooldownExpiry');
-      }
+    const remaining = getRemainingVerifyEmailCooldown();
+    if (remaining > 0) {
+      setCooldown(remaining);
     }
   }, []);
 
@@ -43,7 +46,7 @@ const EmailVerification = () => {
         setCooldown((prev) => {
           if (prev <= 1) {
             clearInterval(cooldownRef.current);
-            localStorage.removeItem('verifyEmailCooldownExpiry');
+            clearVerifyEmailCooldown();
             return 0;
           }
           return prev - 1;
@@ -128,10 +131,8 @@ const EmailVerification = () => {
         });
         setMessage('Verification email sent! Please check your inbox.');
 
-        // Start cooldown
-        const expiryTime = Date.now() + COOLDOWN_SECONDS * 1000;
-        localStorage.setItem('verifyEmailCooldownExpiry', expiryTime.toString());
-        setCooldown(COOLDOWN_SECONDS);
+        startVerifyEmailCooldown();
+        setCooldown(VERIFY_EMAIL_COOLDOWN_SECONDS);
       } else {
         setError('No user found. Please try logging in again.');
       }
