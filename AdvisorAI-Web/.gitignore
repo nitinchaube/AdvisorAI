@@ -36,14 +36,31 @@ frontend/dist-ssr/
 .DS_Store
 
 data/
+data.zip
 VectorDB_v2/
 VectorDB/
+
 # ----- Uploads (user data) -----
 backend/uploads/
 
+# ----- Fine-tuning data/output (large, do not commit) -----
+DataPreparation/output/
+DataPreparation/Fine_tuning/Tokenized_dataset/
+DataPreparation/Fine_tuning/checkpoints/
+DataPreparation/Fine_tuning/runs/
 
-/DataPreparation/
-/DataPreparation/output/
+# ----- Demo media (large, host externally) -----
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+
+# ----- Generated training datasets -----
+*.jsonl
+*.arrow
+!**/sample*.jsonl
+!**/example*.jsonl
 
 # ----- Logs -----
 *.log

@@ -117,3 +117,29 @@ start_dev_servers.sh
 *.tar.gz
 *.tgz
 *.7z
+
+# ----- Project-specific large dirs / files (DO NOT COMMIT) -----
+# Demo videos
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+
+# Fine-tuning outputs and intermediate artifacts (>50MB each)
+**/DataPreparation/output/
+**/DataPreparation/Fine_tuning/Tokenized_dataset/
+**/DataPreparation/Fine_tuning/checkpoints/
+**/DataPreparation/Fine_tuning/runs/
+
+# AdvisorAI-Web/data/ — full fine-tuning dataset + checkpoints (~2.8GB)
+AdvisorAI-Web/data/
+AdvisorAI-Web/data.zip
+
+# Generated training data
+*.jsonl
+*.arrow
+# But keep the small sample dataset referenced in the README
+!AdvisorAI-Web/data/stevens_qa_finetuning_sample.jsonl
+!**/example*.jsonl
+!**/sample*.jsonl
