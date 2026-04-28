@@ -1,21 +1,76 @@
-# Dev / editor files
+# ============================================================
+# AdvisorAI Backend — .dockerignore
+# Keeps the production image lean. Anything matching these
+# patterns is excluded from the Docker build context.
+# ============================================================
+
+# ----- Secrets / env (NEVER bake into the image) -----
 .env
-.env.example
 .env.*
+!.env.example
+*firebase_key*.json
+**/serviceAccountKey*.json
+**/*private_key*.json
+
+# ----- VCS / editor / OS metadata -----
 .git
 .gitignore
+.gitattributes
 .vscode
 .cursor
+.idea
+.DS_Store
+Thumbs.db
+
+# ----- Python build / cache -----
 __pycache__
+**/__pycache__
 *.pyc
 *.pyo
+*.pyd
+*.egg
+*.egg-info
+.venv
+venv
+env
+ENV
+.mypy_cache
+.pytest_cache
+.ruff_cache
 
-# Docs
+# ----- Node (in case anything leaks in) -----
+node_modules
+
+# ----- Docs / notebooks (not needed at runtime) -----
 *.md
 LICENSE
+*.ipynb
+.ipynb_checkpoints
 
-# Uploads (user data, not shipped)
-uploads/
+# ----- Data files baked into image only when needed -----
+# Live runtime needs the VectorDB_v2 directory and small jobs/internships CSVs.
+# Anything below is excluded:
+*.csv.backup*
+internships.csv.backup_*
+jobs.csv.backup_*
+*.log
+unified_github_scraper.log
 
-# Node (shouldn't be here, but just in case)
-node_modules/
+# ----- User uploads (per-instance, not built-in) -----
+uploads
+**/uploads
+
+# ----- Old / unused VectorDB (we ship VectorDB_v2 only) -----
+VectorDB
+**/VectorDB/
+
+# ----- Notebook scratch -----
+DataAnalyis.ipynb
+RagArchitecture.ipynb
+
+# ----- Misc -----
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z

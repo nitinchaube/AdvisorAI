@@ -59,9 +59,10 @@ transformers
 huggingface-hub
 
 # ----- Web Scraping -----
+# Selenium intentionally not included — the runtime backend + scraper Job both use
+# requests + BeautifulSoup only. Adding selenium would require shipping Chrome too.
 beautifulsoup4
 lxml
-selenium
 
 # ----- NLP & Data -----
 nltk

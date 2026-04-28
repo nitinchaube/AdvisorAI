@@ -1,0 +1,132 @@
+name: Bootstrap Scraper Cloud Run Job + Schedule
+
+# One-time / on-demand workflow.
+# Run this AFTER the first successful backend-deploy.yml run, so that
+# us-east1-docker.pkg.dev/advisoraii/advisorai/backend:latest exists.
+#
+# This workflow:
+#   1. Creates (or updates) the Cloud Run Job `advisorai-scraper`
+#      using the same image as the API, with CMD overridden to
+#      `python run_unified_scraper.py`.
+#   2. Creates (or updates) a Cloud Scheduler job that triggers
+#      the Cloud Run Job every 2 hours.
+#
+# Re-run any time you want to change the schedule, memory, etc.
+
+on:
+  workflow_dispatch:
+    inputs:
+      schedule:
+        description: 'Cron schedule (UTC) for the scraper'
+        required: false
+        default: '0 */2 * * *'
+      memory:
+        description: 'Memory for the Job container'
+        required: false
+        default: '1Gi'
+      cpu:
+        description: 'CPU for the Job container'
+        required: false
+        default: '1'
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  PROJECT_NUMBER: ${{ secrets.GCP_PROJECT_NUMBER }}
+  REGION: us-east1
+  JOB: advisorai-scraper
+  SCHEDULE_NAME: advisorai-scraper-every-2h
+  IMAGE_PATH: us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/advisorai/backend
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA_EMAIL }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Create or update Cloud Run Job
+        run: |
+          if gcloud run jobs describe "$JOB" --region="$REGION" >/dev/null 2>&1; then
+            echo "Updating existing Cloud Run Job $JOB"
+            gcloud run jobs update "$JOB" \
+              --image="$IMAGE_PATH:latest" \
+              --region="$REGION" \
+              --tasks=1 \
+              --max-retries=1 \
+              --task-timeout=3600 \
+              --memory='${{ inputs.memory }}' \
+              --cpu='${{ inputs.cpu }}' \
+              --command="python" \
+              --args="run_unified_scraper.py" \
+              --set-env-vars="^@^GOOGLE_CLOUD_PROJECT=$PROJECT_ID@SCRAPER_ENABLED=true@LOG_LEVEL=INFO@JOBS_CSV_PATH=jobs.csv@INTERNSHIPS_CSV_PATH=internships.csv" \
+              --set-secrets="MONGO_URI=mongo_uri:latest,GEMINI_API_KEY=gemini_api_key:latest,OPENAI_API_KEY=openai_api_key:latest"
+          else
+            echo "Creating new Cloud Run Job $JOB"
+            gcloud run jobs create "$JOB" \
+              --image="$IMAGE_PATH:latest" \
+              --region="$REGION" \
+              --tasks=1 \
+              --max-retries=1 \
+              --task-timeout=3600 \
+              --memory='${{ inputs.memory }}' \
+              --cpu='${{ inputs.cpu }}' \
+              --command="python" \
+              --args="run_unified_scraper.py" \
+              --set-env-vars="^@^GOOGLE_CLOUD_PROJECT=$PROJECT_ID@SCRAPER_ENABLED=true@LOG_LEVEL=INFO@JOBS_CSV_PATH=jobs.csv@INTERNSHIPS_CSV_PATH=internships.csv" \
+              --set-secrets="MONGO_URI=mongo_uri:latest,GEMINI_API_KEY=gemini_api_key:latest,OPENAI_API_KEY=openai_api_key:latest"
+          fi
+
+      - name: Ensure scheduler service account exists with run.invoker
+        run: |
+          SA="scheduler-invoker@${PROJECT_ID}.iam.gserviceaccount.com"
+          if ! gcloud iam service-accounts describe "$SA" >/dev/null 2>&1; then
+            gcloud iam service-accounts create scheduler-invoker \
+              --display-name="Cloud Scheduler invoker for Cloud Run Jobs"
+          fi
+          gcloud run jobs add-iam-policy-binding "$JOB" \
+            --region="$REGION" \
+            --member="serviceAccount:$SA" \
+            --role="roles/run.invoker" || true
+
+      - name: Create or update Cloud Scheduler trigger
+        run: |
+          SA="scheduler-invoker@${PROJECT_ID}.iam.gserviceaccount.com"
+          URI="https://${REGION}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${PROJECT_ID}/jobs/${JOB}:run"
+          if gcloud scheduler jobs describe "$SCHEDULE_NAME" --location="$REGION" >/dev/null 2>&1; then
+            echo "Updating existing scheduler job"
+            gcloud scheduler jobs update http "$SCHEDULE_NAME" \
+              --location="$REGION" \
+              --schedule='${{ inputs.schedule }}' \
+              --uri="$URI" \
+              --http-method=POST \
+              --oauth-service-account-email="$SA" \
+              --oauth-token-scope="https://www.googleapis.com/auth/cloud-platform" \
+              --time-zone="Etc/UTC"
+          else
+            echo "Creating new scheduler job"
+            gcloud scheduler jobs create http "$SCHEDULE_NAME" \
+              --location="$REGION" \
+              --schedule='${{ inputs.schedule }}' \
+              --uri="$URI" \
+              --http-method=POST \
+              --oauth-service-account-email="$SA" \
+              --oauth-token-scope="https://www.googleapis.com/auth/cloud-platform" \
+              --time-zone="Etc/UTC" \
+              --description="Triggers AdvisorAI scraper Cloud Run Job"
+          fi
+
+      - name: Done
+        run: |
+          echo "Cloud Run Job '${JOB}' and Scheduler '${SCHEDULE_NAME}' are configured."
+          echo "To run the scraper manually right now:"
+          echo "  gcloud run jobs execute ${JOB} --region=${REGION}"
