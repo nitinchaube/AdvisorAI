@@ -40,6 +40,7 @@ env:
   JOB: advisorai-scraper
   SCHEDULE_NAME: advisorai-scraper-every-2h
   IMAGE_PATH: us-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/advisorai/backend
+  RUNTIME_SA: advisorai-runtime@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
 
 jobs:
   bootstrap:
@@ -61,6 +62,7 @@ jobs:
             gcloud run jobs update "$JOB" \
               --image="$IMAGE_PATH:latest" \
               --region="$REGION" \
+              --service-account="$RUNTIME_SA" \
               --tasks=1 \
               --max-retries=1 \
               --task-timeout=3600 \
@@ -75,6 +77,7 @@ jobs:
             gcloud run jobs create "$JOB" \
               --image="$IMAGE_PATH:latest" \
               --region="$REGION" \
+              --service-account="$RUNTIME_SA" \
               --tasks=1 \
               --max-retries=1 \
               --task-timeout=3600 \
