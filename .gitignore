@@ -71,3 +71,46 @@ start_dev_servers.ps1
 start_dev_servers.sh
 
 *.csv*
+
+# ----- Security / Secrets (additional) -----
+.env.*
+!.env.example
+*.p12
+*.pfx
+*.crt
+*.cer
+*.jks
+*.keystore
+**/serviceAccountKey*.json
+**/firebase_key*.json
+**/firebase_key*.pem
+**/*private_key*.json
+
+# ----- Large ML / Data Artifacts -----
+**/checkpoints/
+**/checkpoint-*/
+**/models/
+**/artifacts/
+**/wandb/
+**/mlruns/
+**/.cache/huggingface/
+**/.ipynb_checkpoints/
+*.safetensors
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.h5
+*.hdf5
+*.npy
+*.npz
+*.parquet
+*.feather
+*.pickle
+*.pkl
+*.joblib
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
