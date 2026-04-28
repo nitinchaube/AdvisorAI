@@ -39,8 +39,8 @@ VectorDB/
 backend/uploads/
 
 
-./DataPreparation/
-./DataPreparation/output/
+/DataPreparation/
+/DataPreparation/output/
 
 # ----- Logs -----
 *.log
