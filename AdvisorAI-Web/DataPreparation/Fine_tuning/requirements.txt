@@ -1,0 +1,41 @@
+# ═════════════════════════════════════════════════════════════════════════
+# AdvisorAI Fine-Tuning Dependencies
+# Target: Ubuntu 22.04 + CUDA 12.4 + 2× RTX 3090
+# ═════════════════════════════════════════════════════════════════════════
+
+# ── Core ML Framework ──────────────────────────────────────────────────
+# Install PyTorch separately via:
+# pip install torch==2.4.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+
+# ── Training Stack ─────────────────────────────────────────────────────
+# Pinned versions for reproducibility.
+# - peft >= 0.9 required for DoRA (use_dora=True)
+# - trl  >= 0.7 required for NEFTune (neftune_noise_alpha)
+transformers==4.46.0
+trl==0.12.0
+peft==0.13.0
+accelerate==1.0.0
+datasets==3.0.0
+bitsandbytes==0.44.0
+sentencepiece==0.2.0
+protobuf==5.28.0
+
+# ── Monitoring / Logging ───────────────────────────────────────────────
+wandb==0.18.0
+tensorboard==2.18.0
+
+# ── Evaluation Metrics ─────────────────────────────────────────────────
+evaluate==0.4.3
+rouge-score==0.1.2
+bert-score==0.3.13
+scikit-learn==1.5.2
+nltk==3.9.1
+
+# ── Data Utilities ─────────────────────────────────────────────────────
+jsonlines==4.0.0
+tqdm==4.66.5
+
+# ── Post-Training (install separately if desired) ──────────────────────
+# pip install flash-attn==2.6.3 --no-build-isolation   # needs 10-20 min build
+# pip install vllm==0.6.3                              # for inference serving
+# pip install autoawq==0.2.6                           # for AWQ quantization

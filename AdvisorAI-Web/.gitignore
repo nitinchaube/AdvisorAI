@@ -38,5 +38,9 @@ VectorDB/
 # ----- Uploads (user data) -----
 backend/uploads/
 
+
+./DataPreparation/
+./DataPreparation/output/
+
 # ----- Logs -----
 *.log
